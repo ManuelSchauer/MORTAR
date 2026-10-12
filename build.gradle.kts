@@ -50,7 +50,15 @@ dependencies {
     implementation(libs.cdkStandard)
     implementation(libs.cdkValencycheck)
     implementation(libs.cdkFragment)
+    implementation(libs.cdkQsar)
+    implementation(libs.cdkQsarmolecular)
+    implementation(libs.cdkQsarprotein)
+    implementation(libs.cdkFingerprint)
     implementation(libs.cdkScaffold)
+    //</editor-fold>
+    //<editor-fold desc="Clustering dependencies">
+    implementation(libs.art2aClustering)
+    implementation(libs.fragmentFingerprints)
     //</editor-fold>
     implementation(libs.molWURCS)
     implementation(libs.openpdf)
@@ -194,6 +202,8 @@ distributions {
 spotless {
     java {
         toggleOffOn() // all code in between spotless:off / spotless:on will be ignored
+        // temporary copy of the descriptor engine from the CDK (LGPL header must be kept), removed once it is part of a CDK release
+        targetExclude("src/main/java/de/unijena/cheminf/mortar/model/descriptor/**")
         licenseHeaderFile("License-header/License-header.txt")
         encoding("UTF-8")
         cleanthat()

@@ -27,15 +27,26 @@ package de.unijena.cheminf.mortar.controller;
 
 import de.unijena.cheminf.mortar.configuration.IConfiguration;
 import de.unijena.cheminf.mortar.gui.controls.CustomPaginationSkin;
+import de.unijena.cheminf.mortar.gui.controls.DescriptorPresetComboBox;
 import de.unijena.cheminf.mortar.gui.controls.GridTabForTableView;
 import de.unijena.cheminf.mortar.gui.util.GuiDefinitions;
 import de.unijena.cheminf.mortar.gui.util.GuiUtil;
+import de.unijena.cheminf.mortar.gui.views.ClusteringResultView;
 import de.unijena.cheminf.mortar.gui.views.FragmentsDataTableView;
 import de.unijena.cheminf.mortar.gui.views.IDataTableView;
 import de.unijena.cheminf.mortar.gui.views.ItemizationDataTableView;
 import de.unijena.cheminf.mortar.gui.views.MainView;
 import de.unijena.cheminf.mortar.gui.views.MoleculesDataTableView;
+import de.unijena.cheminf.mortar.gui.views.VigilanceScanView;
 import de.unijena.cheminf.mortar.message.Message;
+import de.unijena.cheminf.mortar.model.clustering.ClusteringRunResult;
+import de.unijena.cheminf.mortar.model.clustering.ClusteringService;
+import de.unijena.cheminf.mortar.model.clustering.ClusteringTask;
+import de.unijena.cheminf.mortar.model.clustering.DiverseSubsetSelector;
+import de.unijena.cheminf.mortar.model.clustering.FeatureMatrixBuilder;
+import de.unijena.cheminf.mortar.model.clustering.SimilaritySearch;
+import de.unijena.cheminf.mortar.model.clustering.TrainTestSplitter;
+import de.unijena.cheminf.mortar.model.clustering.VigilanceScan;
 import de.unijena.cheminf.mortar.model.data.FragmentDataModel;
 import de.unijena.cheminf.mortar.model.data.MoleculeDataModel;
 import de.unijena.cheminf.mortar.model.fragmentation.FragmentationService;
@@ -66,30 +77,49 @@ import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.CheckBox;
+import javafx.scene.control.ComboBox;
+import javafx.scene.control.Dialog;
+import javafx.scene.control.Label;
 import javafx.scene.control.Pagination;
 import javafx.scene.control.RadioMenuItem;
 import javafx.scene.control.SortEvent;
+import javafx.scene.control.Spinner;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TableView;
+import javafx.scene.control.TextField;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.Tooltip;
 import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
 import javafx.scene.input.Dragboard;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.TransferMode;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.scene.text.Text;
 import javafx.stage.Stage;
+import javafx.stage.Window;
 import javafx.stage.WindowEvent;
+import javafx.util.StringConverter;
+
+import org.openscience.cdk.interfaces.IAtomContainer;
 
 import java.io.File;
+import java.io.IOException;
+import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -188,6 +218,60 @@ public class MainViewController {
      */
     private Task<List<String>> exportTask;
     /**
+     * Service for the clustering of the molecules, holds the clustering settings.
+     */
+    private final ClusteringService clusteringService;
+    /**
+     * Task of a running clustering.
+     */
+    private ClusteringTask clusteringTask;
+    /**
+     * Task of a running vigilance scan, cancelled by the cancel controls of the clustering.
+     */
+    private Task<List<VigilanceScan.ScanEntry>> vigilanceScanTask;
+    /**
+     * Thread of a running clustering.
+     */
+    private Thread clusteringThread;
+    /**
+     * Number of clustering result tabs created so far, used to give every tab a unique title.
+     */
+    private int clusteringRunCounter;
+    /**
+     * True while a clustering is running; the start and cancel controls of the menu and the tab bars are bound to it.
+     */
+    private final BooleanProperty isClusteringRunningProperty;
+    /**
+     * Overview view controller for the representatives of the clusters; separate from the one of the view tools manager,
+     * which opens a cluster on top of the representatives overview.
+     */
+    private OverviewViewController clusterRepresentativesOverviewViewController;
+    /**
+     * Result of the last clustering run, used by the similarity search if no clustering tab is selected; null if there
+     * was no clustering yet.
+     */
+    private ClusteringRunResult lastClusteringRunResult;
+    /**
+     * Similarity searches of the clustering runs, created on first use.
+     */
+    private final Map<ClusteringRunResult, SimilaritySearch> similaritySearchMap = new IdentityHashMap<>();
+    /**
+     * Window of the last vigilance scan of every clustering result; kept until the result tab is closed.
+     */
+    private final Map<ClusteringRunResult, Stage> vigilanceScanStageMap = new IdentityHashMap<>();
+    /**
+     * Training/test ratio proposed in the dialog of the cluster-based training/test partitioning.
+     */
+    private static final String TRAIN_TEST_RATIO_DEFAULT = "80:20";
+    /**
+     * Number of molecules proposed in the dialog for selecting molecules from a cluster.
+     */
+    private static final int CLUSTER_MOLECULE_SELECTION_NUMBER_DEFAULT = 10;
+    /**
+     * Id of the start button in the clustering bars.
+     */
+    private static final String START_CLUSTERING_BUTTON_ID = "startClusteringButton";
+    /**
      * BooleanProperty whether import is running.
      */
     private final BooleanProperty isImportRunningProperty;
@@ -245,6 +329,9 @@ public class MainViewController {
         this.fragmentationService.reloadActiveFragmenterAndPipeline();
         this.viewToolsManager = new ViewToolsManager(this.configuration, this.settingsContainer);
         this.viewToolsManager.reloadViewToolsSettings();
+        this.clusteringService = new ClusteringService();
+        this.clusteringService.reloadClusteringSettings();
+        this.clusteringRunCounter = 0;
         //<editor-fold desc="show MainView inside primaryStage" defaultstate="collapsed">
         this.mainTabPane = new TabPane();
         this.mainView.getMainCenterPane().getChildren().add(this.mainTabPane);
@@ -265,6 +352,7 @@ public class MainViewController {
         //</editor-fold>
         this.isImportRunningProperty = new SimpleBooleanProperty(false);
         this.isExportRunningProperty = new SimpleBooleanProperty(false);
+        this.isClusteringRunningProperty = new SimpleBooleanProperty(false);
         this.mapOfFragmentDataModelLists = new HashMap<>(CollectionUtil.calculateInitialHashCollectionCapacity(5));
         this.threadList = new CopyOnWriteArrayList<>();
         this.addListener();
@@ -328,6 +416,21 @@ public class MainViewController {
                 EventType.ROOT,
                 anEvent -> this.openFragmentationSettingsView()
         );
+        //<editor-fold desc="clustering">
+        this.mainView.getMainMenuBar().getClusteringSettingsMenuItem().addEventHandler(
+                EventType.ROOT,
+                anEvent -> this.openClusteringSettingsView()
+        );
+        this.mainView.getMainMenuBar().getStartClusteringMenuItem().addEventHandler(
+                EventType.ROOT,
+                anEvent -> this.startClustering()
+        );
+        this.mainView.getMainMenuBar().getCancelClusteringMenuItem().addEventHandler(
+                EventType.ROOT,
+                anEvent -> this.interruptClustering()
+        );
+        this.mainView.getMainMenuBar().getCancelClusteringMenuItem().visibleProperty().bind(this.isClusteringRunningProperty);
+        //</editor-fold>
         this.mainView.getMainMenuBar().getGlobalSettingsMenuItem().addEventHandler(
                 EventType.ROOT,
                 anEvent -> this.openGlobalSettingsView()
@@ -356,9 +459,13 @@ public class MainViewController {
         this.primaryStage.addEventFilter(WindowEvent.WINDOW_CLOSE_REQUEST, (this::closeWindowEvent));
         this.mainView.getMainMenuBar().getAboutViewMenuItem().setOnAction(actionEvent -> new AboutViewController(this.primaryStage, this.configuration));
         this.scene.addEventFilter(KeyEvent.KEY_PRESSED, keyEvent -> {
-            GridTabForTableView tmpGrid = ((GridTabForTableView) this.mainTabPane.getSelectionModel().getSelectedItem());
-            if (tmpGrid == null) {
+            Tab tmpSelectedTab = this.mainTabPane.getSelectionModel().getSelectedItem();
+            if (tmpSelectedTab == null) {
                 keyEvent.consume();
+                return;
+            }
+            //clustering result tabs have no pagination; the key event is left to their table
+            if (!(tmpSelectedTab instanceof GridTabForTableView tmpGrid)) {
                 return;
             }
             if (GuiDefinitions.KEY_CODE_LAST_PAGE.match(keyEvent) || keyEvent.getCode() == KeyCode.END) {
@@ -382,8 +489,12 @@ public class MainViewController {
             if (newValue == null) {
                 return;
             }
-            this.mainView.getMainMenuBar().getHistogramViewerMenuItem().setDisable(newValue.getId().equals(TabNames.MOLECULES.toString()));
-            this.mainView.getMainMenuBar().getOverviewViewMenuItem().setDisable(newValue.getId().equals(TabNames.ITEMIZATION.toString()));
+            //a clustering result tab has its own overview button and no histogram
+            boolean tmpIsClusteringTab = TabNames.CLUSTERING.toString().equals(newValue.getId());
+            this.mainView.getMainMenuBar().getHistogramViewerMenuItem().setDisable(tmpIsClusteringTab
+                    || TabNames.MOLECULES.toString().equals(newValue.getId()));
+            this.mainView.getMainMenuBar().getOverviewViewMenuItem().setDisable(tmpIsClusteringTab
+                    || TabNames.ITEMIZATION.toString().equals(newValue.getId()));
         }));
         this.mainView.getMainCenterPane().setOnDragOver(aDragEvent -> {
             if (aDragEvent.getGestureSource() != this.mainView.getMainCenterPane() && aDragEvent.getDragboard().hasFiles()){
@@ -423,8 +534,12 @@ public class MainViewController {
         this.viewToolsManager.persistViewToolsSettings();
         this.fragmentationService.persistFragmenterSettings();
         this.fragmentationService.persistSelectedFragmenterAndPipeline();
+        this.clusteringService.persistClusteringSettings();
         if (this.isFragmentationRunning) {
             this.interruptFragmentation();
+        }
+        if (this.clusteringTask != null && this.clusteringTask.isRunning()) {
+            this.interruptClustering();
         }
         MainViewController.LOGGER.info(BasicDefinitions.MORTAR_SESSION_END);
         Platform.exit();
@@ -596,6 +711,16 @@ public class MainViewController {
      * @param anExportType Enum to specify what type of file to export
      */
     private void exportFile(Exporter.ExportTypes anExportType) {
+        //a clustering result tab has no fragments or items, its data is exported via the button in the tab
+        if (!(this.mainTabPane.getSelectionModel().getSelectedItem() instanceof GridTabForTableView)) {
+            GuiUtil.guiMessageAlert(
+                    Alert.AlertType.INFORMATION,
+                    Message.get("Exporter.MessageAlert.NoDataAvailable.title"),
+                    Message.get("Exporter.MessageAlert.NoDataAvailable.header"),
+                    null
+            );
+            return;
+        }
         if ((this.mainTabPane.getSelectionModel().getSelectedItem()).getId().equals(TabNames.MOLECULES.toString())) {
             GuiUtil.guiConfirmationAlert(Message.get("Exporter.confirmationAlert.moleculesTabSelected.title"),
                     Message.get("Exporter.confirmationAlert.moleculesTabSelected.header"),
@@ -839,6 +964,10 @@ public class MainViewController {
         Platform.runLater(() -> {
             if (tmpSettingsViewController.hasRowsPerPageChanged()) {
                 for (Tab tmpTab : this.mainTabPane.getTabs()) {
+                    //clustering result tabs have no pagination
+                    if (!(tmpTab instanceof GridTabForTableView)) {
+                        continue;
+                    }
                     // type of generic not given because it does not matter here, only the size of the items list
                     TableView<?> tmpTableView = ((GridTabForTableView) tmpTab).getTableView();
                     int tmpListSize = ((IDataTableView) tmpTableView).getItemsList().size();
@@ -1049,6 +1178,16 @@ public class MainViewController {
         tmpOpenOverviewViewButton.setOnAction(event -> this.openOverviewView(OverviewViewController.DataSources.MOLECULES_TAB));
         this.moleculesDataTableView.addTableViewHeightListener(this.settingsContainer);
         this.moleculesDataTableView.getCopyMenuItem().setOnAction(event -> GuiUtil.copySelectedTableViewCellsToClipboard(this.moleculesDataTableView));
+        //similarity search for the selected molecule, available once there is a clustering result
+        this.moleculesDataTableView.getContextMenu().setOnShowing(event -> this.moleculesDataTableView.getSimilaritySearchMenuItem()
+                .setDisable(this.getActiveClusteringRunResult() == null
+                        || this.moleculesDataTableView.getSelectionModel().getSelectedItem() == null));
+        this.moleculesDataTableView.getSimilaritySearchMenuItem().setOnAction(event -> {
+            Object tmpSelectedItem = this.moleculesDataTableView.getSelectionModel().getSelectedItem();
+            if (tmpSelectedItem instanceof MoleculeDataModel tmpMolecule) {
+                this.searchSimilarMolecules(tmpMolecule, this.getActiveClusteringRunResult());
+            }
+        });
         this.moleculesDataTableView.setOnKeyPressed(event -> {
             if (GuiDefinitions.KEY_CODE_COPY.match(event)) {
                 GuiUtil.copySelectedTableViewCellsToClipboard(this.moleculesDataTableView);
@@ -1169,6 +1308,7 @@ public class MainViewController {
                         this.updateStatusBar(this.fragmentationThread, Message.get("Status.finished"));
                         this.mainView.getMainMenuBar().getExportMenu().setDisable(false);
                         this.mainView.getMainMenuBar().getHistogramViewerMenuItem().setDisable(false);
+                        this.mainView.getMainMenuBar().getStartClusteringMenuItem().setDisable(false);
                         this.fragmentationButton.setDisable(false);
                         this.cancelFragmentationButton.setVisible(false);
                         this.isFragmentationRunning = false;
@@ -1221,6 +1361,870 @@ public class MainViewController {
         }
     }
     //
+    //<editor-fold desc="clustering" defaultstate="collapsed">
+    /**
+     * Starts the clustering of the selected molecules by the fragments of the fragmentation of the selected fragments or
+     * items tab (or of the last fragmentation if another tab is selected) and the selected descriptors. The result is
+     * shown in a new tab.
+     */
+    private void startClustering() {
+        this.startClustering(null);
+    }
+    //
+    /**
+     * Starts the clustering of the selected molecules by the fragments of the given fragmentation and the selected
+     * descriptors. The result is shown in a new tab.
+     *
+     * @param aFragmentationName name of the fragmentation to use; null to use the fragmentation of the selected fragments
+     *                           or items tab (or the last fragmentation if another tab is selected)
+     */
+    private void startClustering(String aFragmentationName) {
+        if (this.clusteringTask != null && this.clusteringTask.isRunning()) {
+            return;
+        }
+        String tmpFragmentationName = aFragmentationName;
+        Tab tmpSelectedTab = this.mainTabPane.getSelectionModel().getSelectedItem();
+        if (tmpFragmentationName == null && tmpSelectedTab instanceof GridTabForTableView tmpGridTab
+                && !TabNames.MOLECULES.toString().equals(tmpGridTab.getId())) {
+            tmpFragmentationName = tmpGridTab.getFragmentationNameOutOfTitle();
+        }
+        if (tmpFragmentationName == null) {
+            tmpFragmentationName = this.fragmentationService.getCurrentFragmentationName();
+        }
+        if (tmpFragmentationName == null || !this.mapOfFragmentDataModelLists.containsKey(tmpFragmentationName)) {
+            GuiUtil.guiMessageAlert(Alert.AlertType.INFORMATION, Message.get("MainViewController.ClusteringError.Title"),
+                    Message.get("MainViewController.Clustering.NoFragmentation.Header"),
+                    Message.get("MainViewController.Clustering.NoFragmentation.Content"));
+            return;
+        }
+        List<MoleculeDataModel> tmpSelectedMolecules = this.moleculeDataModelList.stream().filter(MoleculeDataModel::isSelected).toList();
+        if (tmpSelectedMolecules.isEmpty()) {
+            GuiUtil.guiMessageAlert(Alert.AlertType.INFORMATION, Message.get("MainViewController.ClusteringError.Title"),
+                    Message.get("MainViewController.Clustering.NoMolecules.Header"), null);
+            return;
+        }
+        try {
+            this.clusteringTask = this.clusteringService.createClusteringTask(tmpSelectedMolecules, tmpFragmentationName,
+                    this.settingsContainer.getNumberOfTasksForFragmentationSetting() > 1);
+        } catch (IOException anException) {
+            MainViewController.LOGGER.log(Level.SEVERE, anException.toString(), anException);
+            GuiUtil.guiExceptionAlert(Message.get("MainViewController.ClusteringError.Title"),
+                    Message.get("MainViewController.ClusteringError.Header"),
+                    Message.get("MainViewController.ClusteringError.Content"), anException);
+            return;
+        }
+        this.clusteringTask.setOnSucceeded(event -> {
+            this.updateStatusBar(this.clusteringThread, Message.get("Status.finished"));
+            this.setClusteringRunningState(false);
+            this.addClusteringResultTab(this.clusteringTask.getValue());
+        });
+        this.clusteringTask.setOnCancelled(event -> {
+            this.updateStatusBar(this.clusteringThread, Message.get("Status.canceled"));
+            this.setClusteringRunningState(false);
+            MainViewController.LOGGER.info("Clustering cancelled by user.");
+        });
+        this.clusteringTask.setOnFailed(event -> {
+            this.updateStatusBar(this.clusteringThread, Message.get("Status.failed"));
+            this.setClusteringRunningState(false);
+            Throwable tmpCause = event.getSource().getException();
+            MainViewController.LOGGER.log(Level.SEVERE, tmpCause.toString(), tmpCause);
+            GuiUtil.guiExceptionAlert(Message.get("MainViewController.ClusteringError.Title"),
+                    Message.get("MainViewController.ClusteringError.Header"),
+                    tmpCause.getMessage(),
+                    tmpCause instanceof Exception tmpException ? tmpException : new Exception(tmpCause));
+        });
+        this.clusteringThread = new Thread(this.clusteringTask);
+        this.clusteringThread.setName(ThreadType.CLUSTERING_THREAD.getThreadName());
+        this.clusteringThread.setUncaughtExceptionHandler(LogUtil.getUncaughtExceptionHandler());
+        this.clusteringThread.setDaemon(true);
+        this.clusteringThread.setPriority(Thread.currentThread().getPriority() - 2); //magic number, as for the fragmentation
+        this.setClusteringRunningState(true);
+        this.updateStatusBar(this.clusteringThread, Message.get("Status.clustering"));
+        this.clusteringThread.start();
+    }
+    //
+    /**
+     * Cancels a running clustering. The current step (descriptor calculation or ART-2A clustering) cannot be interrupted,
+     * the run stops after it and its result is discarded.
+     */
+    private void interruptClustering() {
+        if (this.clusteringTask != null) {
+            this.clusteringTask.cancel(true);
+        }
+        if (this.vigilanceScanTask != null) {
+            this.vigilanceScanTask.cancel(true);
+        }
+        this.setClusteringRunningState(false);
+    }
+    //
+    /**
+     * Enables or disables the clustering menu items according to whether a clustering is running.
+     *
+     * @param anIsRunning true if a clustering is running
+     */
+    private void setClusteringRunningState(boolean anIsRunning) {
+        this.isClusteringRunningProperty.set(anIsRunning);
+        this.mainView.getMainMenuBar().getStartClusteringMenuItem().setDisable(anIsRunning || this.mapOfFragmentDataModelLists.isEmpty());
+    }
+    //
+    /**
+     * Opens the clustering settings; their start button starts the clustering if a fragmentation is available.
+     */
+    private void openClusteringSettingsView() {
+        this.openClusteringSettingsView(null);
+    }
+    //
+    /**
+     * Opens the clustering settings; their start button starts the clustering with the given fragmentation.
+     *
+     * @param aFragmentationName name of the fragmentation to cluster with, null for the fragmentation of the selected tab
+     */
+    private void openClusteringSettingsView(String aFragmentationName) {
+        new ClusteringSettingsViewController(this.primaryStage, this.clusteringService, this.configuration,
+                this.mapOfFragmentDataModelLists.isEmpty() || this.isClusteringRunningProperty.get()
+                        ? null
+                        : () -> this.startClustering(aFragmentationName));
+    }
+    //
+    /**
+     * Creates the clustering bar for an additional row below the pagination of a fragments or items tab: descriptor preset, start and cancel button and
+     * a button to open the clustering settings, so that a clustering can be started without opening the settings.
+     *
+     * @return box with the clustering controls
+     */
+    private HBox createClusteringBar() {
+        return this.createClusteringBar(null);
+    }
+    //
+    /**
+     * Creates a clustering bar (descriptor preset, settings, start and cancel button) that clusters with the given
+     * fragmentation, e.g. in a clustering result tab to cluster again with changed settings.
+     *
+     * @param aFragmentationName name of the fragmentation to cluster with, null for the fragmentation of the selected tab
+     * @return box with the clustering controls
+     */
+    private HBox createClusteringBar(String aFragmentationName) {
+        HBox tmpClusteringBar = new HBox();
+        tmpClusteringBar.setPadding(new Insets(GuiDefinitions.GUI_INSETS_VALUE));
+        tmpClusteringBar.setSpacing(GuiDefinitions.GUI_SPACING_VALUE);
+        tmpClusteringBar.setAlignment(Pos.CENTER_LEFT);
+        //separated from the pagination above by a line
+        tmpClusteringBar.setStyle("-fx-border-color: lightgrey; -fx-border-width: 1 0 0 0;");
+        Label tmpPresetLabel = new Label(Message.get("MainTabPane.clusteringBar.presetLabel.text"));
+        DescriptorPresetComboBox tmpPresetComboBox = new DescriptorPresetComboBox(this.clusteringService);
+        Button tmpSettingsButton = new Button();
+        String tmpIconURL = this.getClass().getClassLoader().getResource(
+                this.configuration.getProperty("mortar.imagesFolder")
+                        + this.configuration.getProperty("mortar.icon.gear.name")).toExternalForm();
+        tmpSettingsButton.setGraphic(new ImageView(new Image(tmpIconURL)));
+        tmpSettingsButton.setTooltip(GuiUtil.createTooltip(Message.get("MainTabPane.clusteringBar.settingsButton.tooltip")));
+        tmpSettingsButton.setOnAction(anEvent -> this.openClusteringSettingsView(aFragmentationName));
+        //the buttons get the width of their text instead of the standard width, so that the text is not cut
+        Button tmpStartButton = new Button(Message.get("MainTabPane.clusteringBar.startButton.text"));
+        tmpStartButton.setMinWidth(Region.USE_PREF_SIZE);
+        tmpStartButton.setPrefHeight(GuiDefinitions.GUI_BUTTON_HEIGHT_VALUE);
+        tmpStartButton.setTooltip(GuiUtil.createTooltip(Message.get("MainTabPane.clusteringBar.startButton.tooltip")));
+        tmpStartButton.disableProperty().bind(this.isClusteringRunningProperty);
+        tmpStartButton.setOnAction(anEvent -> this.startClustering(aFragmentationName));
+        //id to find the start button, e.g. to place further buttons next to it
+        tmpStartButton.setId(MainViewController.START_CLUSTERING_BUTTON_ID);
+        Button tmpCancelButton = new Button(Message.get("MainTabPane.clusteringBar.cancelButton.text"));
+        tmpCancelButton.setMinWidth(Region.USE_PREF_SIZE);
+        tmpCancelButton.setPrefHeight(GuiDefinitions.GUI_BUTTON_HEIGHT_VALUE);
+        tmpCancelButton.visibleProperty().bind(this.isClusteringRunningProperty);
+        tmpCancelButton.managedProperty().bind(this.isClusteringRunningProperty);
+        tmpCancelButton.setOnAction(anEvent -> this.interruptClustering());
+        tmpClusteringBar.getChildren().addAll(tmpPresetLabel, tmpPresetComboBox, tmpSettingsButton, tmpStartButton, tmpCancelButton);
+        return tmpClusteringBar;
+    }
+    //
+    /**
+     * Adds a tab that shows the given clustering result and connects its buttons to the overview view and the export.
+     *
+     * @param aRunResult result of the clustering run
+     */
+    private void addClusteringResultTab(ClusteringRunResult aRunResult) {
+        this.clusteringRunCounter++;
+        ClusteringResultView tmpView = new ClusteringResultView(aRunResult);
+        Tab tmpTab = new Tab(Message.get("ClusteringResultView.tabTitle") + " " + this.clusteringRunCounter
+                + " - " + aRunResult.parameters().fragmentationName());
+        tmpTab.setId(TabNames.CLUSTERING.toString());
+        tmpTab.setClosable(true);
+        tmpTab.setContent(tmpView);
+        //opens the selected cluster in the overview view, the representative first
+        Runnable tmpOpenOverview = () -> {
+            ClusteringRunResult.ClusterSummary tmpCluster = tmpView.getClusterTableView().getSelectionModel().getSelectedItem();
+            if (tmpCluster == null) {
+                return;
+            }
+            this.openClusterOverview(aRunResult, tmpCluster, this.primaryStage);
+        };
+        tmpView.getClusterMoleculeSelectionMenuItem().setOnAction(event -> {
+            ClusteringRunResult.ClusterSummary tmpCluster = tmpView.getClusterTableView().getSelectionModel().getSelectedItem();
+            if (tmpCluster != null && tmpCluster.clusterIndex() >= 0) {
+                this.selectMoleculesFromCluster(aRunResult, tmpCluster.clusterIndex());
+            }
+        });
+        tmpView.getOverviewButton().setOnAction(event -> tmpOpenOverview.run());
+        tmpView.getClusterTableView().setOnMouseClicked(event -> {
+            if (event.getClickCount() == 2) {
+                tmpOpenOverview.run();
+            }
+        });
+        tmpView.getExportButton().setOnAction(event -> this.exportClusteringData(aRunResult));
+        tmpView.getTrainTestSplitButton().setOnAction(event -> this.createTrainTestSplit(aRunResult));
+        tmpView.getVigilanceScanButton().setOnAction(event -> this.startVigilanceScan(aRunResult, tmpView));
+        tmpView.getShowVigilanceScanButton().setOnAction(event -> {
+            Stage tmpScanStage = this.vigilanceScanStageMap.get(aRunResult);
+            if (tmpScanStage != null) {
+                tmpScanStage.show();
+                tmpScanStage.toFront();
+            }
+        });
+        //the scan window of this result is only discarded when the result tab is closed
+        tmpTab.setOnClosed(event -> {
+            Stage tmpScanStage = this.vigilanceScanStageMap.remove(aRunResult);
+            if (tmpScanStage != null) {
+                tmpScanStage.close();
+            }
+        });
+        tmpView.getDiverseSubsetButton().setOnAction(event -> this.createDiverseSubset(aRunResult));
+        //similarity search for a name or SMILES and for the representative of the selected cluster
+        tmpView.getSimilaritySearchButton().setOnAction(event ->
+                this.searchSimilarMolecules(tmpView.getSimilaritySearchTextField().getText(), aRunResult));
+        tmpView.getSimilaritySearchMenuItem().setOnAction(event -> {
+            ClusteringRunResult.ClusterSummary tmpCluster = tmpView.getClusterTableView().getSelectionModel().getSelectedItem();
+            if (tmpCluster != null && tmpCluster.representative() != null) {
+                this.searchSimilarMolecules(tmpCluster.representative(), aRunResult);
+            } else if (tmpCluster != null && !tmpCluster.members().isEmpty()) {
+                this.searchSimilarMolecules(tmpCluster.members().getFirst(), aRunResult);
+            }
+        });
+        //the overview views offer the similarity search in their context menu from now on
+        this.lastClusteringRunResult = aRunResult;
+        this.viewToolsManager.setOverviewSimilaritySearchAction(aMolecule -> this.searchSimilarMolecules(aMolecule, this.getActiveClusteringRunResult()));
+        //clustering bar to cluster again with this fragmentation and changed settings
+        HBox tmpClusteringBar = this.createClusteringBar(aRunResult.parameters().fragmentationName());
+        tmpView.setClusteringBar(tmpClusteringBar, tmpClusteringBar.lookup("#" + MainViewController.START_CLUSTERING_BUTTON_ID));
+        //the vigilance scan, like the start button, is disabled while a clustering or scan is running
+        tmpView.getVigilanceScanButton().disableProperty().bind(this.isClusteringRunningProperty);
+        tmpView.getRepresentativesOverviewButton().setOnAction(event -> this.openClusterRepresentativesOverview(aRunResult, tmpTab.getText()));
+        this.mainTabPane.getTabs().add(tmpTab);
+        this.mainTabPane.getSelectionModel().select(tmpTab);
+        //the overview of the cluster representatives opens directly, after the success handler has finished
+        Platform.runLater(() -> this.openClusterRepresentativesOverview(aRunResult, tmpTab.getText()));
+        if (aRunResult.clusteringResult().isOverflow()) {
+            MainViewController.LOGGER.warning("Clustering finished with cluster overflow.");
+        }
+    }
+    //
+    /**
+     * Opens an overview view with the representative of every cluster, ranked from the largest to the smallest cluster,
+     * with the cluster size and its share of the clustered molecules below each structure, like the fragment frequencies
+     * in the fragments overview. A double click on a representative opens all molecules of its cluster in another
+     * overview view. The molecules that could not be clustered are not shown.
+     *
+     * @param aRunResult result of the clustering run
+     * @param aTitle title of the clustering result, used in the window title
+     */
+    private void openClusterRepresentativesOverview(ClusteringRunResult aRunResult, String aTitle) {
+        List<ClusteringRunResult.ClusterSummary> tmpClusters = aRunResult.getClusterSummariesRankedBySize().stream()
+                .filter(aCluster -> aCluster.clusterIndex() >= 0).toList();
+        if (tmpClusters.isEmpty()) {
+            return;
+        }
+        List<MoleculeDataModel> tmpRepresentatives = new ArrayList<>(tmpClusters.size());
+        List<String> tmpLabels = new ArrayList<>(tmpClusters.size());
+        List<Double> tmpFractions = new ArrayList<>(tmpClusters.size());
+        DecimalFormat tmpPercentageFormat = new DecimalFormat("#.#", new DecimalFormatSymbols(Locale.getDefault()));
+        int tmpNumberOfMolecules = aRunResult.molecules().size();
+        for (ClusteringRunResult.ClusterSummary tmpCluster : tmpClusters) {
+            tmpRepresentatives.add(tmpCluster.representative());
+            double tmpFraction = (double) tmpCluster.getSize() / tmpNumberOfMolecules;
+            tmpLabels.add(tmpCluster.getSize() + " (" + tmpPercentageFormat.format(100.0 * tmpFraction) + "%)");
+            tmpFractions.add(tmpFraction);
+        }
+        if (this.clusterRepresentativesOverviewViewController == null) {
+            this.clusterRepresentativesOverviewViewController = new OverviewViewController(this.configuration, this.settingsContainer);
+        }
+        this.clusterRepresentativesOverviewViewController.setSimilaritySearchAction(aMolecule -> this.searchSimilarMolecules(aMolecule, aRunResult));
+        this.clusterRepresentativesOverviewViewController.initializeAndShowOverviewView(this.primaryStage,
+                OverviewViewController.DataSources.CLUSTER_REPRESENTATIVES, aTitle, tmpRepresentatives, tmpLabels,
+                tmpFractions,
+                //opened after the mouse event has been processed and owned by the representatives overview, so that the
+                // remaining mouse events do not reach a blocked window when the cluster overview is closed
+                anIndex -> Platform.runLater(() -> {
+                    Stage tmpOwnerStage = this.clusterRepresentativesOverviewViewController.getOverviewViewStage();
+                    this.openClusterOverview(aRunResult, tmpClusters.get(anIndex),
+                            tmpOwnerStage != null && tmpOwnerStage.isShowing() ? tmpOwnerStage : this.primaryStage);
+                }));
+    }
+    //
+    /**
+     * Returns the clustering result the similarity search refers to: the one of the selected clustering tab, otherwise
+     * the result of the last clustering run.
+     *
+     * @return clustering run result or null if there was no clustering yet
+     */
+    private ClusteringRunResult getActiveClusteringRunResult() {
+        Tab tmpSelectedTab = this.mainTabPane.getSelectionModel().getSelectedItem();
+        if (tmpSelectedTab != null && tmpSelectedTab.getContent() instanceof ClusteringResultView tmpView) {
+            return tmpView.getRunResult();
+        }
+        return this.lastClusteringRunResult;
+    }
+    //
+    /**
+     * Searches the molecules most similar to the molecule given by the text: a clustered or imported molecule with this
+     * name or unique SMILES, otherwise the text is parsed as SMILES.
+     *
+     * @param aText name or SMILES of the query
+     * @param aRunResult clustering run whose feature space is searched
+     */
+    private void searchSimilarMolecules(String aText, ClusteringRunResult aRunResult) {
+        String tmpText = aText == null ? "" : aText.trim();
+        if (tmpText.isEmpty()) {
+            return;
+        }
+        MoleculeDataModel tmpQuery = null;
+        //clustered molecules first, then all imported molecules
+        for (List<MoleculeDataModel> tmpList : List.of(aRunResult.molecules(), this.moleculeDataModelList)) {
+            for (MoleculeDataModel tmpMolecule : tmpList) {
+                if (tmpText.equalsIgnoreCase(tmpMolecule.getName()) || tmpText.equals(tmpMolecule.getUniqueSmiles())) {
+                    tmpQuery = tmpMolecule;
+                    break;
+                }
+            }
+            if (tmpQuery != null) {
+                break;
+            }
+        }
+        if (tmpQuery == null) {
+            try {
+                IAtomContainer tmpAtomContainer = ChemUtil.parseSmilesToAtomContainer(tmpText);
+                tmpQuery = new MoleculeDataModel(tmpAtomContainer, this.settingsContainer.getRegardStereochemistrySetting());
+                tmpQuery.setName(tmpText);
+            } catch (Exception anException) {
+                MainViewController.LOGGER.log(Level.INFO, "Similarity search query is neither a molecule name nor a valid SMILES: " + tmpText, anException);
+                GuiUtil.guiMessageAlert(Alert.AlertType.INFORMATION, Message.get("ClusteringSimilaritySearch.error.title"),
+                        Message.get("ClusteringSimilaritySearch.invalidQuery.header"),
+                        String.format(Message.get("ClusteringSimilaritySearch.invalidQuery.content"), tmpText));
+                return;
+            }
+        }
+        this.searchSimilarMolecules(tmpQuery, aRunResult);
+    }
+    //
+    /**
+     * Searches the molecules most similar to the given molecule in the feature space of the given clustering run and
+     * shows them in an overview view, the query first and the similarity below every molecule (also as bar). A clustered
+     * molecule keeps its own cluster; another molecule is assigned to the cluster with the most similar cluster vector.
+     * A molecule that was not fragmented by the run's fragmentation is fragmented with the same fragmenter first, which
+     * is only possible for single-algorithm fragmentations.
+     *
+     * @param aQuery query molecule
+     * @param aRunResult clustering run whose feature space is searched; null if there is no clustering result
+     */
+    private void searchSimilarMolecules(MoleculeDataModel aQuery, ClusteringRunResult aRunResult) {
+        if (aRunResult == null) {
+            GuiUtil.guiMessageAlert(Alert.AlertType.INFORMATION, Message.get("ClusteringSimilaritySearch.error.title"),
+                    Message.get("ClusteringSimilaritySearch.noClustering.header"), null);
+            return;
+        }
+        String tmpFragmentationName = aRunResult.parameters().fragmentationName();
+        try {
+            SimilaritySearch tmpSearch = this.similaritySearchMap.computeIfAbsent(aRunResult, SimilaritySearch::new);
+            int tmpNumberOfMolecules = this.clusteringService.getNumberOfSimilarMolecules();
+            int tmpRowIndex = -1;
+            for (int i = 0; i < aRunResult.molecules().size(); i++) {
+                if (aRunResult.molecules().get(i) == aQuery) {
+                    tmpRowIndex = i;
+                    break;
+                }
+            }
+            SimilaritySearch.SearchResult tmpResult;
+            if (tmpRowIndex >= 0) {
+                tmpResult = tmpSearch.searchByRowIndex(tmpRowIndex, tmpNumberOfMolecules);
+            } else {
+                MoleculeDataModel tmpFragmentedQuery = aQuery;
+                if (aQuery.getFragmentFrequencyOfSpecificFragmentation(tmpFragmentationName) == null) {
+                    if (!this.fragmentationService.canFragmentSingleMolecule(tmpFragmentationName)) {
+                        GuiUtil.guiMessageAlert(Alert.AlertType.INFORMATION, Message.get("ClusteringSimilaritySearch.error.title"),
+                                Message.get("ClusteringSimilaritySearch.cannotFragment.header"),
+                                String.format(Message.get("ClusteringSimilaritySearch.cannotFragment.content"), tmpFragmentationName));
+                        return;
+                    }
+                    //a copy, so that the fragments of the query are not added to an imported molecule
+                    tmpFragmentedQuery = new MoleculeDataModel(aQuery.getUniqueSmiles(), aQuery.getName(), new HashMap<>());
+                    this.fragmentationService.fragmentSingleMolecule(tmpFragmentedQuery, tmpFragmentationName);
+                }
+                tmpResult = tmpSearch.searchByRawFeatureVector(
+                        FeatureMatrixBuilder.buildRawFeatureVector(tmpFragmentedQuery, aRunResult), tmpNumberOfMolecules);
+            }
+            this.showSimilaritySearchResult(aQuery, tmpResult, aRunResult);
+        } catch (Exception anException) {
+            MainViewController.LOGGER.log(Level.WARNING, anException.toString(), anException);
+            GuiUtil.guiExceptionAlert(Message.get("ClusteringSimilaritySearch.error.title"),
+                    Message.get("ClusteringSimilaritySearch.error.header"), anException.getMessage(), anException);
+        }
+    }
+    //
+    /**
+     * Shows the result of a similarity search in a new overview view: the query first (highlighted), then the most
+     * similar molecules with their similarity as text and light blue bar. The title names the query and its cluster.
+     *
+     * @param aQuery query molecule
+     * @param aResult result of the search
+     * @param aRunResult clustering run that was searched
+     */
+    private void showSimilaritySearchResult(MoleculeDataModel aQuery, SimilaritySearch.SearchResult aResult, ClusteringRunResult aRunResult) {
+        List<MoleculeDataModel> tmpMolecules = new ArrayList<>(aResult.neighbors().size() + 1);
+        List<String> tmpLabels = new ArrayList<>(aResult.neighbors().size() + 1);
+        List<Double> tmpFractions = new ArrayList<>(aResult.neighbors().size() + 1);
+        //the query is highlighted as first structure, its label is not shown
+        tmpMolecules.add(aQuery);
+        tmpLabels.add("");
+        tmpFractions.add(1.0);
+        DecimalFormat tmpSimilarityFormat = new DecimalFormat("0.00", new DecimalFormatSymbols(Locale.getDefault()));
+        for (SimilaritySearch.Neighbor tmpNeighbor : aResult.neighbors()) {
+            tmpMolecules.add(aRunResult.molecules().get(tmpNeighbor.rowIndex()));
+            tmpLabels.add(tmpSimilarityFormat.format(tmpNeighbor.similarity()));
+            tmpFractions.add(Math.max(0.0, Math.min(1.0, tmpNeighbor.similarity())));
+        }
+        String tmpTitle;
+        if (aResult.clusterIndex() < 0) {
+            tmpTitle = String.format(Message.get("ClusteringSimilaritySearch.title.noCluster"), aQuery.getName());
+        } else if (aResult.isWithinVigilance()) {
+            tmpTitle = String.format(Message.get("ClusteringSimilaritySearch.title.cluster"), aQuery.getName(), aResult.clusterIndex());
+        } else {
+            tmpTitle = String.format(Message.get("ClusteringSimilaritySearch.title.newCluster"), aQuery.getName(), aResult.clusterIndex());
+        }
+        //a new controller per result, so that a search started from a result view opens another view on top of it
+        OverviewViewController tmpController = new OverviewViewController(this.configuration, this.settingsContainer);
+        tmpController.setSimilaritySearchAction(aMolecule -> this.searchSimilarMolecules(aMolecule, aRunResult));
+        Stage tmpOwner = this.getFocusedStage();
+        tmpController.initializeAndShowOverviewView(tmpOwner, OverviewViewController.DataSources.SIMILARITY_SEARCH, tmpTitle,
+                tmpMolecules, tmpLabels, tmpFractions, null);
+    }
+    //
+    /**
+     * Asks for the vigilance range and starts a vigilance scan with the features and parameters of the given clustering
+     * run in the background; the result is shown in a new window.
+     *
+     * @param aRunResult clustering run whose features and parameters are used
+     * @param aResultView result view of the run, whose button to show the scan again is made visible
+     */
+    private void startVigilanceScan(ClusteringRunResult aRunResult, ClusteringResultView aResultView) {
+        if (this.isClusteringRunningProperty.get()) {
+            return;
+        }
+        Dialog<ButtonType> tmpDialog = new Dialog<>();
+        tmpDialog.initOwner(this.primaryStage);
+        tmpDialog.setTitle(Message.get("VigilanceScan.dialog.title"));
+        tmpDialog.setHeaderText(Message.get("VigilanceScan.dialog.header"));
+        TextField tmpStartField = new TextField("0.1");
+        TextField tmpEndField = new TextField("0.9");
+        TextField tmpStepField = new TextField("0.1");
+        GridPane tmpGrid = new GridPane();
+        tmpGrid.setHgap(GuiDefinitions.GUI_SPACING_VALUE);
+        tmpGrid.setVgap(GuiDefinitions.GUI_SPACING_VALUE);
+        tmpGrid.addRow(0, new Label(Message.get("VigilanceScan.start.label")), tmpStartField);
+        tmpGrid.addRow(1, new Label(Message.get("VigilanceScan.end.label")), tmpEndField);
+        tmpGrid.addRow(2, new Label(Message.get("VigilanceScan.step.label")), tmpStepField);
+        tmpDialog.getDialogPane().setContent(tmpGrid);
+        tmpDialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+        if (tmpDialog.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) {
+            return;
+        }
+        float[] tmpVigilanceValues;
+        try {
+            tmpVigilanceValues = VigilanceScan.getVigilanceValues(
+                    Double.parseDouble(tmpStartField.getText().trim().replace(',', '.')),
+                    Double.parseDouble(tmpEndField.getText().trim().replace(',', '.')),
+                    Double.parseDouble(tmpStepField.getText().trim().replace(',', '.')));
+        } catch (IllegalArgumentException anException) {
+            GuiUtil.guiMessageAlert(Alert.AlertType.WARNING, Message.get("VigilanceScan.dialog.title"),
+                    Message.get("VigilanceScan.invalidInput.header"), anException.getMessage());
+            return;
+        }
+        Task<List<VigilanceScan.ScanEntry>> tmpScanTask = new Task<>() {
+            @Override
+            protected List<VigilanceScan.ScanEntry> call() throws Exception {
+                return VigilanceScan.scan(aRunResult, tmpVigilanceValues, this::isCancelled,
+                        (aDone, aTotal) -> this.updateProgress(aDone, aTotal));
+            }
+        };
+        //the scan uses the clustering controls (start disabled, cancel visible) like a clustering
+        Thread tmpScanThread = new Thread(tmpScanTask);
+        tmpScanThread.setName(ThreadType.CLUSTERING_THREAD.getThreadName());
+        tmpScanThread.setUncaughtExceptionHandler(LogUtil.getUncaughtExceptionHandler());
+        tmpScanThread.setDaemon(true);
+        tmpScanTask.setOnSucceeded(event -> {
+            this.updateStatusBar(tmpScanThread, Message.get("Status.finished"));
+            this.setClusteringRunningState(false);
+            this.showVigilanceScanResult(aRunResult, tmpScanTask.getValue());
+            aResultView.getShowVigilanceScanButton().setVisible(true);
+        });
+        tmpScanTask.setOnCancelled(event -> {
+            this.updateStatusBar(tmpScanThread, Message.get("Status.canceled"));
+            this.setClusteringRunningState(false);
+        });
+        tmpScanTask.setOnFailed(event -> {
+            this.updateStatusBar(tmpScanThread, Message.get("Status.failed"));
+            this.setClusteringRunningState(false);
+            Throwable tmpCause = event.getSource().getException();
+            MainViewController.LOGGER.log(Level.SEVERE, tmpCause.toString(), tmpCause);
+            GuiUtil.guiExceptionAlert(Message.get("VigilanceScan.dialog.title"), Message.get("MainViewController.ClusteringError.Header"),
+                    tmpCause.getMessage(), tmpCause instanceof Exception tmpException ? tmpException : new Exception(tmpCause));
+        });
+        this.vigilanceScanTask = tmpScanTask;
+        this.setClusteringRunningState(true);
+        this.updateStatusBar(tmpScanThread, Message.get("Status.clustering"));
+        tmpScanThread.start();
+    }
+    //
+    /**
+     * Shows the result of a vigilance scan in a new window with chart, table and buttons to open the clustering of the
+     * selected vigilance as result tab, to take over its vigilance into the settings and to export the scan. The window
+     * is kept for the clustering result: closing only hides it, and it can be shown again via the result tab.
+     *
+     * @param aRunResult clustering run the scan is based on
+     * @param anEntryList entries of the scan
+     */
+    private void showVigilanceScanResult(ClusteringRunResult aRunResult, List<VigilanceScan.ScanEntry> anEntryList) {
+        VigilanceScanView tmpView = new VigilanceScanView(anEntryList);
+        //closing the window only hides it; it can be shown again until the result tab is closed or a new scan replaces it
+        Stage tmpOldStage = this.vigilanceScanStageMap.get(aRunResult);
+        if (tmpOldStage != null) {
+            tmpOldStage.close();
+        }
+        Stage tmpStage = new Stage();
+        this.vigilanceScanStageMap.put(aRunResult, tmpStage);
+        tmpStage.initOwner(this.primaryStage);
+        tmpStage.setTitle(String.format(Message.get("VigilanceScan.window.title"), aRunResult.parameters().fragmentationName()));
+        tmpStage.setScene(new Scene(tmpView, GuiDefinitions.GUI_MAIN_VIEW_WIDTH_VALUE, GuiDefinitions.GUI_MAIN_VIEW_HEIGHT_VALUE));
+        tmpView.getOpenResultButton().setOnAction(event -> {
+            VigilanceScan.ScanEntry tmpEntry = tmpView.getScanTableView().getSelectionModel().getSelectedItem();
+            if (tmpEntry != null) {
+                this.addClusteringResultTab(tmpEntry.runResult());
+            }
+        });
+        tmpView.getUseVigilanceButton().setOnAction(event -> {
+            VigilanceScan.ScanEntry tmpEntry = tmpView.getScanTableView().getSelectionModel().getSelectedItem();
+            if (tmpEntry != null) {
+                //the float is converted via its decimal representation, e.g. 0.3 instead of 0.30000001192092896
+                this.clusteringService.setVigilance(ClusteringService.toDecimalDouble(tmpEntry.vigilance()));
+                GuiUtil.guiMessageAlert(Alert.AlertType.INFORMATION, Message.get("VigilanceScan.dialog.title"),
+                        String.format(Message.get("VigilanceScan.vigilanceSet.header"), tmpEntry.vigilance()), null);
+            }
+        });
+        tmpView.getExportButton().setOnAction(event -> {
+            Exporter tmpExporter = new Exporter(this.settingsContainer);
+            File tmpDirectory = tmpExporter.openFileChooserForExportFileOrDir(tmpStage, Exporter.ExportTypes.VIGILANCE_SCAN_CSV_FILE,
+                    aRunResult.parameters().fragmentationName());
+            if (tmpDirectory != null) {
+                this.showExportOutcome(tmpExporter.exportVigilanceScanCsvFile(tmpDirectory, aRunResult, anEntryList,
+                        this.settingsContainer.getCsvExportSeparatorSettingCharacter()));
+            }
+        });
+        tmpStage.show();
+    }
+    //
+    /**
+     * Asks for the number of molecules per cluster, selects the diverse subset of the given clustering result, shows it
+     * in an overview view (cluster and rank below every structure) and optionally exports it as CSV.
+     *
+     * @param aRunResult clustering result
+     */
+    private void createDiverseSubset(ClusteringRunResult aRunResult) {
+        Dialog<ButtonType> tmpDialog = new Dialog<>();
+        tmpDialog.initOwner(this.primaryStage);
+        tmpDialog.setTitle(Message.get("DiverseSubset.dialog.title"));
+        tmpDialog.setHeaderText(Message.get("DiverseSubset.dialog.header"));
+        Spinner<Integer> tmpNumberSpinner = new Spinner<>(1, Integer.MAX_VALUE, 1);
+        tmpNumberSpinner.setEditable(true);
+        ComboBox<DiverseSubsetSelector.SelectionMode> tmpModeComboBox = MainViewController.createSelectionModeComboBox();
+        CheckBox tmpUnclusteredCheckBox = new CheckBox(Message.get("DiverseSubset.unclustered.label"));
+        CheckBox tmpExportCheckBox = new CheckBox(Message.get("DiverseSubset.export.label"));
+        GridPane tmpGrid = new GridPane();
+        tmpGrid.setHgap(GuiDefinitions.GUI_SPACING_VALUE);
+        tmpGrid.setVgap(GuiDefinitions.GUI_SPACING_VALUE);
+        tmpGrid.addRow(0, new Label(Message.get("DiverseSubset.number.label")), tmpNumberSpinner);
+        tmpGrid.addRow(1, new Label(Message.get("DiverseSubset.selectionMode.label")), tmpModeComboBox);
+        tmpGrid.add(tmpUnclusteredCheckBox, 0, 2, 2, 1);
+        tmpGrid.add(tmpExportCheckBox, 0, 3, 2, 1);
+        tmpDialog.getDialogPane().setContent(tmpGrid);
+        tmpDialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+        if (tmpDialog.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) {
+            return;
+        }
+        List<DiverseSubsetSelector.SelectedMolecule> tmpSelection = DiverseSubsetSelector.select(aRunResult,
+                tmpNumberSpinner.getValue(), tmpUnclusteredCheckBox.isSelected(), tmpModeComboBox.getValue());
+        if (tmpExportCheckBox.isSelected()) {
+            Exporter tmpExporter = new Exporter(this.settingsContainer);
+            File tmpDirectory = tmpExporter.openFileChooserForExportFileOrDir(this.primaryStage,
+                    Exporter.ExportTypes.DIVERSE_SUBSET_CSV_FILE, aRunResult.parameters().fragmentationName());
+            if (tmpDirectory != null) {
+                this.showExportOutcome(tmpExporter.exportDiverseSubsetCsvFile(tmpDirectory, aRunResult, tmpSelection,
+                        this.settingsContainer.getCsvExportSeparatorSettingCharacter()));
+            }
+        }
+        if (tmpSelection.isEmpty()) {
+            return;
+        }
+        List<MoleculeDataModel> tmpMolecules = new ArrayList<>(tmpSelection.size());
+        List<String> tmpLabels = new ArrayList<>(tmpSelection.size());
+        for (DiverseSubsetSelector.SelectedMolecule tmpSelected : tmpSelection) {
+            tmpMolecules.add(aRunResult.molecules().get(tmpSelected.rowIndex()));
+            tmpLabels.add(tmpSelected.clusterIndex() < 0
+                    ? Message.get("ClusteringResultView.notClusterable.text")
+                    : String.format(Message.get("DiverseSubset.structureLabel.text"), tmpSelected.clusterIndex(), tmpSelected.rankInCluster()));
+        }
+        OverviewViewController tmpController = new OverviewViewController(this.configuration, this.settingsContainer);
+        tmpController.setSimilaritySearchAction(aMolecule -> this.searchSimilarMolecules(aMolecule, aRunResult));
+        tmpController.initializeAndShowOverviewView(this.primaryStage, OverviewViewController.DataSources.DIVERSE_SUBSET,
+                String.format(Message.get("DiverseSubset.overview.title"), tmpSelection.size()), tmpMolecules, tmpLabels, null, null);
+    }
+    //
+    /**
+     * Opens the molecules of the given cluster in a new overview view, the representative first. Its context menu offers
+     * the similarity search and the selection of typical or diverse molecules from the cluster.
+     *
+     * @param aRunResult clustering result
+     * @param aCluster cluster to show
+     * @param anOwnerStage owner of the overview window
+     */
+    private void openClusterOverview(ClusteringRunResult aRunResult, ClusteringRunResult.ClusterSummary aCluster, Stage anOwnerStage) {
+        String tmpClusterName = aCluster.clusterIndex() < 0
+                ? Message.get("ClusteringResultView.notClusterable.text")
+                : Message.get("OverviewView.titleOfDataSource.cluster") + " " + aCluster.clusterIndex();
+        //a new controller per cluster, so that its context menu entries refer to this clustering result
+        OverviewViewController tmpController = new OverviewViewController(this.configuration, this.settingsContainer);
+        tmpController.setSimilaritySearchAction(aMolecule -> this.searchSimilarMolecules(aMolecule, aRunResult));
+        if (aCluster.clusterIndex() >= 0) {
+            tmpController.setClusterMoleculeSelectionAction(aMolecule -> this.selectMoleculesFromCluster(aRunResult, aCluster.clusterIndex()));
+        }
+        tmpController.initializeAndShowOverviewView(anOwnerStage, OverviewViewController.DataSources.CLUSTER, tmpClusterName, aCluster.members());
+    }
+    //
+    /**
+     * Asks for the number of molecules and the selection mode and shows the selected molecules of the given cluster in a
+     * new overview view, with their selection rank below every structure.
+     *
+     * @param aRunResult clustering result
+     * @param aClusterIndex index of the cluster
+     */
+    private void selectMoleculesFromCluster(ClusteringRunResult aRunResult, int aClusterIndex) {
+        //the window the action came from (e.g. the cluster overview) owns the dialog and the result window; the main
+        // window is blocked by the modal overview, and focusing it on closing would cause a system beep
+        Stage tmpOwner = this.getFocusedStage();
+        Dialog<ButtonType> tmpDialog = new Dialog<>();
+        tmpDialog.initOwner(tmpOwner);
+        tmpDialog.setTitle(Message.get("ClusterMoleculeSelection.dialog.title"));
+        tmpDialog.setHeaderText(String.format(Message.get("ClusterMoleculeSelection.dialog.header"), aClusterIndex));
+        Spinner<Integer> tmpNumberSpinner = new Spinner<>(1, Integer.MAX_VALUE, MainViewController.CLUSTER_MOLECULE_SELECTION_NUMBER_DEFAULT);
+        tmpNumberSpinner.setEditable(true);
+        ComboBox<DiverseSubsetSelector.SelectionMode> tmpModeComboBox = MainViewController.createSelectionModeComboBox();
+        GridPane tmpGrid = new GridPane();
+        tmpGrid.setHgap(GuiDefinitions.GUI_SPACING_VALUE);
+        tmpGrid.setVgap(GuiDefinitions.GUI_SPACING_VALUE);
+        tmpGrid.addRow(0, new Label(Message.get("ClusterMoleculeSelection.number.label")), tmpNumberSpinner);
+        tmpGrid.addRow(1, new Label(Message.get("DiverseSubset.selectionMode.label")), tmpModeComboBox);
+        tmpDialog.getDialogPane().setContent(tmpGrid);
+        tmpDialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+        if (tmpDialog.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) {
+            return;
+        }
+        List<DiverseSubsetSelector.SelectedMolecule> tmpSelection = DiverseSubsetSelector.selectFromCluster(aRunResult,
+                aClusterIndex, tmpNumberSpinner.getValue(), tmpModeComboBox.getValue());
+        List<MoleculeDataModel> tmpMolecules = new ArrayList<>(tmpSelection.size());
+        List<String> tmpLabels = new ArrayList<>(tmpSelection.size());
+        for (DiverseSubsetSelector.SelectedMolecule tmpSelected : tmpSelection) {
+            tmpMolecules.add(aRunResult.molecules().get(tmpSelected.rowIndex()));
+            tmpLabels.add("#" + tmpSelected.rankInCluster());
+        }
+        OverviewViewController tmpController = new OverviewViewController(this.configuration, this.settingsContainer);
+        tmpController.setSimilaritySearchAction(aMolecule -> this.searchSimilarMolecules(aMolecule, aRunResult));
+        tmpController.initializeAndShowOverviewView(tmpOwner, OverviewViewController.DataSources.DIVERSE_SUBSET,
+                String.format(Message.get("ClusterMoleculeSelection.overview.title"), aClusterIndex, tmpSelection.size(),
+                        Message.get("DiverseSubset.selectionMode." + tmpModeComboBox.getValue().name())),
+                tmpMolecules, tmpLabels, null, null);
+    }
+    //
+    /**
+     * Returns the focused window of the application, e.g. an overview view from whose context menu an action was
+     * started, to use it as owner of dialogs and further windows; the main window if no other window is focused.
+     *
+     * @return focused stage or the main stage
+     */
+    private Stage getFocusedStage() {
+        for (Window tmpWindow : Window.getWindows()) {
+            if (tmpWindow instanceof Stage tmpStage && tmpStage.isShowing() && tmpStage.isFocused()) {
+                return tmpStage;
+            }
+        }
+        return this.primaryStage;
+    }
+    //
+    /**
+     * Creates the combo box for the selection mode within a cluster (typical or diverse), preset to the default.
+     *
+     * @return combo box
+     */
+    private static ComboBox<DiverseSubsetSelector.SelectionMode> createSelectionModeComboBox() {
+        ComboBox<DiverseSubsetSelector.SelectionMode> tmpComboBox = new ComboBox<>(
+                FXCollections.observableArrayList(DiverseSubsetSelector.SelectionMode.values()));
+        tmpComboBox.setValue(DiverseSubsetSelector.SELECTION_MODE_DEFAULT);
+        tmpComboBox.setConverter(new StringConverter<>() {
+            @Override
+            public String toString(DiverseSubsetSelector.SelectionMode aMode) {
+                return aMode == null ? "" : Message.get("DiverseSubset.selectionMode." + aMode.name());
+            }
+            @Override
+            public DiverseSubsetSelector.SelectionMode fromString(String aString) {
+                return null;
+            }
+        });
+        return tmpComboBox;
+    }
+    //
+    /**
+     * Shows a warning if an export returned failed files or an invalid directory; otherwise nothing.
+     *
+     * @param aFailedFileList result of an export method of the exporter
+     */
+    private void showExportOutcome(List<String> aFailedFileList) {
+        if (aFailedFileList == null || !aFailedFileList.isEmpty()) {
+            GuiUtil.guiMessageAlert(Alert.AlertType.WARNING, Message.get("Exporter.FragmentsTab.ExportNotPossible.title"),
+                    Message.get("Exporter.FragmentsTab.ExportNotPossible.header"),
+                    aFailedFileList == null ? null : String.join("\n", aFailedFileList));
+        }
+    }
+    //
+    /**
+     * Asks for the training/test ratio and the selection mode, creates the cluster-based training/test partitioning of
+     * the given clustering result and exports it as CSV files into a directory chosen by the user.
+     *
+     * @param aRunResult clustering result the partitioning is based on
+     */
+    private void createTrainTestSplit(ClusteringRunResult aRunResult) {
+        Dialog<ButtonType> tmpDialog = new Dialog<>();
+        tmpDialog.initOwner(this.primaryStage);
+        tmpDialog.setTitle(Message.get("TrainTestSplit.dialog.title"));
+        tmpDialog.setHeaderText(Message.get("TrainTestSplit.dialog.header"));
+        TextField tmpRatioTextField = new TextField(MainViewController.TRAIN_TEST_RATIO_DEFAULT);
+        tmpRatioTextField.setPromptText(MainViewController.TRAIN_TEST_RATIO_DEFAULT);
+        ComboBox<TrainTestSplitter.SelectionMode> tmpModeComboBox = new ComboBox<>(
+                FXCollections.observableArrayList(TrainTestSplitter.SelectionMode.values()));
+        tmpModeComboBox.setValue(TrainTestSplitter.SelectionMode.CLOSEST_TO_CLUSTER_CENTER);
+        tmpModeComboBox.setConverter(new StringConverter<>() {
+            @Override
+            public String toString(TrainTestSplitter.SelectionMode aMode) {
+                return aMode == null ? "" : Message.get("TrainTestSplit.selectionMode." + aMode.name());
+            }
+            @Override
+            public TrainTestSplitter.SelectionMode fromString(String aString) {
+                return null;
+            }
+        });
+        GridPane tmpGrid = new GridPane();
+        tmpGrid.setHgap(GuiDefinitions.GUI_SPACING_VALUE);
+        tmpGrid.setVgap(GuiDefinitions.GUI_SPACING_VALUE);
+        tmpGrid.addRow(0, new Label(Message.get("TrainTestSplit.ratio.label")), tmpRatioTextField);
+        tmpGrid.addRow(1, new Label(Message.get("TrainTestSplit.selectionMode.label")), tmpModeComboBox);
+        Label tmpRulesLabel = new Label(Message.get("TrainTestSplit.rules.text"));
+        tmpRulesLabel.setWrapText(true);
+        tmpRulesLabel.setMaxWidth(450);
+        tmpGrid.add(tmpRulesLabel, 0, 2, 2, 1);
+        tmpDialog.getDialogPane().setContent(tmpGrid);
+        tmpDialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+        if (tmpDialog.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) {
+            return;
+        }
+        TrainTestSplitter.TrainTestSplit tmpSplit;
+        try {
+            tmpSplit = TrainTestSplitter.split(aRunResult, TrainTestSplitter.parseTrainingFraction(tmpRatioTextField.getText()),
+                    tmpModeComboBox.getValue(), aRunResult.parameters().randomSeed());
+        } catch (IllegalArgumentException anException) {
+            GuiUtil.guiMessageAlert(Alert.AlertType.WARNING, Message.get("TrainTestSplit.dialog.title"),
+                    Message.get("TrainTestSplit.invalidRatio.header"), anException.getMessage());
+            return;
+        }
+        Exporter tmpExporter = new Exporter(this.settingsContainer);
+        File tmpDirectory = tmpExporter.openFileChooserForExportFileOrDir(this.primaryStage,
+                Exporter.ExportTypes.TRAIN_TEST_SPLIT_CSV_FILES, aRunResult.parameters().fragmentationName());
+        if (tmpDirectory == null) {
+            return;
+        }
+        List<String> tmpFailedFiles = tmpExporter.exportTrainTestSplitCsvFiles(tmpDirectory, aRunResult, tmpSplit,
+                this.settingsContainer.getCsvExportSeparatorSettingCharacter());
+        if (tmpFailedFiles == null || !tmpFailedFiles.isEmpty()) {
+            GuiUtil.guiMessageAlert(Alert.AlertType.WARNING, Message.get("Exporter.FragmentsTab.ExportNotPossible.title"),
+                    Message.get("Exporter.FragmentsTab.ExportNotPossible.header"),
+                    tmpFailedFiles == null ? null : String.join("\n", tmpFailedFiles));
+            return;
+        }
+        DecimalFormat tmpPercentFormat = new DecimalFormat("0.0", new DecimalFormatSymbols(Locale.getDefault()));
+        GuiUtil.guiMessageAlert(Alert.AlertType.INFORMATION, Message.get("TrainTestSplit.dialog.title"),
+                Message.get("TrainTestSplit.finished.header"),
+                String.format(Message.get("TrainTestSplit.finished.content"), tmpSplit.trainingIndices().length,
+                        tmpSplit.testIndices().length, tmpPercentFormat.format(100 * tmpSplit.getActualTrainingFraction()),
+                        tmpPercentFormat.format(100 * tmpSplit.requestedTrainingFraction()), tmpDirectory.getAbsolutePath()));
+    }
+    //
+    /**
+     * Exports the data of the given clustering run as CSV files into a directory chosen by the user.
+     *
+     * @param aRunResult result of the clustering run
+     */
+    private void exportClusteringData(ClusteringRunResult aRunResult) {
+        Exporter tmpExporter = new Exporter(this.settingsContainer);
+        if (this.isExportRunningProperty.get()) {
+            this.interruptExport();
+        }
+        //returns null if the directory chooser dialog was cancelled
+        File tmpDirectory = tmpExporter.openFileChooserForExportFileOrDir(this.primaryStage,
+                Exporter.ExportTypes.CLUSTERING_CSV_FILES, aRunResult.parameters().fragmentationName());
+        if (tmpDirectory == null) {
+            return;
+        }
+        char tmpSeparator = this.settingsContainer.getCsvExportSeparatorSettingCharacter();
+        this.exportTask = new Task<>() {
+            @Override
+            protected List<String> call() {
+                return tmpExporter.exportClusteringCsvFiles(tmpDirectory, aRunResult, tmpSeparator);
+            }
+        };
+        this.exportTask.setOnSucceeded(event -> {
+            this.isExportRunningProperty.setValue(false);
+            this.updateStatusBar(this.exporterThread, Message.get("Status.finished"));
+            List<String> tmpFailedFiles = this.exportTask.getValue();
+            if (tmpFailedFiles == null || !tmpFailedFiles.isEmpty()) {
+                GuiUtil.guiMessageAlert(Alert.AlertType.WARNING,
+                        Message.get("Exporter.FragmentsTab.ExportNotPossible.title"),
+                        Message.get("Exporter.FragmentsTab.ExportNotPossible.header"),
+                        tmpFailedFiles == null ? null : String.join("\n", tmpFailedFiles));
+            }
+        });
+        this.exportTask.setOnFailed(event -> {
+            this.isExportRunningProperty.setValue(false);
+            MainViewController.LOGGER.log(Level.WARNING, event.getSource().getException().toString(), event.getSource().getException());
+            this.updateStatusBar(this.exporterThread, Message.get("Status.failed"));
+            GuiUtil.guiMessageAlert(Alert.AlertType.WARNING,
+                    Message.get("Exporter.FragmentsTab.ExportNotPossible.title"),
+                    Message.get("Exporter.FragmentsTab.ExportNotPossible.header"),
+                    null);
+        });
+        this.exporterThread = new Thread(this.exportTask);
+        this.exporterThread.setName(ThreadType.EXPORT_THREAD.getThreadName());
+        this.exporterThread.setUncaughtExceptionHandler(LogUtil.getUncaughtExceptionHandler());
+        this.exporterThread.setPriority(Thread.currentThread().getPriority() - 2); //magic number
+        this.isExportRunningProperty.setValue(true);
+        this.updateStatusBar(this.exporterThread, Message.get("Status.exporting"));
+        this.exporterThread.start();
+    }
+    //</editor-fold>
+    //
     /**
      * Adds a tab for fragments and a tab for items (results of fragmentation).
      *
@@ -1265,6 +2269,7 @@ public class MainViewController {
         tmpExportButtonsHBox.setAlignment(Pos.CENTER_LEFT);
         tmpExportButtonsHBox.getChildren().addAll(tmpExportCsvButton, tmpExportPdfButton, tmpCancelExportButton);
         tmpFragmentsTab.addNodeToGridPane(tmpExportButtonsHBox, 0, 1, 1, 1);
+        tmpFragmentsTab.addNodeAsBottomRow(this.createClusteringBar());
         tmpExportPdfButton.setOnAction(event -> this.exportFile(Exporter.ExportTypes.FRAGMENT_PDF_FILE));
         tmpExportCsvButton.setOnAction(event -> this.exportFile(Exporter.ExportTypes.FRAGMENT_CSV_FILE));
         tmpCancelExportButton.setOnAction(event -> this.interruptExport());
@@ -1337,6 +2342,7 @@ public class MainViewController {
         tmpExportButtonsHBox.setAlignment(Pos.CENTER_LEFT);
         tmpExportButtonsHBox.getChildren().addAll(tmpItemizationExportCsvButton, tmpItemizationTabExportPDfButton, tmpCancelExportButton);
         tmpItemizationTab.addNodeToGridPane(tmpExportButtonsHBox, 0, 1, 1, 1);
+        tmpItemizationTab.addNodeAsBottomRow(this.createClusteringBar());
         HBox tmpViewButtonsHBox = new HBox();
         tmpViewButtonsHBox.setPadding(new Insets(GuiDefinitions.GUI_INSETS_VALUE, GuiDefinitions.GUI_INSETS_VALUE, GuiDefinitions.GUI_INSETS_VALUE, GuiDefinitions.GUI_INSETS_VALUE));
         tmpViewButtonsHBox.setSpacing(GuiDefinitions.GUI_SPACING_VALUE);
@@ -1372,6 +2378,15 @@ public class MainViewController {
      * Clears the gui and all collections.
      */
     private void clearGuiAndCollections() {
+        if (this.clusteringTask != null && this.clusteringTask.isRunning()) {
+            this.interruptClustering();
+        }
+        this.mainView.getMainMenuBar().getStartClusteringMenuItem().setDisable(true);
+        //removing all tabs does not fire their closed events, so the kept scan windows and searches are discarded here
+        this.vigilanceScanStageMap.values().forEach(Stage::close);
+        this.vigilanceScanStageMap.clear();
+        this.similaritySearchMap.clear();
+        this.lastClusteringRunResult = null;
         this.moleculeDataModelList.clear();
         this.mapOfFragmentDataModelLists.clear();
         this.moleculesDataTableView = null;
@@ -1385,9 +2400,14 @@ public class MainViewController {
      * @return List {@literal <}MoleculeDataModel{@literal >}
      */
     private List<MoleculeDataModel> getItemsListOfSelectedFragmentationByTabId(TabNames aTabName) {
+        //only table tabs belong to a fragmentation, clustering result tabs are skipped
+        if (!(this.mainTabPane.getSelectionModel().getSelectedItem() instanceof GridTabForTableView tmpSelectedGridTab)) {
+            return new ArrayList<>();
+        }
         GridTabForTableView tmpSelectedTab =  (GridTabForTableView) (this.mainTabPane.getTabs().stream().filter(tab ->
-                ((GridTabForTableView) this.mainTabPane.getSelectionModel().getSelectedItem()).getFragmentationNameOutOfTitle()
-                        .equals(((GridTabForTableView) tab).getFragmentationNameOutOfTitle()) && tab.getId().equals(aTabName.name())
+                tab instanceof GridTabForTableView tmpGridTab
+                        && tmpSelectedGridTab.getFragmentationNameOutOfTitle().equals(tmpGridTab.getFragmentationNameOutOfTitle())
+                        && aTabName.name().equals(tab.getId())
         ).findFirst().orElse(null));
         if (tmpSelectedTab == null) {
             return new ArrayList<>();
@@ -1437,6 +2457,7 @@ public class MainViewController {
             case FRAGMENTATION_THREAD -> Message.get("Status.running");
             case IMPORT_THREAD -> Message.get("Status.importing");
             case EXPORT_THREAD -> Message.get("Status.exporting");
+            case CLUSTERING_THREAD -> Message.get("Status.clustering");
             default -> "Could not find message";
         };
     }
@@ -1451,6 +2472,10 @@ public class MainViewController {
          * enum value for fragmentation thread
          */
         FRAGMENTATION_THREAD("Fragmentation_Thread"),
+        /**
+         * enum value for clustering thread
+         */
+        CLUSTERING_THREAD("Clustering_Thread"),
         /**
          * enum value for import thread
          */

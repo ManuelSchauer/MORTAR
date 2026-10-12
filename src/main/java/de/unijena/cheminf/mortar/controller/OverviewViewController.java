@@ -99,6 +99,8 @@ import java.util.Objects;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
+import java.util.function.IntConsumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -130,7 +132,26 @@ public class OverviewViewController implements IViewToolController {
         /**
          * Enum value for an item of an items tab as data source.
          */
-        ITEM_WITH_FRAGMENTS_SAMPLE;
+        ITEM_WITH_FRAGMENTS_SAMPLE,
+        /**
+         * Enum value for the molecules of a cluster as data source, the representative of the cluster first.
+         */
+        CLUSTER,
+        /**
+         * Enum value for the representatives of all clusters of a clustering result as data source, one structure per
+         * cluster with a label below it (e.g. the cluster size); a double click opens the cluster.
+         */
+        CLUSTER_REPRESENTATIVES,
+        /**
+         * Enum value for the result of a similarity search as data source: the query first (highlighted), then the most
+         * similar molecules with their similarity below them.
+         */
+        SIMILARITY_SEARCH,
+        /**
+         * Enum value for a diverse subset of a clustering result as data source, with cluster and rank below every
+         * structure.
+         */
+        DIVERSE_SUBSET;
     }
     //</editor-fold>
     //
@@ -266,6 +287,31 @@ public class OverviewViewController implements IViewToolController {
      */
     private boolean withFirstStructureHighlight;
     /**
+     * Labels shown below the structures (index corresponds to the molecule data model list), e.g. the cluster sizes of
+     * cluster representatives; null if no labels are given.
+     */
+    private List<String> structureLabelList;
+    /**
+     * Fractions in [0,1] shown as bars behind the structure labels (index corresponds to the molecule data model list),
+     * e.g. the share of a cluster in all clustered molecules; null if no bars are shown.
+     */
+    private List<Double> structureBarFractionList;
+    /**
+     * Action called with the index of a structure when it is double-clicked; null for the default behaviour (return to
+     * the structure in the main view if supported by the data source).
+     */
+    private IntConsumer structureDoubleClickAction;
+    /**
+     * Action of the context menu entry "find similar molecules", called with the molecule of the structure; null if the
+     * entry is not offered (no clustering result available).
+     */
+    private Consumer<MoleculeDataModel> similaritySearchAction;
+    /**
+     * Action of the context menu entry "select molecules from this cluster", called with the molecule of the structure;
+     * null if the entry is not offered (only in overview views of a cluster).
+     */
+    private Consumer<MoleculeDataModel> clusterMoleculeSelectionAction;
+    /**
      * Boolean value whether an event to return to a specific structure in the MainView occurred.
      */
     private boolean returnToStructureEventOccurred;
@@ -337,6 +383,35 @@ public class OverviewViewController implements IViewToolController {
     //
     //<editor-fold desc="public properties" defaultstate="collapsed">
     /**
+     * Returns the stage of the overview view, e.g. to make it the owner of a further view opened from it.
+     *
+     * @return stage of the overview view, null if it was not opened yet
+     */
+    public Stage getOverviewViewStage() {
+        return this.overviewViewStage;
+    }
+    //
+    /**
+     * Sets the action of the context menu entry "find similar molecules"; it is called with the molecule of the
+     * structure the context menu was opened for. Takes effect the next time the view is opened.
+     *
+     * @param anAction action, null to remove the entry
+     */
+    public void setSimilaritySearchAction(Consumer<MoleculeDataModel> anAction) {
+        this.similaritySearchAction = anAction;
+    }
+    //
+    /**
+     * Sets the action of the context menu entry "select molecules from this cluster"; it is called with the molecule of
+     * the structure the context menu was opened for. Takes effect the next time the view is opened.
+     *
+     * @param anAction action, null to remove the entry
+     */
+    public void setClusterMoleculeSelectionAction(Consumer<MoleculeDataModel> anAction) {
+        this.clusterMoleculeSelectionAction = anAction;
+    }
+    //
+    /**
      * Returns the index of the structure in the MoleculeDataModelList that has been the latest target to a left- or
      * right-click on its image view if an event to return to a specific structure in the main view occurred; else -1
      * is returned.
@@ -399,6 +474,50 @@ public class OverviewViewController implements IViewToolController {
     }
     //</editor-fold>
     /**
+     * Initializes and opens the overview view with a label below every structure and a custom double-click action, e.g.
+     * for the representatives of the clusters of a clustering result, where the label is the cluster size and a double
+     * click opens the cluster.
+     *
+     * @param aMainStage Stage that is to be the owner of the overview view's stage
+     * @param aDataSource Source of the data to be shown in the overview view
+     * @param aTabName String containing the name of the data shown in the overview view
+     * @param aMoleculeDataModelList List of MoleculeDataModel instances
+     * @param aStructureLabelList labels shown below the structures, same size as the molecule list
+     * @param aStructureBarFractionList fractions in [0,1] shown as light blue bars behind the labels, same size as the
+     *                                  molecule list; null for labels without bars
+     * @param aStructureDoubleClickAction action called with the index of a double-clicked structure, may be null
+     * @throws NullPointerException if the stage, data source, molecule list or label list is null
+     * @throws IllegalArgumentException if the label or fraction list has a different size than the molecule list
+     */
+    public void initializeAndShowOverviewView(
+            Stage aMainStage,
+            DataSources aDataSource,
+            String aTabName,
+            List<MoleculeDataModel> aMoleculeDataModelList,
+            List<String> aStructureLabelList,
+            List<Double> aStructureBarFractionList,
+            IntConsumer aStructureDoubleClickAction)
+            throws NullPointerException, IllegalArgumentException {
+        Objects.requireNonNull(aStructureLabelList, "aStructureLabelList is null");
+        Objects.requireNonNull(aMoleculeDataModelList, "aMoleculeDataModelList (list of MoleculeDataModel instances) is null");
+        if (aStructureLabelList.size() != aMoleculeDataModelList.size()
+                || (aStructureBarFractionList != null && aStructureBarFractionList.size() != aMoleculeDataModelList.size())) {
+            throw new IllegalArgumentException("The number of structure labels or bar fractions differs from the number of molecules.");
+        }
+        try {
+            this.structureLabelList = aStructureLabelList;
+            this.structureBarFractionList = aStructureBarFractionList;
+            this.structureDoubleClickAction = aStructureDoubleClickAction;
+            this.showOverviewView(aMainStage, aDataSource, aTabName, aMoleculeDataModelList);
+        } finally {
+            //the labels and the action only belong to this opening of the view
+            this.structureLabelList = null;
+            this.structureBarFractionList = null;
+            this.structureDoubleClickAction = null;
+        }
+    }
+    //
+    /**
      * Initializes and opens the overview view.
      *
      * @param aMainStage Stage that is to be the owner of the overview view's stage
@@ -409,6 +528,25 @@ public class OverviewViewController implements IViewToolController {
      *         PARENT_MOLECULES_SAMPLE or ITEM_WITH_FRAGMENTS_SAMPLE
      */
     public void initializeAndShowOverviewView(
+            Stage aMainStage,
+            DataSources aDataSource,
+            String aTabName,
+            List<MoleculeDataModel> aMoleculeDataModelList)
+            throws NullPointerException {
+        this.showOverviewView(aMainStage, aDataSource, aTabName, aMoleculeDataModelList);
+    }
+    //
+    /**
+     * Initializes and opens the overview view, see {@link #initializeAndShowOverviewView(Stage, DataSources, String, List)};
+     * uses the structure labels and double-click action if they were set by the calling method.
+     *
+     * @param aMainStage Stage that is to be the owner of the overview view's stage
+     * @param aDataSource Source of the data to be shown in the overview view
+     * @param aTabName String containing the name of the tab that's content is to be shown in the overview view
+     * @param aMoleculeDataModelList List of MoleculeDataModel instances
+     * @throws NullPointerException if one of the parameters is null
+     */
+    private void showOverviewView(
             Stage aMainStage,
             DataSources aDataSource,
             String aTabName,
@@ -449,6 +587,42 @@ public class OverviewViewController implements IViewToolController {
                         Message.get(((aMoleculeDataModelList.size() - 1 == 1) ? "OverviewView.titleOfView.fragment"
                                 : "OverviewView.titleOfView.fragments"));
                 this.withShowInMainViewOption = false;
+                this.withFirstStructureHighlight = true;
+            }
+            case DataSources.CLUSTER_REPRESENTATIVES -> {
+                this.overviewViewTitle = (aTabName == null ? "" : aTabName + " - ")
+                        + Message.get("OverviewView.titleOfDataSource.clusterRepresentatives")
+                        + " - " + aMoleculeDataModelList.size() + " "
+                        + Message.get(aMoleculeDataModelList.size() == 1 ? "OverviewView.titleOfView.cluster"
+                                : "OverviewView.titleOfView.clusters");
+                this.withShowInMainViewOption = false;
+                this.withFirstStructureHighlight = false;
+            }
+            case DataSources.DIVERSE_SUBSET -> {
+                //the tab name is the title of the subset, e.g. "Diverse Subset (25 molecules)"
+                this.overviewViewTitle = (aTabName == null ? "" : aTabName + " - ") + Message.get("OverviewView.nameOfView");
+                this.withShowInMainViewOption = false;
+                this.withFirstStructureHighlight = false;
+            }
+            case DataSources.SIMILARITY_SEARCH -> {
+                //the tab name is the description of the query, e.g. "Similar to xyz (cluster 3)"
+                this.overviewViewTitle = (aTabName == null ? "" : aTabName + " - ") + Message.get("OverviewView.nameOfView")
+                        + " - " + (aMoleculeDataModelList.size() - 1) + " "
+                        + Message.get(aMoleculeDataModelList.size() - 1 == 1 ? "OverviewView.titleOfView.molecule"
+                                : "OverviewView.titleOfView.molecules");
+                this.withShowInMainViewOption = false;
+                //the query is the first structure
+                this.withFirstStructureHighlight = true;
+            }
+            case DataSources.CLUSTER -> {
+                //the tab name is the name of the cluster, e.g. "Cluster 3"
+                this.overviewViewTitle = (aTabName == null ? Message.get("OverviewView.titleOfDataSource.cluster") : aTabName) +
+                        " - " + Message.get("OverviewView.nameOfView") +
+                        " - " + aMoleculeDataModelList.size() + " " +
+                        Message.get((aMoleculeDataModelList.size() == 1) ? "OverviewView.titleOfView.molecule"
+                                : "OverviewView.titleOfView.molecules");
+                this.withShowInMainViewOption = false;
+                //the representative is the first structure
                 this.withFirstStructureHighlight = true;
             }
             default -> {
@@ -589,8 +763,12 @@ public class OverviewViewController implements IViewToolController {
                                 && !this.scheduledFuture.isDone()) {
                         //terminating the scheduled single-click action
                         this.scheduledFuture.cancel(false);
-                        //check whether it is the same structure
-                        if (this.getIndexOfStructureInMoleculeDataModelList(aMouseEvent)
+                        //custom double-click action, e.g. opening the cluster of a cluster representative
+                        if (this.structureDoubleClickAction != null
+                                && this.getIndexOfStructureInMoleculeDataModelList(aMouseEvent)
+                                == this.cachedIndexOfStructureInMoleculeDataModelList) {
+                            this.structureDoubleClickAction.accept(this.cachedIndexOfStructureInMoleculeDataModelList);
+                        } else if (this.getIndexOfStructureInMoleculeDataModelList(aMouseEvent)
                                 == this.cachedIndexOfStructureInMoleculeDataModelList
                                 && (this.withShowInMainViewOption)) {
                             this.returnToStructureEventOccurred = true;
@@ -984,7 +1162,24 @@ public class OverviewViewController implements IViewToolController {
                                 //depiction of structure image
                                 final Node tmpFinalContentNode;
                                 if (!(tmpIterator == 0 && this.withFirstStructureHighlight)) {
-                                    if (this.dataSource == DataSources.FRAGMENTS_TAB && tmpMoleculeDataModel instanceof FragmentDataModel tmpFragment) {
+                                    if (this.structureLabelList != null) {
+                                        //given label, e.g. the size of a cluster below its representative
+                                        String tmpLabel = this.structureLabelList.get(tmpIterator);
+                                        if (tmpImageWidth <= tmpFontMetrics.stringWidth(tmpLabel)) {
+                                            //cut at the first space, e.g. "12 (3.4%)" becomes "12"
+                                            tmpLabel = tmpLabel.split(" ")[0];
+                                        }
+                                        tmpFinalContentNode = new ImageView(this.structureBarFractionList == null
+                                                ? DepictionUtil.depictImageWithText(
+                                                        tmpMoleculeDataModel.getAtomContainer(), 1.0, tmpImageWidth,
+                                                        tmpImageHeight, tmpLabel, false, true)
+                                                //the bar shows the fraction graphically, the label is centred in it
+                                                : DepictionUtil.depictImageWithTextAndBar(
+                                                        tmpMoleculeDataModel.getAtomContainer(), 1.0, tmpImageWidth,
+                                                        tmpImageHeight, tmpLabel, this.structureBarFractionList.get(tmpIterator),
+                                                        false, true)
+                                        );
+                                    } else if (this.dataSource == DataSources.FRAGMENTS_TAB && tmpMoleculeDataModel instanceof FragmentDataModel tmpFragment) {
                                         String tmpFrequencyLabel =
                                                 //note: we could make it configurable to use the molecule freq. or fragment freq.
                                                 tmpFragment.getMoleculeFrequency()
@@ -1366,6 +1561,30 @@ public class OverviewViewController implements IViewToolController {
                     tmpEnlargedStructureViewMenuItem,
                     tmpShowInMainViewMenuItem
             );
+            //similarity search, only offered if a clustering result is available
+            if (this.similaritySearchAction != null) {
+                MenuItem tmpSimilaritySearchMenuItem = new MenuItem(Message.get("ClusteringSimilaritySearch.contextMenuItem.text"));
+                Consumer<MoleculeDataModel> tmpAction = this.similaritySearchAction;
+                tmpSimilaritySearchMenuItem.setOnAction((ActionEvent anActionEvent) -> {
+                    if (this.cachedIndexOfStructureInMoleculeDataModelList >= 0) {
+                        MoleculeDataModel tmpMolecule = this.moleculeDataModelList.get(this.cachedIndexOfStructureInMoleculeDataModelList);
+                        Platform.runLater(() -> tmpAction.accept(tmpMolecule));
+                    }
+                });
+                tmpContextMenu.getItems().addAll(new SeparatorMenuItem(), tmpSimilaritySearchMenuItem);
+            }
+            //selection of typical or diverse molecules from the cluster of the structure
+            if (this.clusterMoleculeSelectionAction != null) {
+                MenuItem tmpClusterSelectionMenuItem = new MenuItem(Message.get("ClusterMoleculeSelection.contextMenuItem.text"));
+                Consumer<MoleculeDataModel> tmpAction = this.clusterMoleculeSelectionAction;
+                tmpClusterSelectionMenuItem.setOnAction((ActionEvent anActionEvent) -> {
+                    if (this.cachedIndexOfStructureInMoleculeDataModelList >= 0) {
+                        MoleculeDataModel tmpMolecule = this.moleculeDataModelList.get(this.cachedIndexOfStructureInMoleculeDataModelList);
+                        Platform.runLater(() -> tmpAction.accept(tmpMolecule));
+                    }
+                });
+                tmpContextMenu.getItems().add(tmpClusterSelectionMenuItem);
+            }
         }
         return tmpContextMenu;
     }

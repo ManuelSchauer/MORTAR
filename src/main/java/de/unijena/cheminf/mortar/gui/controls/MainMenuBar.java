@@ -152,6 +152,22 @@ public class MainMenuBar extends MenuBar {
      * MenuItem to open the OverviewView.
      */
     private final MenuItem overviewViewMenuItem;
+    /**
+     * Menu for the clustering.
+     */
+    private final Menu clusteringMenu;
+    /**
+     * MenuItem to open the clustering settings.
+     */
+    private final MenuItem clusteringSettingsMenuItem;
+    /**
+     * MenuItem to start the clustering.
+     */
+    private final MenuItem startClusteringMenuItem;
+    /**
+     * MenuItem to cancel a running clustering.
+     */
+    private final MenuItem cancelClusteringMenuItem;
     //</editor-fold>
     //
     //<editor-fold desc="constructor" defaultstate="collapsed">
@@ -202,6 +218,11 @@ public class MainMenuBar extends MenuBar {
         this.viewsMenu = new Menu(Message.get("MainView.menuBar.viewsMenu.text"));
         this.histogramViewerMenuItem = new MenuItem(Message.get("MainView.menuBar.viewsMenu.HistogramMenuItem.text"));
         this.overviewViewMenuItem = new MenuItem(Message.get("MainView.menuBar.viewsMenu.overviewViewMenuItem.text"));
+        //clusteringMenu
+        this.clusteringMenu = new Menu(Message.get("MainView.menuBar.clusteringMenu.text"));
+        this.clusteringSettingsMenuItem = new MenuItem(Message.get("MainView.menuBar.clusteringMenu.settingsMenuItem.text"));
+        this.startClusteringMenuItem = new MenuItem(Message.get("MainView.menuBar.clusteringMenu.startMenuItem.text"));
+        this.cancelClusteringMenuItem = new MenuItem(Message.get("MainView.menuBar.clusteringMenu.cancelMenuItem.text"));
         //</editor-fold>
         this.addComponentsToMenuBar();
     }
@@ -245,6 +266,15 @@ public class MainMenuBar extends MenuBar {
         this.getMenus().add(this.pipelineMenu);
         //pipelineSettingsMenuItem
         this.pipelineMenu.getItems().add(this.pipelineSettingsMenuItem);
+        //</editor-fold>
+        //<editor-fold desc="clusteringMenu" defaultstate="collapsed">
+        this.getMenus().add(this.clusteringMenu);
+        this.clusteringMenu.getItems().add(this.clusteringSettingsMenuItem);
+        this.clusteringMenu.getItems().add(this.startClusteringMenuItem);
+        //the clustering needs fragmentation results
+        this.startClusteringMenuItem.setDisable(true);
+        this.clusteringMenu.getItems().add(this.cancelClusteringMenuItem);
+        this.cancelClusteringMenuItem.setVisible(false);
         //</editor-fold>
         //<editor-fold desc="viewsMenu" defaultstate="collapsed">
         this.getMenus().add(this.viewsMenu);
@@ -505,4 +535,31 @@ public class MainMenuBar extends MenuBar {
         return this.cancelExportMenuItem;
     }
     //</editor-fold>
+    //
+    /**
+     * Returns the menu item that opens the clustering settings.
+     *
+     * @return clustering settings menu item
+     */
+    public MenuItem getClusteringSettingsMenuItem() {
+        return this.clusteringSettingsMenuItem;
+    }
+    //
+    /**
+     * Returns the menu item that starts the clustering.
+     *
+     * @return start clustering menu item
+     */
+    public MenuItem getStartClusteringMenuItem() {
+        return this.startClusteringMenuItem;
+    }
+    //
+    /**
+     * Returns the menu item that cancels a running clustering.
+     *
+     * @return cancel clustering menu item
+     */
+    public MenuItem getCancelClusteringMenuItem() {
+        return this.cancelClusteringMenuItem;
+    }
 }

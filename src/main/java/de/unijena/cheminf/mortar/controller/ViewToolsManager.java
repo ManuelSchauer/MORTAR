@@ -46,6 +46,7 @@ import java.io.IOException;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -130,6 +131,16 @@ public class ViewToolsManager {
     public void openHistogramView(Stage aMainStage, List< FragmentDataModel > aFragmentDataModelList) throws NullPointerException {
         this.histogramViewController.openHistogramView(aMainStage, aFragmentDataModelList);
     }
+    /**
+     * Sets the action of the context menu entry "find similar molecules" of the overview view, see
+     * {@link OverviewViewController#setSimilaritySearchAction(Consumer)}.
+     *
+     * @param anAction action called with the molecule of the structure, null to remove the entry
+     */
+    public void setOverviewSimilaritySearchAction(Consumer<MoleculeDataModel> anAction) {
+        this.overviewViewController.setSimilaritySearchAction(anAction);
+    }
+    //
     /**
      * See {@link OverviewViewController#initializeAndShowOverviewView(Stage, OverviewViewController.DataSources, String, List)}.
      *

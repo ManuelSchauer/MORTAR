@@ -43,5 +43,9 @@ public enum TabNames {
     /**
      * enum value for items tab.
      */
-    ITEMIZATION;
+    ITEMIZATION,
+    /**
+     * Tab name for a clustering result tab.
+     */
+    CLUSTERING;
 }
