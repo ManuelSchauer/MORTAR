@@ -88,6 +88,29 @@ public final class ClusteringDataCsvWriter {
             int[] aClusterLabelArray,
             String aSeparator)
             throws NullPointerException, IllegalArgumentException, IOException {
+        ClusteringDataCsvWriter.writeFeatureMatrix(aWriter, aFeatureMatrix, aClusterLabelArray, null, aSeparator);
+    }
+    //
+    /**
+     * Writes the given rows of the given feature matrix with one line per molecule, see
+     * {@link #writeFeatureMatrix(Writer, FeatureMatrix, int[], String)}, e.g. only the molecules of the selected clusters.
+     *
+     * @param aWriter writer to write to (is not closed)
+     * @param aFeatureMatrix feature matrix to write
+     * @param aClusterLabelArray cluster label of every row of the matrix, may be null
+     * @param aRowIndices indices of the rows to write in the given order; null for all rows
+     * @param aSeparator column separator, e.g. "," or ";"
+     * @throws NullPointerException if the writer, matrix or separator is null
+     * @throws IllegalArgumentException if the length of the label array does not match the number of rows
+     * @throws IOException if writing fails
+     */
+    public static void writeFeatureMatrix(
+            Writer aWriter,
+            FeatureMatrix aFeatureMatrix,
+            int[] aClusterLabelArray,
+            int[] aRowIndices,
+            String aSeparator)
+            throws NullPointerException, IllegalArgumentException, IOException {
         Objects.requireNonNull(aWriter, "Given writer is null.");
         Objects.requireNonNull(aFeatureMatrix, "Given feature matrix is null.");
         Objects.requireNonNull(aSeparator, "Given separator is null.");
@@ -102,7 +125,9 @@ public final class ClusteringDataCsvWriter {
             tmpLine.append(aSeparator).append(ClusteringDataCsvWriter.escape(aFeatureMatrix.getFeatureName(j), aSeparator));
         }
         aWriter.write(tmpLine.append(System.lineSeparator()).toString());
-        for (int i = 0; i < aFeatureMatrix.getRowCount(); i++) {
+        int tmpNumberOfRows = aRowIndices == null ? aFeatureMatrix.getRowCount() : aRowIndices.length;
+        for (int r = 0; r < tmpNumberOfRows; r++) {
+            int i = aRowIndices == null ? r : aRowIndices[r];
             tmpLine.setLength(0);
             tmpLine.append(ClusteringDataCsvWriter.escape(aFeatureMatrix.getRowName(i), aSeparator));
             if (aClusterLabelArray != null) {

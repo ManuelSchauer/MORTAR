@@ -73,6 +73,12 @@ class ClusteringDataCsvWriterTest {
         Assertions.assertEquals("Name,Cluster,\"C,C\",ALOGP", tmpLines[0]);
         Assertions.assertEquals("m1,0,1.0,NaN", tmpLines[1]);
         Assertions.assertEquals("m2,-1,0.5,2.0", tmpLines[2]);
+        //only the given rows in the given order
+        tmpWriter = new StringWriter();
+        ClusteringDataCsvWriter.writeFeatureMatrix(tmpWriter, tmpMatrix, new int[] {0, -1}, new int[] {1}, ",");
+        tmpLines = tmpWriter.toString().split(System.lineSeparator());
+        Assertions.assertEquals(2, tmpLines.length);
+        Assertions.assertEquals("m2,-1,0.5,2.0", tmpLines[1]);
     }
     //
     /**
@@ -93,7 +99,8 @@ class ClusteringDataCsvWriterTest {
     }
     //
     /**
-     * Tests that the Exporter writes all six clustering files into the given directory.
+     * Tests that the Exporter writes the clustering files into the given directory, without the transformed matrix if no
+     * transformation was applied.
      *
      * @param aTempDirectory temporary directory provided by JUnit
      * @throws Exception if writing fails
@@ -116,11 +123,51 @@ class ClusteringDataCsvWriterTest {
         Assertions.assertTrue(tmpFailed.isEmpty());
         File[] tmpFiles = aTempDirectory.toFile().listFiles();
         Assertions.assertNotNull(tmpFiles);
-        Assertions.assertEquals(7, tmpFiles.length);
+        //without transformation (transformed matrix = raw matrix), no transformed file is written
+        Assertions.assertEquals(6, tmpFiles.length);
+        Assertions.assertFalse(Files.exists(aTempDirectory.resolve("Clustering_Frag_1_transformed.csv")));
         List<String> tmpClusterLines = Files.readAllLines(aTempDirectory.resolve("Clustering_Frag_1_clusters.csv"));
         Assertions.assertEquals("m1,C,0,true", tmpClusterLines.get(1));
         Assertions.assertEquals("m2,CC,-1,false", tmpClusterLines.get(2));
         Assertions.assertTrue(Files.readAllLines(aTempDirectory.resolve("Clustering_Frag_1_parameters.txt")).contains("descriptors=A_LOG_P"));
+        Assertions.assertFalse(Files.readAllLines(aTempDirectory.resolve("Clustering_Frag_1_parameters.txt")).stream()
+                .anyMatch(aLine -> aLine.startsWith("exportedClusters=")));
+    }
+    //
+    /**
+     * Tests the export of marked clusters only: the matrices and the cluster assignment contain only their molecules and
+     * the parameters list the exported clusters; with a transformation, the transformed matrix is written.
+     *
+     * @param aTempDirectory temporary directory provided by JUnit
+     * @throws Exception if writing fails
+     */
+    @Test
+    void testExporterWritesMarkedClustersOnly(@TempDir Path aTempDirectory) throws Exception {
+        Locale.setDefault(Locale.of("en", "GB"));
+        FeatureMatrix tmpMatrix = new FeatureMatrix(new float[][] {{1.0f, 2.0f}, {0.0f, 3.0f}, {1.0f, 4.0f}},
+                new String[] {"m1", "m2", "m3"}, new String[] {"C", "ALOGP"},
+                new FeatureType[] {FeatureType.BIT, FeatureType.CONTINUOUS}, new String[] {"F", "A_LOG_P"});
+        FeatureMatrix tmpTransformedMatrix = tmpMatrix.withData(tmpMatrix.getDataCopy());
+        ClusteringParameters tmpParameters = new ClusteringParameters("Frag 1", false, 1, 0, new Descriptor[] {Descriptor.A_LOG_P},
+                IMoleculeFragmenter.ElectronDonationModelOption.DAYLIGHT, IMoleculeFragmenter.CycleFinderOption.CDK_AROMATIC_SET,
+                FeatureTransformation.NONE, FeatureTransformation.WINSORIZE, 0.1, true, 0.95, FeatureFilter.CorrelationMethod.PEARSON,
+                Art2aClusterer.Art2aAlgorithm.COSINE, 0.5f, 10, 10, 0.99f, 0.01f, 1.0f, 1L, 1024, false);
+        ClusteringRunResult tmpRunResult = new ClusteringRunResult(tmpParameters,
+                List.of(new MoleculeDataModel("C", "m1", new HashMap<>()), new MoleculeDataModel("CC", "m2", new HashMap<>()),
+                        new MoleculeDataModel("CCC", "m3", new HashMap<>())),
+                tmpMatrix, tmpTransformedMatrix, tmpMatrix, List.of(),
+                new ClusteringResult(new int[] {0, 1, 0}, 2, new int[] {0, 1}, false, true, 2, 0.5f, new float[2][2]));
+        Assertions.assertTrue(tmpRunResult.isTransformed());
+        List<String> tmpFailed = new Exporter(new SettingsContainer()).exportClusteringCsvFiles(aTempDirectory.toFile(), tmpRunResult,
+                java.util.Set.of(0), ',');
+        Assertions.assertTrue(tmpFailed.isEmpty());
+        Assertions.assertTrue(Files.exists(aTempDirectory.resolve("Clustering_Frag_1_transformed.csv")));
+        Assertions.assertEquals(List.of("Name,C,ALOGP", "m1,1.0,2.0", "m3,1.0,4.0"),
+                Files.readAllLines(aTempDirectory.resolve("Clustering_Frag_1_raw.csv")));
+        List<String> tmpClusterLines = Files.readAllLines(aTempDirectory.resolve("Clustering_Frag_1_clusters.csv"));
+        Assertions.assertEquals(3, tmpClusterLines.size());
+        Assertions.assertTrue(tmpClusterLines.stream().noneMatch(aLine -> aLine.startsWith("m2,")));
+        Assertions.assertTrue(Files.readAllLines(aTempDirectory.resolve("Clustering_Frag_1_parameters.txt")).contains("exportedClusters=0"));
     }
     //
     /**

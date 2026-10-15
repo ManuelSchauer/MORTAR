@@ -142,6 +142,16 @@ public class ViewToolsManager {
     }
     //
     /**
+     * Sets the action of the context menu entry "show descriptor values for molecule" of the overview view, see
+     * {@link OverviewViewController#setDescriptorValuesOfMoleculeAction(Consumer)}.
+     *
+     * @param anAction action called with the molecule of the structure, null to remove the entry
+     */
+    public void setOverviewDescriptorValuesAction(Consumer<MoleculeDataModel> anAction) {
+        this.overviewViewController.setDescriptorValuesOfMoleculeAction(anAction);
+    }
+    //
+    /**
      * See {@link OverviewViewController#initializeAndShowOverviewView(Stage, OverviewViewController.DataSources, String, List)}.
      *
      * @param aMainStage Stage that is to be the owner of the overview view's stage

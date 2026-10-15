@@ -241,6 +241,29 @@ class ClusteringServiceTest {
     }
     //
     /**
+     * Tests the displayed descriptor columns of the result tabs: default, names that cannot be persisted are left out,
+     * the choice survives a reload, also an empty choice.
+     *
+     * @param aTempDirectory temporary settings directory provided by JUnit
+     */
+    @Test
+    void testDisplayedDescriptorColumns(@org.junit.jupiter.api.io.TempDir java.nio.file.Path aTempDirectory) {
+        ClusteringService tmpService = new ClusteringService(aTempDirectory.toString());
+        Assertions.assertEquals(ClusteringService.DISPLAYED_DESCRIPTOR_COLUMNS_DEFAULT, tmpService.getDisplayedDescriptorColumnNames());
+        tmpService.setDisplayedDescriptorColumnNames(java.util.List.of("TPSA", "Bad#Name", "BCUT [2]"));
+        Assertions.assertEquals(java.util.List.of("TPSA", "BCUT [2]"), tmpService.getDisplayedDescriptorColumnNames());
+        tmpService.persistClusteringSettings();
+        ClusteringService tmpReloadedService = new ClusteringService(aTempDirectory.toString());
+        tmpReloadedService.reloadClusteringSettings();
+        Assertions.assertEquals(java.util.List.of("TPSA", "BCUT [2]"), tmpReloadedService.getDisplayedDescriptorColumnNames());
+        tmpReloadedService.setDisplayedDescriptorColumnNames(java.util.List.of());
+        tmpReloadedService.persistClusteringSettings();
+        ClusteringService tmpSecondReloadedService = new ClusteringService(aTempDirectory.toString());
+        tmpSecondReloadedService.reloadClusteringSettings();
+        Assertions.assertTrue(tmpSecondReloadedService.getDisplayedDescriptorColumnNames().isEmpty());
+    }
+    //
+    /**
      * Tests that the fingerprints are selected via their own settings and that type and radius are mapped to the
      * correct circular fingerprint (radius 2 = ECFP4).
      */

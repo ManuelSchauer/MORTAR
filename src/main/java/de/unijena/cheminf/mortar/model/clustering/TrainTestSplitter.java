@@ -32,6 +32,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Random;
+import java.util.Set;
 
 /**
  * Creates a training/test partitioning of the clustered molecules based on a clustering result, so that both sets cover
@@ -125,6 +126,25 @@ public final class TrainTestSplitter {
      */
     public static TrainTestSplit split(ClusteringRunResult aRunResult, double aTrainingFraction, SelectionMode aSelectionMode,
                                        long aRandomSeed) throws NullPointerException, IllegalArgumentException {
+        return TrainTestSplitter.split(aRunResult, aTrainingFraction, aSelectionMode, aRandomSeed, null);
+    }
+    //
+    /**
+     * Creates the cluster-based training/test partitioning of the molecules of the given clusters, e.g. of the clusters
+     * marked by the user; see the class description for the rules. If clusters are given, the molecules of the other
+     * clusters and the molecules that could not be clustered are in neither set.
+     *
+     * @param aRunResult clustering result
+     * @param aTrainingFraction requested fraction of training molecules in (0,1)
+     * @param aSelectionMode way to select the training molecules of a cluster
+     * @param aRandomSeed seed for {@link SelectionMode#RANDOM}
+     * @param aClusterIndices indices of the clusters to partition; null or empty for all molecules
+     * @return training/test partitioning
+     * @throws NullPointerException if the result or mode is null
+     * @throws IllegalArgumentException if the fraction is not in (0,1)
+     */
+    public static TrainTestSplit split(ClusteringRunResult aRunResult, double aTrainingFraction, SelectionMode aSelectionMode,
+                                       long aRandomSeed, Set<Integer> aClusterIndices) throws NullPointerException, IllegalArgumentException {
         Objects.requireNonNull(aRunResult, "Given clustering run result is null.");
         Objects.requireNonNull(aSelectionMode, "Given selection mode is null.");
         if (!(aTrainingFraction > 0.0 && aTrainingFraction < 1.0)) {
@@ -138,7 +158,11 @@ public final class TrainTestSplitter {
         }
         List<Integer> tmpTraining = new ArrayList<>();
         List<Integer> tmpTest = new ArrayList<>();
+        boolean tmpIsRestricted = aClusterIndices != null && !aClusterIndices.isEmpty();
         for (int i = 0; i < tmpLabels.length; i++) {
+            if (tmpIsRestricted && !aClusterIndices.contains(tmpLabels[i])) {
+                continue;
+            }
             if (tmpLabels[i] < 0) {
                 //not clusterable molecules are treated like single-molecule clusters
                 tmpTraining.add(i);

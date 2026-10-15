@@ -312,6 +312,20 @@ public class OverviewViewController implements IViewToolController {
      */
     private Consumer<MoleculeDataModel> clusterMoleculeSelectionAction;
     /**
+     * Action of the context menu entry "show descriptor values for molecule", called with the molecule of the structure;
+     * null if the entry is not offered (no clustering result available).
+     */
+    private Consumer<MoleculeDataModel> descriptorValuesOfMoleculeAction;
+    /**
+     * Text of the context menu entry of the descriptor values of a molecule; null for the default text.
+     */
+    private String descriptorValuesOfMoleculeMenuItemText;
+    /**
+     * Action of the context menu entry "show descriptor values of all molecules"; null if the entry is not offered (only
+     * in overview views of a cluster).
+     */
+    private Runnable descriptorValuesOfAllMoleculesAction;
+    /**
      * Boolean value whether an event to return to a specific structure in the MainView occurred.
      */
     private boolean returnToStructureEventOccurred;
@@ -409,6 +423,39 @@ public class OverviewViewController implements IViewToolController {
      */
     public void setClusterMoleculeSelectionAction(Consumer<MoleculeDataModel> anAction) {
         this.clusterMoleculeSelectionAction = anAction;
+    }
+    //
+    /**
+     * Sets the action of the context menu entry "show descriptor values for molecule"; it is called with the molecule of
+     * the structure the context menu was opened for. Takes effect the next time the view is opened.
+     *
+     * @param anAction action, null to remove the entry
+     */
+    public void setDescriptorValuesOfMoleculeAction(Consumer<MoleculeDataModel> anAction) {
+        this.setDescriptorValuesOfMoleculeAction(anAction, null);
+    }
+    //
+    /**
+     * Sets the action and the text of the context menu entry for the descriptor values of a structure, e.g. "show
+     * descriptor values for cluster" in the overview of the cluster representatives. Takes effect the next time the view
+     * is opened.
+     *
+     * @param anAction action called with the molecule of the structure, null to remove the entry
+     * @param aMenuItemText text of the entry, null for the default text "show descriptor values for molecule"
+     */
+    public void setDescriptorValuesOfMoleculeAction(Consumer<MoleculeDataModel> anAction, String aMenuItemText) {
+        this.descriptorValuesOfMoleculeAction = anAction;
+        this.descriptorValuesOfMoleculeMenuItemText = aMenuItemText;
+    }
+    //
+    /**
+     * Sets the action of the context menu entry "show descriptor values of all molecules", e.g. of all molecules of a
+     * cluster. Takes effect the next time the view is opened.
+     *
+     * @param anAction action, null to remove the entry
+     */
+    public void setDescriptorValuesOfAllMoleculesAction(Runnable anAction) {
+        this.descriptorValuesOfAllMoleculesAction = anAction;
     }
     //
     /**
@@ -1584,6 +1631,28 @@ public class OverviewViewController implements IViewToolController {
                     }
                 });
                 tmpContextMenu.getItems().add(tmpClusterSelectionMenuItem);
+            }
+            //descriptor values, set apart from the other entries as own group
+            if (this.descriptorValuesOfMoleculeAction != null || this.descriptorValuesOfAllMoleculesAction != null) {
+                tmpContextMenu.getItems().add(new SeparatorMenuItem());
+            }
+            if (this.descriptorValuesOfMoleculeAction != null) {
+                MenuItem tmpDescriptorValuesMenuItem = new MenuItem(this.descriptorValuesOfMoleculeMenuItemText == null
+                        ? Message.get("OverviewView.contextMenu.descriptorValuesOfMoleculeMenuItem") : this.descriptorValuesOfMoleculeMenuItemText);
+                Consumer<MoleculeDataModel> tmpAction = this.descriptorValuesOfMoleculeAction;
+                tmpDescriptorValuesMenuItem.setOnAction((ActionEvent anActionEvent) -> {
+                    if (this.cachedIndexOfStructureInMoleculeDataModelList >= 0) {
+                        MoleculeDataModel tmpMolecule = this.moleculeDataModelList.get(this.cachedIndexOfStructureInMoleculeDataModelList);
+                        Platform.runLater(() -> tmpAction.accept(tmpMolecule));
+                    }
+                });
+                tmpContextMenu.getItems().add(tmpDescriptorValuesMenuItem);
+            }
+            if (this.descriptorValuesOfAllMoleculesAction != null) {
+                MenuItem tmpAllDescriptorValuesMenuItem = new MenuItem(Message.get("OverviewView.contextMenu.descriptorValuesOfAllMoleculesMenuItem"));
+                Runnable tmpAction = this.descriptorValuesOfAllMoleculesAction;
+                tmpAllDescriptorValuesMenuItem.setOnAction((ActionEvent anActionEvent) -> Platform.runLater(tmpAction));
+                tmpContextMenu.getItems().add(tmpAllDescriptorValuesMenuItem);
             }
         }
         return tmpContextMenu;

@@ -67,6 +67,21 @@ class FeatureTransformerTest {
     }
     //
     /**
+     * Tests that no copy is created if no column is transformed and that a copy is created otherwise.
+     */
+    @Test
+    void testNoCopyWithoutTransformation() {
+        FeatureMatrix tmpMatrix = FeatureTransformerTest.createTestMatrix();
+        Assertions.assertFalse(FeatureTransformer.isTransforming(tmpMatrix, FeatureTransformation.NONE, FeatureTransformation.NONE));
+        Assertions.assertSame(tmpMatrix, FeatureTransformer.transform(tmpMatrix, FeatureTransformation.NONE, FeatureTransformation.NONE));
+        Assertions.assertTrue(FeatureTransformer.isTransforming(tmpMatrix, FeatureTransformation.NONE, FeatureTransformation.WINSORIZE));
+        Assertions.assertNotSame(tmpMatrix, FeatureTransformer.transform(tmpMatrix, FeatureTransformation.NONE, FeatureTransformation.WINSORIZE));
+        //only BIT columns: a count transformation changes nothing
+        FeatureMatrix tmpBitMatrix = tmpMatrix.selectColumns(new int[] {0});
+        Assertions.assertSame(tmpBitMatrix, FeatureTransformer.transform(tmpBitMatrix, FeatureTransformation.LOG1P, FeatureTransformation.NONE));
+    }
+    //
+    /**
      * Tests that BINARIZE turns counts into presence bits.
      */
     @Test

@@ -31,6 +31,8 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
+import java.util.stream.IntStream;
 
 /**
  * Complete result of one clustering run: the parameters, the clustered molecules, the feature matrix of every stage
@@ -40,7 +42,8 @@ import java.util.Objects;
  * @param parameters parameters of the run
  * @param molecules clustered molecules
  * @param rawMatrix feature matrix as calculated (fragment fingerprint block followed by descriptor block), may contain NaN
- * @param transformedMatrix feature matrix after the non-linear transformations, may contain NaN
+ * @param transformedMatrix feature matrix after the non-linear transformations, may contain NaN; the raw matrix itself
+ *                          (same instance) if no transformation was applied, so that no copy is kept
  * @param processedMatrix feature matrix after filtering, i.e. the input of the clustering kernel
  * @param removedFeatures report of the features removed by the filter
  * @param clusteringResult result of the ART-2A clustering
@@ -90,6 +93,28 @@ public record ClusteringRunResult(
         Objects.requireNonNull(clusteringResult, "Given clustering result is null.");
         molecules = List.copyOf(molecules);
         removedFeatures = List.copyOf(removedFeatures);
+    }
+    //
+    /**
+     * Returns whether a transformation was applied, i.e. whether the transformed matrix is not the raw matrix itself.
+     *
+     * @return true if the transformed matrix differs from the raw matrix
+     */
+    public boolean isTransformed() {
+        return this.transformedMatrix != this.rawMatrix;
+    }
+    //
+    /**
+     * Returns the row indices of the molecules of the given clusters, e.g. of the clusters marked by the user.
+     *
+     * @param aClusterIndices indices of the clusters; null or empty for all molecules, including the molecules that could
+     *                        not be clustered
+     * @return row indices in ascending order
+     */
+    public int[] getRowIndicesOfClusters(Set<Integer> aClusterIndices) {
+        int[] tmpLabels = this.clusteringResult.clusterLabels();
+        boolean tmpIsAll = aClusterIndices == null || aClusterIndices.isEmpty();
+        return IntStream.range(0, tmpLabels.length).filter(i -> tmpIsAll || aClusterIndices.contains(tmpLabels[i])).toArray();
     }
     //
     /**

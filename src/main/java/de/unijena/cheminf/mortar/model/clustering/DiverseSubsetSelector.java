@@ -30,6 +30,7 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Selects molecules of a clustering result: a subset with the given number of molecules from every cluster, so that the
@@ -113,6 +114,28 @@ public final class DiverseSubsetSelector {
     public static List<SelectedMolecule> select(ClusteringRunResult aRunResult, int aNumberPerCluster,
                                                 boolean anIsIncludingUnclusteredMolecules, SelectionMode aSelectionMode)
             throws NullPointerException, IllegalArgumentException {
+        return DiverseSubsetSelector.select(aRunResult, aNumberPerCluster, anIsIncludingUnclusteredMolecules, aSelectionMode, null);
+    }
+    //
+    /**
+     * Selects the given number of molecules from every given cluster, e.g. from the clusters marked by the user, in the
+     * order of the cluster indices; see {@link #select(ClusteringRunResult, int, boolean, SelectionMode)}. If clusters
+     * are given, the molecules that could not be clustered are not added.
+     *
+     * @param aRunResult clustering result
+     * @param aNumberPerCluster number of molecules per cluster, at least 1
+     * @param anIsIncludingUnclusteredMolecules true to add the molecules that could not be clustered (only without given
+     *                                          clusters)
+     * @param aSelectionMode way to select the molecules within a cluster
+     * @param aClusterIndices indices of the clusters to select from; null or empty for all clusters
+     * @return selected molecules
+     * @throws NullPointerException if the result or mode is null
+     * @throws IllegalArgumentException if the number per cluster is smaller than 1
+     */
+    public static List<SelectedMolecule> select(ClusteringRunResult aRunResult, int aNumberPerCluster,
+                                                boolean anIsIncludingUnclusteredMolecules, SelectionMode aSelectionMode,
+                                                Set<Integer> aClusterIndices)
+            throws NullPointerException, IllegalArgumentException {
         Objects.requireNonNull(aRunResult, "Given clustering run result is null.");
         Objects.requireNonNull(aSelectionMode, "Given selection mode is null.");
         if (aNumberPerCluster < 1) {
@@ -120,10 +143,13 @@ public final class DiverseSubsetSelector {
         }
         SimilaritySearch tmpSearch = new SimilaritySearch(aRunResult);
         List<SelectedMolecule> tmpSelection = new ArrayList<>();
+        boolean tmpIsRestricted = aClusterIndices != null && !aClusterIndices.isEmpty();
         for (int k = 0; k < aRunResult.clusteringResult().numberOfClusters(); k++) {
-            tmpSelection.addAll(DiverseSubsetSelector.selectFromCluster(aRunResult, tmpSearch, k, aNumberPerCluster, aSelectionMode));
+            if (!tmpIsRestricted || aClusterIndices.contains(k)) {
+                tmpSelection.addAll(DiverseSubsetSelector.selectFromCluster(aRunResult, tmpSearch, k, aNumberPerCluster, aSelectionMode));
+            }
         }
-        if (anIsIncludingUnclusteredMolecules) {
+        if (anIsIncludingUnclusteredMolecules && !tmpIsRestricted) {
             int[] tmpLabels = aRunResult.clusteringResult().clusterLabels();
             for (int i = 0; i < tmpLabels.length; i++) {
                 if (tmpLabels[i] < 0) {

@@ -59,12 +59,14 @@ public final class FeatureTransformer {
     //<editor-fold desc="public static methods" defaultstate="collapsed">
     /**
      * Returns a new feature matrix in which the COUNT columns are transformed with the given count transformation and
-     * the CONTINUOUS columns with the given continuous transformation. BIT columns are copied unchanged.
+     * the CONTINUOUS columns with the given continuous transformation. BIT columns are copied unchanged. If no column
+     * is transformed (both transformations are NONE or the matrix has no column of the transformed types), the given
+     * matrix itself is returned and no copy is created.
      *
      * @param aFeatureMatrix matrix to transform (IS NOT CHANGED)
      * @param aCountTransformation transformation for COUNT columns
      * @param aContinuousTransformation transformation for CONTINUOUS columns
-     * @return new transformed feature matrix
+     * @return new transformed feature matrix or the given matrix if no column is transformed
      * @throws NullPointerException if a parameter is null
      * @throws IllegalArgumentException if LOG1P or SQRT is requested for a column that contains negative values
      */
@@ -76,6 +78,10 @@ public final class FeatureTransformer {
         Objects.requireNonNull(aFeatureMatrix, "Given feature matrix is null.");
         Objects.requireNonNull(aCountTransformation, "Given count transformation is null.");
         Objects.requireNonNull(aContinuousTransformation, "Given continuous transformation is null.");
+        if (!FeatureTransformer.isTransforming(aFeatureMatrix, aCountTransformation, aContinuousTransformation)) {
+            //no copy of the data if nothing changes
+            return aFeatureMatrix;
+        }
         float[][] tmpData = aFeatureMatrix.getDataCopy();
         for (int j = 0; j < aFeatureMatrix.getColumnCount(); j++) {
             FeatureTransformation tmpTransformation = switch (aFeatureMatrix.getFeatureType(j)) {
@@ -90,6 +96,31 @@ public final class FeatureTransformer {
             }
         }
         return aFeatureMatrix.withData(tmpData);
+    }
+    //
+    /**
+     * Returns whether at least one column of the given matrix is changed by the given transformations.
+     *
+     * @param aFeatureMatrix matrix to transform
+     * @param aCountTransformation transformation for COUNT columns
+     * @param aContinuousTransformation transformation for CONTINUOUS columns
+     * @return true if a COUNT column with a count transformation other than NONE or a CONTINUOUS column with a
+     *         continuous transformation other than NONE exists
+     * @throws NullPointerException if a parameter is null
+     */
+    public static boolean isTransforming(FeatureMatrix aFeatureMatrix, FeatureTransformation aCountTransformation,
+                                         FeatureTransformation aContinuousTransformation) throws NullPointerException {
+        Objects.requireNonNull(aFeatureMatrix, "Given feature matrix is null.");
+        Objects.requireNonNull(aCountTransformation, "Given count transformation is null.");
+        Objects.requireNonNull(aContinuousTransformation, "Given continuous transformation is null.");
+        for (int j = 0; j < aFeatureMatrix.getColumnCount(); j++) {
+            FeatureType tmpType = aFeatureMatrix.getFeatureType(j);
+            if ((tmpType == FeatureType.COUNT && aCountTransformation != FeatureTransformation.NONE)
+                    || (tmpType == FeatureType.CONTINUOUS && aContinuousTransformation != FeatureTransformation.NONE)) {
+                return true;
+            }
+        }
+        return false;
     }
     //
     /**

@@ -46,6 +46,8 @@ import javafx.scene.control.TableView;
 import javafx.scene.control.Tooltip;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 
 import java.util.List;
 import java.util.Locale;
@@ -56,31 +58,42 @@ import java.util.function.ToIntFunction;
 /**
  * View that shows the result of a vigilance scan: a line chart of the number of clusters and of single-molecule clusters
  * against the vigilance and a table with all values per vigilance (clusters, singletons, largest cluster, not clusterable
- * molecules, mean similarity to the cluster vector, overflow, convergence). The buttons open the clustering of the
- * selected vigilance as result tab, take over its vigilance into the clustering settings and export the scan; their
- * actions are set by the controller.
+ * molecules, mean similarity to the cluster vector, overflow, convergence). The buttons take over the clustering of the
+ * selected vigilance (also by double click on a row), export the scan, discard it or close the window, which keeps the
+ * scan; their actions are set by the controller.
  *
  * @author Manuel Schauer
  * @version 1.0.0.0
  */
 public class VigilanceScanView extends BorderPane {
+    //<editor-fold desc="private static final class constants" defaultstate="collapsed">
+    /**
+     * Tolerance for comparing vigilance values, which are rounded to 4 decimals in the scan.
+     */
+    private static final float VIGILANCE_TOLERANCE = 1.0e-5f;
+    //</editor-fold>
+    //
     //<editor-fold desc="private final variables" defaultstate="collapsed">
     /**
      * Table of the scan entries.
      */
     private final TableView<VigilanceScan.ScanEntry> scanTableView;
     /**
-     * Button to open the clustering of the selected vigilance as result tab.
+     * Button to take over the clustering of the selected vigilance.
      */
-    private final Button openResultButton;
-    /**
-     * Button to take over the selected vigilance into the clustering settings.
-     */
-    private final Button useVigilanceButton;
+    private final Button adoptButton;
     /**
      * Button to export the scan as CSV.
      */
     private final Button exportButton;
+    /**
+     * Button to discard the scan and close the window.
+     */
+    private final Button discardButton;
+    /**
+     * Button to close (hide) the window; the scan is kept.
+     */
+    private final Button closeButton;
     //</editor-fold>
     //
     //<editor-fold desc="Constructor" defaultstate="collapsed">
@@ -134,16 +147,26 @@ public class VigilanceScanView extends BorderPane {
         tmpHintLabel.setWrapText(true);
         tmpHintLabel.setPadding(new Insets(GuiDefinitions.GUI_INSETS_VALUE));
         this.setTop(tmpHintLabel);
-        //buttons for the selected vigilance
-        this.openResultButton = new Button(Message.get("VigilanceScan.openResultButton.text"));
-        this.openResultButton.setTooltip(new Tooltip(Message.get("VigilanceScan.openResultButton.tooltip")));
-        this.openResultButton.disableProperty().bind(this.scanTableView.getSelectionModel().selectedItemProperty().isNull());
-        this.useVigilanceButton = new Button(Message.get("VigilanceScan.useVigilanceButton.text"));
-        this.useVigilanceButton.setTooltip(new Tooltip(Message.get("VigilanceScan.useVigilanceButton.tooltip")));
-        this.useVigilanceButton.disableProperty().bind(this.scanTableView.getSelectionModel().selectedItemProperty().isNull());
+        //buttons for the selected vigilance on the left, for the window on the right
+        this.adoptButton = new Button(Message.get("VigilanceScan.adoptButton.text"));
+        this.adoptButton.setTooltip(new Tooltip(Message.get("VigilanceScan.adoptButton.tooltip")));
+        this.adoptButton.setMinWidth(Region.USE_PREF_SIZE);
+        this.adoptButton.setDefaultButton(true);
+        this.adoptButton.disableProperty().bind(this.scanTableView.getSelectionModel().selectedItemProperty().isNull());
         this.exportButton = new Button(Message.get("VigilanceScan.exportButton.text"));
-        HBox tmpButtonBox = new HBox(GuiDefinitions.GUI_BUTTON_SPACING_VALUE, this.openResultButton, this.useVigilanceButton, this.exportButton);
-        tmpButtonBox.setAlignment(Pos.CENTER_RIGHT);
+        this.exportButton.setMinWidth(Region.USE_PREF_SIZE);
+        this.discardButton = new Button(Message.get("VigilanceScan.discardButton.text"));
+        this.discardButton.setTooltip(new Tooltip(Message.get("VigilanceScan.discardButton.tooltip")));
+        this.discardButton.setMinWidth(Region.USE_PREF_SIZE);
+        this.closeButton = new Button(Message.get("VigilanceScan.closeButton.text"));
+        this.closeButton.setTooltip(new Tooltip(Message.get("VigilanceScan.closeButton.tooltip")));
+        this.closeButton.setMinWidth(Region.USE_PREF_SIZE);
+        this.closeButton.setPrefWidth(GuiDefinitions.GUI_BUTTON_WIDTH_VALUE);
+        Region tmpSpacer = new Region();
+        HBox.setHgrow(tmpSpacer, Priority.ALWAYS);
+        HBox tmpButtonBox = new HBox(GuiDefinitions.GUI_BUTTON_SPACING_VALUE, this.adoptButton, this.exportButton, tmpSpacer,
+                this.discardButton, this.closeButton);
+        tmpButtonBox.setAlignment(Pos.CENTER_LEFT);
         tmpButtonBox.setPadding(new Insets(GuiDefinitions.GUI_INSETS_VALUE));
         this.setBottom(tmpButtonBox);
     }
@@ -160,21 +183,12 @@ public class VigilanceScanView extends BorderPane {
     }
     //
     /**
-     * Returns the button that opens the clustering of the selected vigilance as result tab.
+     * Returns the button that takes over the clustering of the selected vigilance.
      *
-     * @return open result button
+     * @return adopt button
      */
-    public Button getOpenResultButton() {
-        return this.openResultButton;
-    }
-    //
-    /**
-     * Returns the button that takes over the selected vigilance into the clustering settings.
-     *
-     * @return use vigilance button
-     */
-    public Button getUseVigilanceButton() {
-        return this.useVigilanceButton;
+    public Button getAdoptButton() {
+        return this.adoptButton;
     }
     //
     /**
@@ -184,6 +198,40 @@ public class VigilanceScanView extends BorderPane {
      */
     public Button getExportButton() {
         return this.exportButton;
+    }
+    //
+    /**
+     * Returns the button that discards the scan and closes the window.
+     *
+     * @return discard button
+     */
+    public Button getDiscardButton() {
+        return this.discardButton;
+    }
+    //
+    /**
+     * Returns the button that closes (hides) the window and keeps the scan.
+     *
+     * @return close button
+     */
+    public Button getCloseButton() {
+        return this.closeButton;
+    }
+    //
+    /**
+     * Selects the row of the given vigilance, e.g. the vigilance of the clustering the scan was started from; nothing is
+     * selected if the scan does not contain it.
+     *
+     * @param aVigilance vigilance to select
+     */
+    public void selectVigilance(float aVigilance) {
+        for (VigilanceScan.ScanEntry tmpEntry : this.scanTableView.getItems()) {
+            if (Math.abs(tmpEntry.vigilance() - aVigilance) < VigilanceScanView.VIGILANCE_TOLERANCE) {
+                this.scanTableView.getSelectionModel().select(tmpEntry);
+                this.scanTableView.scrollTo(tmpEntry);
+                return;
+            }
+        }
     }
     //</editor-fold>
     //

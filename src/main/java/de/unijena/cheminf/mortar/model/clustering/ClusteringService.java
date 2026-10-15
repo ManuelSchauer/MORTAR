@@ -619,6 +619,16 @@ public class ClusteringService {
      */
     public static final String USER_DESCRIPTOR_PRESETS_FILE_NAME = "DescriptorPresets.properties";
     /**
+     * Default descriptor columns shown with their cluster medians in the clustering result tabs; only the ones that were
+     * calculated are shown.
+     */
+    public static final List<String> DISPLAYED_DESCRIPTOR_COLUMNS_DEFAULT = List.of("Molecular Weight", "XLogP", "TPSA");
+    /**
+     * Separator of the displayed descriptor column names in their setting; also terminates the list, so that the setting
+     * is never empty, which a preference does not allow.
+     */
+    public static final String DISPLAYED_DESCRIPTOR_COLUMNS_SEPARATOR = ";";
+    /**
      * Default maximum number of fragment features, 0 means no limit.
      */
     public static final int MAXIMUM_NUMBER_OF_FRAGMENT_FEATURES_DEFAULT = 0;
@@ -716,11 +726,11 @@ public class ClusteringService {
     /**
      * Smallest allowed value for parameters that must lie in the open interval (0,1).
      */
-    private static final double OPEN_INTERVAL_MINIMUM = 1.0e-4;
+    public static final double OPEN_INTERVAL_MINIMUM = 1.0e-4;
     /**
      * Largest allowed value for parameters that must lie in the open interval (0,1).
      */
-    private static final double OPEN_INTERVAL_MAXIMUM = 1.0 - 1.0e-4;
+    public static final double OPEN_INTERVAL_MAXIMUM = 1.0 - 1.0e-4;
     /**
      * Logger of this class.
      */
@@ -878,6 +888,11 @@ public class ClusteringService {
      */
     private final SimpleIDisplayEnumConstantProperty algorithmSetting;
     /**
+     * Names of the descriptor columns shown with their cluster medians in the clustering result tabs, each followed by
+     * the separator; not shown in the settings view, chosen in the result tabs.
+     */
+    private final SimpleStringProperty displayedDescriptorColumnsSetting;
+    /**
      * Vigilance setting.
      */
     private final SimpleDoubleProperty vigilanceSetting;
@@ -1023,6 +1038,10 @@ public class ClusteringService {
         this.settings.addAll(this.correlationSettings);
         this.settings.addAll(this.art2aSettings);
         this.settings.addAll(this.similaritySearchSettings);
+        //persisted with the general settings, but chosen in the result tabs
+        this.displayedDescriptorColumnsSetting = new SimpleStringProperty(this, "Displayed descriptor columns setting",
+                ClusteringService.joinDisplayedDescriptorColumnNames(ClusteringService.DISPLAYED_DESCRIPTOR_COLUMNS_DEFAULT));
+        this.registerSetting(this.settings, this.displayedDescriptorColumnsSetting, "displayedDescriptorColumnsSetting");
         //the meaning of the convergence threshold depends on the kernel, so its default is set when the kernel changes
         this.algorithmSetting.addListener((anObservable, anOldValue, aNewValue) -> {
             if (aNewValue != null && aNewValue != anOldValue) {
@@ -1450,6 +1469,52 @@ public class ClusteringService {
      */
     public void setVigilance(double aVigilance) throws IllegalArgumentException {
         this.vigilanceSetting.set(aVigilance);
+    }
+    //
+    /**
+     * Returns the vigilance setting, e.g. to bind the vigilance field of the clustering bars to it.
+     *
+     * @return vigilance setting
+     */
+    public SimpleDoubleProperty vigilanceProperty() {
+        return this.vigilanceSetting;
+    }
+    //
+    /**
+     * Returns the names of the descriptor columns shown with their cluster medians in the clustering result tabs.
+     *
+     * @return list of descriptor column names in display order
+     */
+    public List<String> getDisplayedDescriptorColumnNames() {
+        List<String> tmpNames = new ArrayList<>();
+        for (String tmpName : this.displayedDescriptorColumnsSetting.get().split(ClusteringService.DISPLAYED_DESCRIPTOR_COLUMNS_SEPARATOR)) {
+            if (!tmpName.isBlank()) {
+                tmpNames.add(tmpName);
+            }
+        }
+        return tmpNames;
+    }
+    //
+    /**
+     * Sets the names of the descriptor columns shown with their cluster medians in the clustering result tabs. Names that
+     * cannot be persisted (characters not allowed in a preference or the separator) are left out.
+     *
+     * @param aNameList descriptor column names in display order
+     * @throws NullPointerException if the list is null
+     */
+    public void setDisplayedDescriptorColumnNames(List<String> aNameList) throws NullPointerException {
+        Objects.requireNonNull(aNameList, "Given name list is null.");
+        this.displayedDescriptorColumnsSetting.set(ClusteringService.joinDisplayedDescriptorColumnNames(aNameList));
+    }
+    //
+    /**
+     * Returns the setting of the displayed descriptor columns, e.g. to update all result tabs when it changes; use
+     * {@link #getDisplayedDescriptorColumnNames()} to read it.
+     *
+     * @return displayed descriptor columns setting
+     */
+    public SimpleStringProperty displayedDescriptorColumnsProperty() {
+        return this.displayedDescriptorColumnsSetting;
     }
     //
     /**
@@ -1892,6 +1957,26 @@ public class ClusteringService {
     //</editor-fold>
     //
     //<editor-fold desc="private static methods" defaultstate="collapsed">
+    /**
+     * Joins the given descriptor column names to the value of the displayed descriptor columns setting; every name is
+     * followed by the separator, names that cannot be persisted are left out.
+     *
+     * @param aNameList descriptor column names
+     * @return setting value, the separator alone for an empty list
+     */
+    private static String joinDisplayedDescriptorColumnNames(List<String> aNameList) {
+        StringBuilder tmpBuilder = new StringBuilder();
+        for (String tmpName : aNameList) {
+            if (tmpName == null || tmpName.isBlank() || tmpName.contains(ClusteringService.DISPLAYED_DESCRIPTOR_COLUMNS_SEPARATOR)
+                    || !SingleTermPreference.isValidContent(tmpName)) {
+                ClusteringService.LOGGER.log(Level.INFO, "Descriptor column {0} cannot be persisted and is not displayed.", tmpName);
+                continue;
+            }
+            tmpBuilder.append(tmpName).append(ClusteringService.DISPLAYED_DESCRIPTOR_COLUMNS_SEPARATOR);
+        }
+        return tmpBuilder.isEmpty() ? ClusteringService.DISPLAYED_DESCRIPTOR_COLUMNS_SEPARATOR : tmpBuilder.toString();
+    }
+    //
     /**
      * Creates the descriptor preset object of a user-defined preset.
      *
