@@ -43,6 +43,7 @@ import de.unijena.cheminf.mortar.message.Message;
 import de.unijena.cheminf.mortar.model.clustering.ClusterProfiler;
 import de.unijena.cheminf.mortar.model.clustering.ClusteringRunResult;
 import de.unijena.cheminf.mortar.model.clustering.DiverseSubsetSelector;
+import de.unijena.cheminf.mortar.model.clustering.FeatureMatrix;
 import de.unijena.cheminf.mortar.model.clustering.TrainTestSplitter;
 import de.unijena.cheminf.mortar.model.clustering.VigilanceScan;
 import de.unijena.cheminf.mortar.model.data.FragmentDataModel;
@@ -152,7 +153,11 @@ public class Exporter {
         /**
          * enum value for the CSV file of a diverse subset selected from a clustering run
          */
-        DIVERSE_SUBSET_CSV_FILE;
+        DIVERSE_SUBSET_CSV_FILE,
+        /**
+         * enum value for the CSV file of a table of calculated descriptor values of molecules
+         */
+        DESCRIPTOR_CSV_FILE;
     }
     //</editor-fold>
     //
@@ -365,6 +370,14 @@ public class Exporter {
             }
             case ExportTypes.ITEM_CSV_FILE -> {
                 tmpFileName = "Items_" + tmpFragmentationName;
+                tmpFile = this.chooseFile(aParentStage, "CSV", FileExtension.CSV.toString(), tmpFileName);
+                if (tmpFile != null && !tmpFile.getName().toLowerCase(Locale.ROOT).endsWith(FileExtension.CSV.extension.toLowerCase(Locale.ROOT))) {
+                    tmpFile = new File(tmpFile.getAbsolutePath() + FileExtension.CSV);
+                }
+                yield tmpFile;
+            }
+            case ExportTypes.DESCRIPTOR_CSV_FILE -> {
+                tmpFileName = "Descriptors_" + tmpFragmentationName;
                 tmpFile = this.chooseFile(aParentStage, "CSV", FileExtension.CSV.toString(), tmpFileName);
                 if (tmpFile != null && !tmpFile.getName().toLowerCase(Locale.ROOT).endsWith(FileExtension.CSV.extension.toLowerCase(Locale.ROOT))) {
                     tmpFile = new File(tmpFile.getAbsolutePath() + FileExtension.CSV);
@@ -1500,6 +1513,30 @@ public class Exporter {
         List<String> tmpFailedFiles = new ArrayList<>(1);
         this.writeClusteringFile(this.getClusteringFilePrefix(aDirectory, aRunResult) + "diverse_subset" + FileExtension.CSV,
                 tmpFailedFiles, aWriter -> ClusteringDataCsvWriter.writeDiverseSubset(aWriter, aRunResult, aSelection, String.valueOf(aSeparator)));
+        return tmpFailedFiles;
+    }
+    //
+    /**
+     * Exports a table of calculated descriptor values: one line per molecule with name, SMILES and one column per
+     * descriptor component (untransformed values, NaN if the calculation failed).
+     *
+     * @param aFile file to export to; method returns null if it is null
+     * @param aMoleculeList molecules in the order of the matrix rows
+     * @param aDescriptorMatrix descriptor values, one row per molecule
+     * @param aSeparator separator char for the CSV file
+     * @return list of the files that could not be written (empty if written) or null if the file is null
+     * @throws NullPointerException if the molecule list or matrix is null
+     */
+    public List<String> exportDescriptorCsvFile(File aFile, List<MoleculeDataModel> aMoleculeList, FeatureMatrix aDescriptorMatrix,
+                                                char aSeparator) throws NullPointerException {
+        Objects.requireNonNull(aMoleculeList, "Given molecule list is null.");
+        Objects.requireNonNull(aDescriptorMatrix, "Given descriptor matrix is null.");
+        if (aFile == null) {
+            return null;
+        }
+        List<String> tmpFailedFiles = new ArrayList<>(1);
+        this.writeClusteringFile(aFile.getAbsolutePath(), tmpFailedFiles, aWriter ->
+                ClusteringDataCsvWriter.writeDescriptorTable(aWriter, aMoleculeList, aDescriptorMatrix, String.valueOf(aSeparator)));
         return tmpFailedFiles;
     }
     //

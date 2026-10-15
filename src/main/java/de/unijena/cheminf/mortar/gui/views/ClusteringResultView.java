@@ -120,6 +120,10 @@ public class ClusteringResultView extends BorderPane {
      * Minimum width of a descriptor column; wider if its header needs more space.
      */
     private static final double DESCRIPTOR_COLUMN_MIN_WIDTH = 70.0;
+    /**
+     * Horizontal margin between a structure image and the border of its column.
+     */
+    private static final double STRUCTURE_CELL_MARGIN = 10.0;
     //</editor-fold>
     //
     //<editor-fold desc="private final variables" defaultstate="collapsed">
@@ -768,6 +772,39 @@ public class ClusteringResultView extends BorderPane {
     }
     //
     /**
+     * Creates a cell that depicts the structure of its molecule when it becomes visible, centred and scaled down to the
+     * width of its column if necessary. The image width of a molecule is set by the other tables of MORTAR and can be
+     * larger than the structure column of the clustering tables.
+     *
+     * @param <S> type of the table rows
+     * @return structure cell
+     */
+    public static <S> TableCell<S, MoleculeDataModel> createStructureCell() {
+        TableCell<S, MoleculeDataModel> tmpCell = new TableCell<>() {
+            @Override
+            protected void updateItem(MoleculeDataModel aMolecule, boolean anIsEmpty) {
+                super.updateItem(aMolecule, anIsEmpty);
+                this.setText(null);
+                if (anIsEmpty || aMolecule == null) {
+                    this.setGraphic(null);
+                    return;
+                }
+                ImageView tmpImageView = aMolecule.getStructure();
+                tmpImageView.setPreserveRatio(true);
+                double tmpImageWidth = tmpImageView.getImage() == null ? 0.0 : tmpImageView.getImage().getWidth();
+                if (this.getTableColumn() != null && tmpImageWidth > 0.0) {
+                    //scaled down to the column width, never enlarged
+                    tmpImageView.fitWidthProperty().bind(Bindings.min(
+                            this.getTableColumn().widthProperty().subtract(ClusteringResultView.STRUCTURE_CELL_MARGIN), tmpImageWidth));
+                }
+                this.setGraphic(tmpImageView);
+            }
+        };
+        tmpCell.setAlignment(Pos.CENTER);
+        return tmpCell;
+    }
+    //
+    /**
      * Gives the column a fixed width that shows the whole given header text, at least the minimum descriptor column width.
      *
      * @param aColumn table column
@@ -816,11 +853,10 @@ public class ClusteringResultView extends BorderPane {
                 new TableColumn<>(Message.get("ClusteringResultView.representativeNameColumn.header"));
         tmpNameColumn.setCellValueFactory(aCellData -> new ReadOnlyStringWrapper(
                 aCellData.getValue().representative() == null ? "" : aCellData.getValue().representative().getName()));
-        TableColumn<ClusteringRunResult.ClusterSummary, ImageView> tmpStructureColumn =
+        TableColumn<ClusteringRunResult.ClusterSummary, MoleculeDataModel> tmpStructureColumn =
                 new TableColumn<>(Message.get("ClusteringResultView.representativeStructureColumn.header"));
-        //structures are depicted lazily when a row becomes visible
-        tmpStructureColumn.setCellValueFactory(aCellData -> new ReadOnlyObjectWrapper<>(
-                aCellData.getValue().representative() == null ? null : aCellData.getValue().representative().getStructure()));
+        tmpStructureColumn.setCellValueFactory(aCellData -> new ReadOnlyObjectWrapper<>(aCellData.getValue().representative()));
+        tmpStructureColumn.setCellFactory(aColumn -> ClusteringResultView.createStructureCell());
         tmpStructureColumn.setSortable(false);
         tmpStructureColumn.setPrefWidth(ClusteringResultView.STRUCTURE_COLUMN_WIDTH);
         tmpRankColumn.setPrefWidth(50.0);

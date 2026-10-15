@@ -67,6 +67,10 @@ public class ClusteringTask extends Task<ClusteringRunResult> {
      * Priority table for the correlation filter.
      */
     private final DescriptorPriorityTable priorityTable;
+    /**
+     * Cache of calculated descriptor values, null to calculate all descriptors.
+     */
+    private final DescriptorMatrixCache descriptorMatrixCache;
     //</editor-fold>
     //
     //<editor-fold desc="Constructor" defaultstate="collapsed">
@@ -80,9 +84,25 @@ public class ClusteringTask extends Task<ClusteringRunResult> {
      */
     public ClusteringTask(List<MoleculeDataModel> aMoleculeList, ClusteringParameters aParameters,
                           DescriptorPriorityTable aPriorityTable) throws NullPointerException {
+        this(aMoleculeList, aParameters, aPriorityTable, null);
+    }
+    //
+    /**
+     * Constructor with a cache of calculated descriptor values, from which cached descriptors are taken instead of being
+     * calculated again.
+     *
+     * @param aMoleculeList molecules to cluster
+     * @param aParameters parameters of the run
+     * @param aPriorityTable priority table for the correlation filter
+     * @param aDescriptorMatrixCache cache of descriptor values, null to calculate all descriptors
+     * @throws NullPointerException if the molecules, parameters or priority table are null
+     */
+    public ClusteringTask(List<MoleculeDataModel> aMoleculeList, ClusteringParameters aParameters,
+                          DescriptorPriorityTable aPriorityTable, DescriptorMatrixCache aDescriptorMatrixCache) throws NullPointerException {
         this.moleculeList = List.copyOf(Objects.requireNonNull(aMoleculeList, "Given molecule list is null."));
         this.parameters = Objects.requireNonNull(aParameters, "Given parameters are null.");
         this.priorityTable = Objects.requireNonNull(aPriorityTable, "Given priority table is null.");
+        this.descriptorMatrixCache = aDescriptorMatrixCache;
     }
     //</editor-fold>
     //
@@ -95,7 +115,7 @@ public class ClusteringTask extends Task<ClusteringRunResult> {
      */
     @Override
     protected ClusteringRunResult call() throws Exception {
-        return ClusteringTask.runPipeline(this.moleculeList, this.parameters, this.priorityTable, this::isCancelled,
+        return ClusteringTask.runPipeline(this.moleculeList, this.parameters, this.priorityTable, this.descriptorMatrixCache, this::isCancelled,
                 (aStep, aMessage) -> {
                     this.updateMessage(aMessage);
                     this.updateProgress(aStep, ClusteringTask.NUMBER_OF_STEPS);
@@ -125,6 +145,34 @@ public class ClusteringTask extends Task<ClusteringRunResult> {
             BooleanSupplier anIsCancelledSupplier,
             BiConsumer<Integer, String> aProgressConsumer)
             throws IllegalArgumentException, IllegalStateException, CancellationException, Exception {
+        return ClusteringTask.runPipeline(aMoleculeList, aParameters, aPriorityTable, null, anIsCancelledSupplier, aProgressConsumer);
+    }
+    //
+    /**
+     * Runs the clustering pipeline like {@link #runPipeline(List, ClusteringParameters, DescriptorPriorityTable,
+     * BooleanSupplier, BiConsumer)}, taking descriptors that are already in the given cache from it instead of
+     * calculating them again; the calculated ones are added to the cache.
+     *
+     * @param aMoleculeList molecules to cluster, at least one
+     * @param aParameters parameters of the run
+     * @param aPriorityTable priority table for the correlation filter
+     * @param aDescriptorMatrixCache cache of descriptor values, null to calculate all descriptors
+     * @param anIsCancelledSupplier returns true if the run should be stopped
+     * @param aProgressConsumer receives the number of the step that starts and a status message
+     * @return result of the run
+     * @throws IllegalArgumentException if no molecule is given
+     * @throws IllegalStateException if fewer than two features remain after filtering
+     * @throws CancellationException if the run was cancelled
+     * @throws Exception if the descriptor calculation or the clustering fails
+     */
+    public static ClusteringRunResult runPipeline(
+            List<MoleculeDataModel> aMoleculeList,
+            ClusteringParameters aParameters,
+            DescriptorPriorityTable aPriorityTable,
+            DescriptorMatrixCache aDescriptorMatrixCache,
+            BooleanSupplier anIsCancelledSupplier,
+            BiConsumer<Integer, String> aProgressConsumer)
+            throws IllegalArgumentException, IllegalStateException, CancellationException, Exception {
         if (aMoleculeList.isEmpty()) {
             throw new IllegalArgumentException("No molecules to cluster.");
         }
@@ -140,10 +188,13 @@ public class ClusteringTask extends Task<ClusteringRunResult> {
         if (DescriptorCalculator.getCircularFingerprintSize() != aParameters.circularFingerprintSize()) {
             DescriptorCalculator.setCircularFingerprintSize(aParameters.circularFingerprintSize());
         }
-        FeatureMatrix tmpDescriptorMatrix = FeatureMatrixBuilder.buildDescriptorMatrix(aMoleculeList,
-                aParameters.descriptors(),
-                ChemUtil.createAromaticityModel(aParameters.electronDonationModelOption(), aParameters.cycleFinderOption()),
-                aParameters.isParallelCalculation());
+        FeatureMatrix tmpDescriptorMatrix = aDescriptorMatrixCache == null
+                ? FeatureMatrixBuilder.buildDescriptorMatrix(aMoleculeList, aParameters.descriptors(),
+                        ChemUtil.createAromaticityModel(aParameters.electronDonationModelOption(), aParameters.cycleFinderOption()),
+                        aParameters.isParallelCalculation())
+                : aDescriptorMatrixCache.getDescriptorMatrix(aMoleculeList, aParameters.descriptors(),
+                        aParameters.electronDonationModelOption(), aParameters.cycleFinderOption(),
+                        aParameters.circularFingerprintSize(), aParameters.isParallelCalculation());
         FeatureMatrix tmpRawMatrix = FeatureMatrix.concatenate(tmpFragmentMatrix, tmpDescriptorMatrix);
         ClusteringTask.checkCancellation(anIsCancelledSupplier);
         //step 3: transformation

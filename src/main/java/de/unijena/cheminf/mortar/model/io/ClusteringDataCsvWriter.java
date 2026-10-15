@@ -142,6 +142,45 @@ public final class ClusteringDataCsvWriter {
     }
     //
     /**
+     * Writes a table of descriptor values with one line per molecule: name, SMILES and one column per descriptor
+     * component of the given matrix.
+     *
+     * @param aWriter writer to write to (is not closed)
+     * @param aMoleculeList molecules in the order of the matrix rows
+     * @param aDescriptorMatrix descriptor values
+     * @param aSeparator column separator, e.g. "," or ";"
+     * @throws NullPointerException if a parameter is null
+     * @throws IllegalArgumentException if the number of molecules does not match the number of rows
+     * @throws IOException if writing fails
+     */
+    public static void writeDescriptorTable(Writer aWriter, List<MoleculeDataModel> aMoleculeList, FeatureMatrix aDescriptorMatrix,
+                                            String aSeparator) throws NullPointerException, IllegalArgumentException, IOException {
+        Objects.requireNonNull(aWriter, "Given writer is null.");
+        Objects.requireNonNull(aMoleculeList, "Given molecule list is null.");
+        Objects.requireNonNull(aDescriptorMatrix, "Given descriptor matrix is null.");
+        Objects.requireNonNull(aSeparator, "Given separator is null.");
+        if (aMoleculeList.size() != aDescriptorMatrix.getRowCount()) {
+            throw new IllegalArgumentException("Number of molecules does not match the number of rows.");
+        }
+        StringBuilder tmpLine = new StringBuilder(ClusteringDataCsvWriter.NAME_COLUMN_HEADER).append(aSeparator).append("SMILES");
+        for (int j = 0; j < aDescriptorMatrix.getColumnCount(); j++) {
+            tmpLine.append(aSeparator).append(ClusteringDataCsvWriter.escape(aDescriptorMatrix.getFeatureName(j), aSeparator));
+        }
+        aWriter.write(tmpLine.append(System.lineSeparator()).toString());
+        for (int i = 0; i < aMoleculeList.size(); i++) {
+            MoleculeDataModel tmpMolecule = aMoleculeList.get(i);
+            tmpLine.setLength(0);
+            tmpLine.append(ClusteringDataCsvWriter.escape(tmpMolecule.getName(), aSeparator)).append(aSeparator)
+                    .append(ClusteringDataCsvWriter.escape(tmpMolecule.getUniqueSmiles(), aSeparator));
+            for (int j = 0; j < aDescriptorMatrix.getColumnCount(); j++) {
+                tmpLine.append(aSeparator).append(aDescriptorMatrix.getValue(i, j));
+            }
+            aWriter.write(tmpLine.append(System.lineSeparator()).toString());
+        }
+        aWriter.flush();
+    }
+    //
+    /**
      * Writes the report of the removed features with the columns feature, reason, kept partner feature and correlation.
      *
      * @param aWriter writer to write to (is not closed)

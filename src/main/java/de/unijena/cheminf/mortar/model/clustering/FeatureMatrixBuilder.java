@@ -301,12 +301,12 @@ public final class FeatureMatrixBuilder {
     }
     //
     /**
-     * Returns the names of the given molecules as array.
+     * Returns the names of the given molecules as array; package-private, also used by {@link DescriptorMatrixCache}.
      *
      * @param aMoleculeList molecules
      * @return array of molecule names
      */
-    private static String[] getRowNames(List<MoleculeDataModel> aMoleculeList) {
+    static String[] getRowNames(List<MoleculeDataModel> aMoleculeList) {
         String[] tmpRowNames = new String[aMoleculeList.size()];
         for (int i = 0; i < aMoleculeList.size(); i++) {
             tmpRowNames[i] = aMoleculeList.get(i).getName();

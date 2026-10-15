@@ -232,6 +232,24 @@ public class FeatureMatrix {
     }
     //
     /**
+     * Returns a new feature matrix that only contains the given rows in the given order.
+     *
+     * @param aRowIndexArray indices of the rows to keep
+     * @return new feature matrix with copied data
+     * @throws NullPointerException if the given array is null
+     */
+    public FeatureMatrix selectRows(int[] aRowIndexArray) throws NullPointerException {
+        Objects.requireNonNull(aRowIndexArray, "Given row index array is null.");
+        float[][] tmpData = new float[aRowIndexArray.length][];
+        String[] tmpRowNames = new String[aRowIndexArray.length];
+        for (int i = 0; i < aRowIndexArray.length; i++) {
+            tmpData[i] = this.data[aRowIndexArray[i]].clone();
+            tmpRowNames[i] = this.rowNames[aRowIndexArray[i]];
+        }
+        return new FeatureMatrix(tmpData, tmpRowNames, this.featureNames.clone(), this.featureTypes.clone(), this.featureGroupNames.clone());
+    }
+    //
+    /**
      * Returns a new feature matrix with the same metadata but the given data, e.g. after a transformation.
      *
      * @param aData new data matrix with the same dimensions as this matrix

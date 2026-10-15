@@ -49,6 +49,7 @@ import javafx.scene.control.Tooltip;
 import javafx.scene.image.Image;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
@@ -68,7 +69,9 @@ import java.util.logging.Logger;
  * the clustering tab (fragment fingerprint, aromaticity, transformation, filter with the correlation settings only shown
  * if the correlation filter is switched on, ART-2A) and the descriptor tab (preset with saving and deleting of own
  * presets, fingerprints with hidden advanced settings, descriptor list). A button at the bottom applies the settings
- * and starts the clustering.
+ * and starts the clustering. In the descriptor calculation mode, only the aromaticity, preset and descriptor sections
+ * are shown (fingerprints are not part of a descriptor table) and the button starts the descriptor calculation; the
+ * selection and the aromaticity model are the same as for the clustering.
  *
  * @author Manuel Schauer
  * @version 1.0.0.0
@@ -119,6 +122,10 @@ public class ClusteringSettingsViewController {
      */
     private final Runnable startClusteringAction;
     /**
+     * True if the view is opened to choose the descriptors of a descriptor calculation instead of the clustering settings.
+     */
+    private final boolean isDescriptorCalculationMode;
+    /**
      * Configuration class to read resource file paths from.
      */
     private final IConfiguration configuration;
@@ -136,7 +143,26 @@ public class ClusteringSettingsViewController {
      */
     public ClusteringSettingsViewController(Stage aStage, ClusteringService aClusteringService, IConfiguration aConfiguration,
                                             Runnable aStartClusteringAction) throws NullPointerException {
-        this.startClusteringAction = aStartClusteringAction;
+        this(aStage, aClusteringService, aConfiguration, aStartClusteringAction, false);
+    }
+    //
+    /**
+     * Constructor, opens the view either with the clustering settings or for the choice of the descriptors of a
+     * descriptor calculation.
+     *
+     * @param aStage main stage
+     * @param aClusteringService clustering service whose settings are displayed
+     * @param aConfiguration configuration instance to read resource file paths from
+     * @param aStartAction action that starts the clustering or the descriptor calculation with the applied settings;
+     *                     null disables the start button
+     * @param anIsDescriptorCalculationMode true to show only the preset and descriptor sections and to start the
+     *                                      descriptor calculation
+     * @throws NullPointerException if the stage, service or configuration is null
+     */
+    public ClusteringSettingsViewController(Stage aStage, ClusteringService aClusteringService, IConfiguration aConfiguration,
+                                            Runnable aStartAction, boolean anIsDescriptorCalculationMode) throws NullPointerException {
+        this.startClusteringAction = aStartAction;
+        this.isDescriptorCalculationMode = anIsDescriptorCalculationMode;
         this.mainStage = Objects.requireNonNull(aStage, "aStage (instance of Stage) is null");
         this.clusteringService = Objects.requireNonNull(aClusteringService, "aClusteringService is null");
         this.configuration = Objects.requireNonNull(aConfiguration, "aConfiguration is null");
@@ -157,7 +183,8 @@ public class ClusteringSettingsViewController {
         this.clusteringSettingsViewStage.setScene(tmpScene);
         this.clusteringSettingsViewStage.initModality(Modality.WINDOW_MODAL);
         this.clusteringSettingsViewStage.initOwner(this.mainStage);
-        this.clusteringSettingsViewStage.setTitle(Message.get("ClusteringSettingsView.title.text"));
+        this.clusteringSettingsViewStage.setTitle(Message.get(this.isDescriptorCalculationMode
+                ? "ClusteringSettingsView.descriptorCalculation.title.text" : "ClusteringSettingsView.title.text"));
         this.clusteringSettingsViewStage.setMinHeight(GuiDefinitions.GUI_MAIN_VIEW_HEIGHT_VALUE);
         this.clusteringSettingsViewStage.setMinWidth(GuiDefinitions.GUI_MAIN_VIEW_WIDTH_VALUE);
         String tmpIconURL = this.getClass().getClassLoader().getResource(
@@ -171,7 +198,9 @@ public class ClusteringSettingsViewController {
         for (Property<?> tmpProperty : this.clusteringService.descriptorSettingsProperties()) {
             this.recentDescriptorSettingsMap.put(tmpProperty.getName(), tmpProperty.getValue());
         }
-        this.settingsView.addTab(Message.get("ClusteringSettingsView.generalTab.text"), this.createGeneralTabContent());
+        if (!this.isDescriptorCalculationMode) {
+            this.settingsView.addTab(Message.get("ClusteringSettingsView.generalTab.text"), this.createGeneralTabContent());
+        }
         this.settingsView.addTab(Message.get("ClusteringSettingsView.descriptorTab.text"), this.createDescriptorTabContent());
         this.addListener();
         this.clusteringSettingsViewStage.show();
@@ -222,13 +251,20 @@ public class ClusteringSettingsViewController {
     }
     //
     /**
-     * Creates the content of the descriptor tab with the sections preset, fingerprints and descriptors.
+     * Creates the content of the descriptor tab with the sections aromaticity model (only in the descriptor calculation
+     * mode, otherwise in the clustering tab), preset, fingerprints (not in the descriptor calculation mode) and
+     * descriptors.
      *
      * @return content of the descriptor tab
      */
     private VBox createDescriptorTabContent() {
         VBox tmpContent = new VBox(GuiDefinitions.GUI_SPACING_VALUE);
         tmpContent.setPadding(new Insets(GuiDefinitions.GUI_INSETS_VALUE));
+        //the aromaticity model is applied before the descriptor calculation, so it is offered here without the clustering tab
+        if (this.isDescriptorCalculationMode) {
+            tmpContent.getChildren().addAll(this.createSectionTitle("ClusteringSettingsView.aromaticitySection.title"),
+                    this.createGrid(this.clusteringService.aromaticitySettingsProperties()));
+        }
         //<editor-fold desc="preset section">
         this.presetComboBox = new DescriptorPresetComboBox(this.clusteringService);
         this.presetComboBox.setPrefWidth(GuiDefinitions.GUI_SETTING_COMBO_BOX_PREF_WIDTH_VALUE * 1.5);
@@ -259,8 +295,10 @@ public class ClusteringSettingsViewController {
         tmpAdvancedCheckBox.setPadding(new Insets(GuiDefinitions.GUI_INSETS_VALUE));
         tmpAdvancedGrid.visibleProperty().bind(tmpAdvancedCheckBox.selectedProperty());
         tmpAdvancedGrid.managedProperty().bind(tmpAdvancedCheckBox.selectedProperty());
-        tmpContent.getChildren().addAll(this.createSectionTitle("ClusteringSettingsView.fingerprintSection.title"),
-                tmpFingerprintGrid, tmpAdvancedCheckBox, tmpAdvancedGrid);
+        if (!this.isDescriptorCalculationMode) {
+            tmpContent.getChildren().addAll(this.createSectionTitle("ClusteringSettingsView.fingerprintSection.title"),
+                    tmpFingerprintGrid, tmpAdvancedCheckBox, tmpAdvancedGrid);
+        }
         //</editor-fold>
         //<editor-fold desc="descriptor section">
         GridPane tmpDescriptorGrid = this.createGrid(this.clusteringService.descriptorSelectionSettingsProperties());
@@ -326,9 +364,12 @@ public class ClusteringSettingsViewController {
         //close request discards the changes, like the cancel button
         this.clusteringSettingsViewStage.setOnCloseRequest(event -> this.restoreRecentSettings());
         this.settingsView.getApplyButton().setOnAction(event -> this.clusteringSettingsViewStage.close());
-        //applies the settings and starts the clustering
-        Button tmpStartButton = new Button(Message.get("ClusteringSettingsView.startClusteringButton.text"));
-        tmpStartButton.setTooltip(GuiUtil.createTooltip(Message.get("ClusteringSettingsView.startClusteringButton.tooltip")));
+        //applies the settings and starts the clustering or the descriptor calculation
+        Button tmpStartButton = new Button(Message.get(this.isDescriptorCalculationMode
+                ? "ClusteringSettingsView.calculateDescriptorsButton.text" : "ClusteringSettingsView.startClusteringButton.text"));
+        tmpStartButton.setTooltip(GuiUtil.createTooltip(Message.get(this.isDescriptorCalculationMode
+                ? "ClusteringSettingsView.calculateDescriptorsButton.tooltip" : "ClusteringSettingsView.startClusteringButton.tooltip")));
+        tmpStartButton.setMinWidth(Region.USE_PREF_SIZE);
         tmpStartButton.setDisable(this.startClusteringAction == null);
         tmpStartButton.setOnAction(event -> {
             this.clusteringSettingsViewStage.close();
@@ -341,7 +382,10 @@ public class ClusteringSettingsViewController {
         });
         //the default button restores the defaults of the currently selected tab
         this.settingsView.getDefaultButton().setOnAction(event -> {
-            if (this.settingsView.getSelectionModel().getSelectedIndex() == 0) {
+            if (this.isDescriptorCalculationMode) {
+                this.clusteringService.restoreDefaultAromaticitySettings();
+                this.clusteringService.restoreDefaultDescriptorSelection();
+            } else if (this.settingsView.getSelectionModel().getSelectedIndex() == 0) {
                 this.clusteringService.restoreDefaultSettings();
             } else {
                 this.clusteringService.restoreDefaultDescriptorSelection();

@@ -82,6 +82,34 @@ class ClusteringDataCsvWriterTest {
     }
     //
     /**
+     * Tests the descriptor table: name, SMILES and one column per descriptor, also written by the Exporter to a file.
+     *
+     * @param aTempDirectory temporary directory provided by JUnit
+     * @throws Exception if writing fails
+     */
+    @Test
+    void testWriteDescriptorTable(@TempDir Path aTempDirectory) throws Exception {
+        Locale.setDefault(Locale.of("en", "GB"));
+        FeatureMatrix tmpMatrix = new FeatureMatrix(new float[][] {{1.5f, Float.NaN}, {2.0f, 3.0f}},
+                new String[] {"m1", "m2"}, new String[] {"TPSA", "BCUT [1]"},
+                new FeatureType[] {FeatureType.CONTINUOUS, FeatureType.CONTINUOUS}, new String[] {"TPSA", "BCUT"});
+        List<MoleculeDataModel> tmpMolecules = List.of(new MoleculeDataModel("CO", "m1", new HashMap<>()),
+                new MoleculeDataModel("CCO", "m2", new HashMap<>()));
+        StringWriter tmpWriter = new StringWriter();
+        ClusteringDataCsvWriter.writeDescriptorTable(tmpWriter, tmpMolecules, tmpMatrix, ";");
+        String[] tmpLines = tmpWriter.toString().split(System.lineSeparator());
+        Assertions.assertEquals("Name;SMILES;TPSA;BCUT [1]", tmpLines[0]);
+        Assertions.assertTrue(tmpLines[1].startsWith("m1;") && tmpLines[1].endsWith(";1.5;NaN"), tmpLines[1]);
+        Assertions.assertEquals(3, tmpLines.length);
+        Assertions.assertThrows(IllegalArgumentException.class, () ->
+                ClusteringDataCsvWriter.writeDescriptorTable(new StringWriter(), tmpMolecules.subList(0, 1), tmpMatrix, ";"));
+        File tmpFile = aTempDirectory.resolve("Descriptors_1.csv").toFile();
+        List<String> tmpFailed = new Exporter(new SettingsContainer()).exportDescriptorCsvFile(tmpFile, tmpMolecules, tmpMatrix, ',');
+        Assertions.assertTrue(tmpFailed.isEmpty());
+        Assertions.assertEquals("Name,SMILES,TPSA,BCUT [1]", Files.readAllLines(tmpFile.toPath()).getFirst());
+    }
+    //
+    /**
      * Tests the written report of removed features.
      *
      * @throws Exception if writing fails

@@ -31,6 +31,7 @@ import de.unijena.cheminf.mortar.model.data.MoleculeDataModel;
 import de.unijena.cheminf.mortar.model.descriptor.Descriptor;
 import de.unijena.cheminf.mortar.model.fragmentation.algorithm.IMoleculeFragmenter;
 import de.unijena.cheminf.mortar.model.util.BasicDefinitions;
+import de.unijena.cheminf.mortar.model.util.ChemUtil;
 import de.unijena.cheminf.mortar.model.util.FileUtil;
 import de.unijena.cheminf.mortar.model.util.IDisplayEnum;
 import de.unijena.cheminf.mortar.model.util.SimpleIDisplayEnumConstantProperty;
@@ -46,6 +47,8 @@ import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 
+import org.openscience.cdk.aromaticity.Aromaticity;
+
 import java.io.File;
 import java.io.IOException;
 import java.io.Reader;
@@ -54,6 +57,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.EnumSet;
@@ -893,6 +897,11 @@ public class ClusteringService {
      */
     private final SimpleStringProperty displayedDescriptorColumnsSetting;
     /**
+     * Cache of calculated descriptor values, shared by the clusterings, vigilance scans and descriptor calculations, so
+     * that descriptors are not calculated twice for the same molecules.
+     */
+    private final DescriptorMatrixCache descriptorMatrixCache = new DescriptorMatrixCache();
+    /**
      * Vigilance setting.
      */
     private final SimpleDoubleProperty vigilanceSetting;
@@ -1181,6 +1190,27 @@ public class ClusteringService {
     }
     //
     /**
+     * Returns the currently selected descriptors without the fingerprints, e.g. for a table of descriptor values in which
+     * fingerprint bits would only add hundreds of bit columns.
+     *
+     * @return selected descriptors that are no fingerprints, in enum order, may be empty
+     */
+    public Descriptor[] getSelectedNonFingerprintDescriptors() {
+        return Arrays.stream(this.getSelectedDescriptors()).filter(aDescriptor -> !aDescriptor.isFingerprint()).toArray(Descriptor[]::new);
+    }
+    //
+    /**
+     * Creates the aromaticity model of the current aromaticity settings, which is applied to the molecules before the
+     * descriptor calculation.
+     *
+     * @return aromaticity model
+     */
+    public Aromaticity createAromaticityModel() {
+        return ChemUtil.createAromaticityModel((IMoleculeFragmenter.ElectronDonationModelOption) this.electronDonationModelSetting.get(),
+                (IMoleculeFragmenter.CycleFinderOption) this.cycleFinderSetting.get());
+    }
+    //
+    /**
      * Selects or deselects the given descriptor; a deviation from the current preset switches it to custom.
      *
      * @param aDescriptor descriptor, must not be a fingerprint
@@ -1197,14 +1227,22 @@ public class ClusteringService {
     }
     //
     /**
+     * Sets the aromaticity settings (electron donation model and cycle finder) to MORTAR's standard model, e.g. for the
+     * default button of the descriptor calculation view.
+     */
+    public void restoreDefaultAromaticitySettings() {
+        this.electronDonationModelSetting.set(ClusteringService.ELECTRON_DONATION_MODEL_OPTION_DEFAULT);
+        this.cycleFinderSetting.set(ClusteringService.CYCLE_FINDER_OPTION_DEFAULT);
+    }
+    //
+    /**
      * Restores the default values of the general clustering settings.
      */
     public void restoreDefaultSettings() {
         this.fragmentFingerprintTypeSetting.set(ClusteringService.FRAGMENT_FINGERPRINT_TYPE_OPTION_DEFAULT);
         this.minimumFragmentMoleculeFrequencySetting.set(ClusteringService.MINIMUM_FRAGMENT_MOLECULE_FREQUENCY_DEFAULT);
         this.maximumNumberOfFragmentFeaturesSetting.set(ClusteringService.MAXIMUM_NUMBER_OF_FRAGMENT_FEATURES_DEFAULT);
-        this.electronDonationModelSetting.set(ClusteringService.ELECTRON_DONATION_MODEL_OPTION_DEFAULT);
-        this.cycleFinderSetting.set(ClusteringService.CYCLE_FINDER_OPTION_DEFAULT);
+        this.restoreDefaultAromaticitySettings();
         this.countTransformationSetting.set(ClusteringService.COUNT_TRANSFORMATION_OPTION_DEFAULT);
         this.continuousTransformationSetting.set(ClusteringService.CONTINUOUS_TRANSFORMATION_OPTION_DEFAULT);
         this.maximumNaNFractionSetting.set(ClusteringService.MAXIMUM_NAN_FRACTION_DEFAULT);
@@ -1632,8 +1670,87 @@ public class ClusteringService {
      */
     public ClusteringTask createClusteringTask(List<MoleculeDataModel> aMoleculeList, String aFragmentationName,
                                                boolean anIsParallelCalculation) throws NullPointerException, IOException {
-        return new ClusteringTask(aMoleculeList, this.createClusteringParameters(aFragmentationName, anIsParallelCalculation),
-                this.getPriorityTable());
+        return this.createClusteringTask(aMoleculeList, this.createClusteringParameters(aFragmentationName, anIsParallelCalculation));
+    }
+    //
+    /**
+     * Creates a clustering task for the given molecules with the given parameters; descriptors already calculated for
+     * these molecules (in the descriptor cache) are not calculated again.
+     *
+     * @param aMoleculeList molecules to cluster
+     * @param aParameters parameters of the run
+     * @return new clustering task, not started
+     * @throws NullPointerException if a parameter is null
+     * @throws IOException if the priority table cannot be loaded
+     */
+    public ClusteringTask createClusteringTask(List<MoleculeDataModel> aMoleculeList, ClusteringParameters aParameters)
+            throws NullPointerException, IOException {
+        return new ClusteringTask(aMoleculeList, aParameters, this.getPriorityTable(), this.descriptorMatrixCache);
+    }
+    //
+    /**
+     * Creates the clustering parameters of the current settings, but with the given descriptors instead of the selected
+     * ones (e.g. the descriptors of a descriptor tab); the selected fingerprints are added.
+     *
+     * @param aFragmentationName name of the fragmentation whose fragments form the fragment fingerprint
+     * @param aNonFingerprintDescriptors descriptors to use instead of the selected ones, fingerprints are ignored
+     * @param anIsParallelCalculation true: descriptor calculation and winner search are parallelized
+     * @return clustering parameters
+     * @throws NullPointerException if a parameter is null
+     */
+    public ClusteringParameters createClusteringParameters(String aFragmentationName, Descriptor[] aNonFingerprintDescriptors,
+                                                           boolean anIsParallelCalculation) throws NullPointerException {
+        Objects.requireNonNull(aNonFingerprintDescriptors, "Given descriptor array is null.");
+        ClusteringParameters tmpParameters = this.createClusteringParameters(aFragmentationName, anIsParallelCalculation);
+        //the given descriptors in enum order, as in the selection, followed by the selected fingerprints
+        List<Descriptor> tmpDescriptors = new ArrayList<>(Arrays.stream(aNonFingerprintDescriptors)
+                .filter(aDescriptor -> !aDescriptor.isFingerprint()).distinct().sorted().toList());
+        Arrays.stream(tmpParameters.descriptors()).filter(Descriptor::isFingerprint).forEach(tmpDescriptors::add);
+        return new ClusteringParameters(tmpParameters.fragmentationName(), tmpParameters.isCountFingerprint(),
+                tmpParameters.minimumFragmentMoleculeFrequency(), tmpParameters.maximumNumberOfFragmentFeatures(),
+                tmpDescriptors.toArray(new Descriptor[0]), tmpParameters.electronDonationModelOption(), tmpParameters.cycleFinderOption(),
+                tmpParameters.countTransformation(), tmpParameters.continuousTransformation(), tmpParameters.maximumNaNFraction(),
+                tmpParameters.isCorrelationFilterEnabled(), tmpParameters.correlationThreshold(), tmpParameters.correlationMethod(),
+                tmpParameters.algorithm(), tmpParameters.vigilance(), tmpParameters.maximumNumberOfClusters(),
+                tmpParameters.maximumNumberOfEpochs(), tmpParameters.convergenceThreshold(), tmpParameters.learningParameter(),
+                tmpParameters.offsetForContrastEnhancement(), tmpParameters.randomSeed(), tmpParameters.circularFingerprintSize(),
+                tmpParameters.isParallelCalculation());
+    }
+    //
+    /**
+     * Calculates the given descriptors of the given molecules with the aromaticity model of the current settings; cached
+     * values are reused and the calculated ones are added to the descriptor cache, so that a following clustering with
+     * these descriptors does not calculate them again.
+     *
+     * @param aMoleculeList molecules (rows of the matrix)
+     * @param aDescriptorArray descriptors to calculate, without fingerprints
+     * @param anIsParallelCalculation true: molecules are processed in parallel
+     * @return descriptor matrix with the columns in the order of the given descriptors
+     * @throws NullPointerException if a parameter is null
+     * @throws InterruptedException if the calculation is interrupted
+     */
+    public FeatureMatrix calculateDescriptorMatrix(List<MoleculeDataModel> aMoleculeList, Descriptor[] aDescriptorArray,
+                                                   boolean anIsParallelCalculation) throws NullPointerException, InterruptedException {
+        return this.descriptorMatrixCache.getDescriptorMatrix(aMoleculeList, aDescriptorArray,
+                (IMoleculeFragmenter.ElectronDonationModelOption) this.electronDonationModelSetting.get(),
+                (IMoleculeFragmenter.CycleFinderOption) this.cycleFinderSetting.get(),
+                this.circularFingerprintSizeSetting.get(), anIsParallelCalculation);
+    }
+    //
+    /**
+     * Returns the cache of calculated descriptor values, e.g. to pass it to a pipeline run of a vigilance scan.
+     *
+     * @return descriptor cache
+     */
+    public DescriptorMatrixCache getDescriptorMatrixCache() {
+        return this.descriptorMatrixCache;
+    }
+    //
+    /**
+     * Discards all cached descriptor values, e.g. when new molecules are imported.
+     */
+    public void clearDescriptorMatrixCache() {
+        this.descriptorMatrixCache.clear();
     }
     //
     /**

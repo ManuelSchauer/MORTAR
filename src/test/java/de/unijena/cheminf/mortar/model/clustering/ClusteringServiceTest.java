@@ -241,6 +241,26 @@ class ClusteringServiceTest {
     }
     //
     /**
+     * Tests that the descriptors for the descriptor table contain no fingerprints, also if fingerprints are selected.
+     */
+    @Test
+    void testSelectedNonFingerprintDescriptors() {
+        ClusteringService tmpService = new ClusteringService();
+        tmpService.applyDescriptorPreset(ClusteringService.DescriptorPresetOption.NONE);
+        tmpService.setDescriptorSelected(Descriptor.TPSA, true);
+        tmpService.setDescriptorSelected(Descriptor.X_LOG_P, true);
+        for (Property<?> tmpSetting : tmpService.fingerprintSettingsProperties()) {
+            if (tmpSetting instanceof javafx.beans.property.SimpleBooleanProperty tmpBooleanSetting) {
+                tmpBooleanSetting.set(true);
+            }
+        }
+        Assertions.assertTrue(java.util.Arrays.stream(tmpService.getSelectedDescriptors()).anyMatch(Descriptor::isFingerprint));
+        Assertions.assertEquals(java.util.Set.of(Descriptor.TPSA, Descriptor.X_LOG_P),
+                java.util.Set.of(tmpService.getSelectedNonFingerprintDescriptors()));
+        Assertions.assertNotNull(tmpService.createAromaticityModel());
+    }
+    //
+    /**
      * Tests the displayed descriptor columns of the result tabs: default, names that cannot be persisted are left out,
      * the choice survives a reload, also an empty choice.
      *

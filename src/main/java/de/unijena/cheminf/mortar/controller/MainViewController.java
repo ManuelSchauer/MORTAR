@@ -33,6 +33,7 @@ import de.unijena.cheminf.mortar.gui.controls.VigilanceSpinner;
 import de.unijena.cheminf.mortar.gui.util.GuiDefinitions;
 import de.unijena.cheminf.mortar.gui.util.GuiUtil;
 import de.unijena.cheminf.mortar.gui.views.ClusteringResultView;
+import de.unijena.cheminf.mortar.gui.views.DescriptorTableView;
 import de.unijena.cheminf.mortar.gui.views.FragmentsDataTableView;
 import de.unijena.cheminf.mortar.gui.views.IDataTableView;
 import de.unijena.cheminf.mortar.gui.views.ItemizationDataTableView;
@@ -47,12 +48,14 @@ import de.unijena.cheminf.mortar.model.clustering.ClusteringService;
 import de.unijena.cheminf.mortar.model.clustering.ClusteringTask;
 import de.unijena.cheminf.mortar.model.clustering.DescriptorPriorityTable;
 import de.unijena.cheminf.mortar.model.clustering.DiverseSubsetSelector;
+import de.unijena.cheminf.mortar.model.clustering.FeatureMatrix;
 import de.unijena.cheminf.mortar.model.clustering.FeatureMatrixBuilder;
 import de.unijena.cheminf.mortar.model.clustering.SimilaritySearch;
 import de.unijena.cheminf.mortar.model.clustering.TrainTestSplitter;
 import de.unijena.cheminf.mortar.model.clustering.VigilanceScan;
 import de.unijena.cheminf.mortar.model.data.FragmentDataModel;
 import de.unijena.cheminf.mortar.model.data.MoleculeDataModel;
+import de.unijena.cheminf.mortar.model.descriptor.Descriptor;
 import de.unijena.cheminf.mortar.model.fragmentation.FragmentationService;
 import de.unijena.cheminf.mortar.model.fragmentation.algorithm.IMoleculeFragmenter;
 import de.unijena.cheminf.mortar.model.io.ChemFileTypes;
@@ -245,6 +248,14 @@ public class MainViewController {
      * Task of a running vigilance scan, cancelled by the cancel controls of the clustering.
      */
     private Task<List<VigilanceScan.ScanEntry>> vigilanceScanTask;
+    /**
+     * Task of a running descriptor calculation, cancelled by the cancel controls of the clustering.
+     */
+    private Task<FeatureMatrix> descriptorCalculationTask;
+    /**
+     * Number of descriptor tabs created so far, used to give every tab a unique title.
+     */
+    private int descriptorTabCounter;
     /**
      * Thread of a running clustering.
      */
@@ -1411,6 +1422,21 @@ public class MainViewController {
      *                           or items tab (or the last fragmentation if another tab is selected)
      */
     private void startClustering(String aFragmentationName) {
+        this.startClustering(aFragmentationName, null, null);
+    }
+    //
+    /**
+     * Starts the clustering of the given molecules by the fragments of the given fragmentation and the given
+     * descriptors, e.g. those of a descriptor tab; descriptors already calculated for these molecules are taken from the
+     * descriptor cache. The result is shown in a new tab.
+     *
+     * @param aFragmentationName name of the fragmentation to use; null to use the fragmentation of the selected fragments
+     *                           or items tab (or the last fragmentation if another tab is selected)
+     * @param aMoleculeList molecules to cluster; null for the selected molecules
+     * @param aNonFingerprintDescriptors descriptors to use instead of the selected ones (the selected fingerprints are
+     *                                   added); null for the selected descriptors
+     */
+    private void startClustering(String aFragmentationName, List<MoleculeDataModel> aMoleculeList, Descriptor[] aNonFingerprintDescriptors) {
         if (this.isClusteringRunningProperty.get()) {
             return;
         }
@@ -1418,13 +1444,15 @@ public class MainViewController {
         if (tmpFragmentationName == null) {
             return;
         }
-        List<MoleculeDataModel> tmpSelectedMolecules = this.getMoleculesToCluster();
+        List<MoleculeDataModel> tmpSelectedMolecules = aMoleculeList == null ? this.getMoleculesToCluster() : aMoleculeList;
         if (tmpSelectedMolecules == null) {
             return;
         }
+        boolean tmpIsParallel = this.settingsContainer.getNumberOfTasksForFragmentationSetting() > 1;
         try {
-            this.clusteringTask = this.clusteringService.createClusteringTask(tmpSelectedMolecules, tmpFragmentationName,
-                    this.settingsContainer.getNumberOfTasksForFragmentationSetting() > 1);
+            this.clusteringTask = this.clusteringService.createClusteringTask(tmpSelectedMolecules, aNonFingerprintDescriptors == null
+                    ? this.clusteringService.createClusteringParameters(tmpFragmentationName, tmpIsParallel)
+                    : this.clusteringService.createClusteringParameters(tmpFragmentationName, aNonFingerprintDescriptors, tmpIsParallel));
         } catch (IOException anException) {
             MainViewController.LOGGER.log(Level.SEVERE, anException.toString(), anException);
             GuiUtil.guiExceptionAlert(Message.get("MainViewController.ClusteringError.Title"),
@@ -1514,6 +1542,9 @@ public class MainViewController {
         if (this.vigilanceScanTask != null) {
             this.vigilanceScanTask.cancel(true);
         }
+        if (this.descriptorCalculationTask != null) {
+            this.descriptorCalculationTask.cancel(true);
+        }
         this.setClusteringRunningState(false);
     }
     //
@@ -1563,7 +1594,8 @@ public class MainViewController {
     /**
      * Creates a clustering bar that clusters with the given fragmentation: descriptor preset, settings button,
      * vigilance, start button, vigilance scan button, button to show the last scan again (only visible if there is
-     * one) and cancel button.
+     * one) and cancel button; in the fragments and items tabs also a button on the right to calculate the descriptors
+     * of the molecules without clustering.
      *
      * @param aFragmentationName name of the fragmentation to cluster with
      * @param aBaseRunResult clustering result whose features a vigilance scan reuses (in a clustering result tab); null
@@ -1626,6 +1658,18 @@ public class MainViewController {
         tmpCancelButton.setOnAction(anEvent -> this.interruptClustering());
         tmpClusteringBar.getChildren().addAll(tmpPresetLabel, tmpPresetComboBox, tmpSettingsButton, tmpVigilanceLabel,
                 tmpVigilanceSpinner, tmpStartButton, tmpScanButton, tmpShowScanButton, tmpCancelButton);
+        //in the fragments and items tabs, the descriptors of the molecules can be calculated without clustering, on the right
+        if (aBaseRunResult == null) {
+            Region tmpSpacer = new Region();
+            HBox.setHgrow(tmpSpacer, Priority.ALWAYS);
+            Button tmpCalculateDescriptorsButton = new Button(Message.get("MainTabPane.clusteringBar.calculateDescriptorsButton.text"));
+            tmpCalculateDescriptorsButton.setMinWidth(Region.USE_PREF_SIZE);
+            tmpCalculateDescriptorsButton.setPrefHeight(GuiDefinitions.GUI_BUTTON_HEIGHT_VALUE);
+            tmpCalculateDescriptorsButton.setTooltip(GuiUtil.createTooltip(Message.get("MainTabPane.clusteringBar.calculateDescriptorsButton.tooltip")));
+            tmpCalculateDescriptorsButton.disableProperty().bind(this.isClusteringRunningProperty);
+            tmpCalculateDescriptorsButton.setOnAction(anEvent -> this.openDescriptorCalculationView(aFragmentationName));
+            tmpClusteringBar.getChildren().addAll(tmpSpacer, tmpCalculateDescriptorsButton);
+        }
         return tmpClusteringBar;
     }
     //
@@ -1917,6 +1961,121 @@ public class MainViewController {
     }
     //
     /**
+     * Opens the descriptor tab of the clustering settings for the choice of the descriptors (presets and single
+     * descriptors, the same selection as for the clustering); its button starts the descriptor calculation.
+     *
+     * @param aFragmentationName fragmentation of the tab the calculation was started from, used by the start clustering
+     *                           button of the descriptor tab
+     */
+    private void openDescriptorCalculationView(String aFragmentationName) {
+        new ClusteringSettingsViewController(this.primaryStage, this.clusteringService, this.configuration,
+                this.isClusteringRunningProperty.get() ? null : () -> this.startDescriptorCalculation(aFragmentationName), true);
+    }
+    //
+    /**
+     * Calculates the selected descriptors (without fingerprints) of the selected molecules in the background, with the
+     * aromaticity model of the clustering settings, and shows them in a new descriptor tab. The values are cached, so that
+     * a following clustering of these molecules does not calculate them again.
+     *
+     * @param aFragmentationName fragmentation of the tab the calculation was started from, used by the start clustering
+     *                           button of the descriptor tab
+     */
+    private void startDescriptorCalculation(String aFragmentationName) {
+        if (this.isClusteringRunningProperty.get()) {
+            return;
+        }
+        List<MoleculeDataModel> tmpMolecules = this.getMoleculesToCluster();
+        if (tmpMolecules == null) {
+            return;
+        }
+        Descriptor[] tmpDescriptors = this.clusteringService.getSelectedNonFingerprintDescriptors();
+        if (tmpDescriptors.length == 0) {
+            GuiUtil.guiMessageAlert(Alert.AlertType.INFORMATION, Message.get("DescriptorTableView.title.text"),
+                    Message.get("DescriptorTableView.noDescriptors.header"), null);
+            return;
+        }
+        boolean tmpIsParallel = this.settingsContainer.getNumberOfTasksForFragmentationSetting() > 1;
+        Task<FeatureMatrix> tmpTask = new Task<>() {
+            @Override
+            protected FeatureMatrix call() throws Exception {
+                //cached values are reused and the calculated ones are cached for a following clustering
+                return MainViewController.this.clusteringService.calculateDescriptorMatrix(tmpMolecules, tmpDescriptors, tmpIsParallel);
+            }
+        };
+        //the calculation uses the clustering controls (start disabled, cancel visible) like a clustering
+        Thread tmpThread = new Thread(tmpTask);
+        tmpThread.setName(ThreadType.CLUSTERING_THREAD.getThreadName());
+        tmpThread.setUncaughtExceptionHandler(LogUtil.getUncaughtExceptionHandler());
+        tmpThread.setDaemon(true);
+        tmpTask.setOnSucceeded(event -> {
+            this.updateStatusBar(tmpThread, Message.get("Status.finished"));
+            this.setClusteringRunningState(false);
+            this.addDescriptorTab(aFragmentationName, tmpMolecules, tmpDescriptors, tmpTask.getValue());
+        });
+        tmpTask.setOnCancelled(event -> {
+            this.updateStatusBar(tmpThread, Message.get("Status.canceled"));
+            this.setClusteringRunningState(false);
+        });
+        tmpTask.setOnFailed(event -> {
+            this.updateStatusBar(tmpThread, Message.get("Status.failed"));
+            this.setClusteringRunningState(false);
+            Throwable tmpCause = event.getSource().getException();
+            MainViewController.LOGGER.log(Level.SEVERE, tmpCause.toString(), tmpCause);
+            GuiUtil.guiExceptionAlert(Message.get("DescriptorTableView.title.text"), Message.get("DescriptorTableView.error.header"),
+                    tmpCause.getMessage(), tmpCause instanceof Exception tmpException ? tmpException : new Exception(tmpCause));
+        });
+        this.descriptorCalculationTask = tmpTask;
+        this.setClusteringRunningState(true);
+        this.updateStatusBar(tmpThread, Message.get("Status.descriptorCalculation"));
+        tmpThread.start();
+    }
+    //
+    /**
+     * Adds a tab that shows the given descriptor values of the given molecules and connects its export button. Its
+     * clustering controls (vigilance and start button) cluster exactly these molecules with exactly these descriptors
+     * and the given fragmentation; the descriptors are taken from the cache and not calculated again.
+     *
+     * @param aFragmentationName fragmentation to cluster with
+     * @param aMoleculeList molecules in the order of the matrix rows
+     * @param aDescriptors calculated descriptors
+     * @param aDescriptorMatrix descriptor values, one row per molecule
+     */
+    private void addDescriptorTab(String aFragmentationName, List<MoleculeDataModel> aMoleculeList, Descriptor[] aDescriptors,
+                                  FeatureMatrix aDescriptorMatrix) {
+        this.descriptorTabCounter++;
+        int tmpTabNumber = this.descriptorTabCounter;
+        String tmpTabName = Message.get("DescriptorTableView.tabTitle") + " " + tmpTabNumber;
+        DescriptorTableView tmpView = new DescriptorTableView(aMoleculeList, aDescriptorMatrix);
+        //clustering of exactly these molecules and descriptors
+        Button tmpStartButton = new Button(Message.get("DescriptorTableView.startClusteringButton.text"));
+        tmpStartButton.setMinWidth(Region.USE_PREF_SIZE);
+        tmpStartButton.setTooltip(GuiUtil.createTooltip(String.format(Message.get("DescriptorTableView.startClusteringButton.tooltip"),
+                aFragmentationName)));
+        tmpStartButton.disableProperty().bind(this.isClusteringRunningProperty);
+        tmpStartButton.setOnAction(event -> this.startClustering(aFragmentationName, aMoleculeList, aDescriptors));
+        HBox tmpClusteringBox = new HBox(GuiDefinitions.GUI_SPACING_VALUE,
+                new Label(Message.get("MainTabPane.clusteringBar.vigilanceLabel.text")), new VigilanceSpinner(this.clusteringService),
+                tmpStartButton);
+        tmpClusteringBox.setAlignment(Pos.CENTER_LEFT);
+        tmpView.setClusteringControls(tmpClusteringBox);
+        Tab tmpTab = new Tab(tmpTabName);
+        tmpTab.setId(TabNames.DESCRIPTORS.toString());
+        tmpTab.setClosable(true);
+        tmpTab.setContent(tmpView);
+        tmpView.getExportButton().setOnAction(event -> {
+            Exporter tmpExporter = new Exporter(this.settingsContainer);
+            File tmpFile = tmpExporter.openFileChooserForExportFileOrDir(this.primaryStage, Exporter.ExportTypes.DESCRIPTOR_CSV_FILE,
+                    Integer.toString(tmpTabNumber));
+            if (tmpFile != null) {
+                this.showExportOutcome(tmpExporter.exportDescriptorCsvFile(tmpFile, tmpView.getMoleculeList(), tmpView.getDescriptorMatrix(),
+                        this.settingsContainer.getCsvExportSeparatorSettingCharacter()));
+            }
+        });
+        this.mainTabPane.getTabs().add(tmpTab);
+        this.mainTabPane.getSelectionModel().select(tmpTab);
+    }
+    //
+    /**
      * Asks for the vigilance range and starts a vigilance scan in the background; the result is shown in a new window.
      * With a given clustering result, its features and parameters are reused and only the clustering is repeated. Without
      * one (scan before the first clustering), the features of the selected molecules are calculated once with the
@@ -1995,6 +2154,7 @@ public class MainViewController {
                 if (tmpBaseRunResult[0] == null) {
                     //features once, clustered with the current vigilance; only the clustering is repeated in the scan
                     tmpBaseRunResult[0] = ClusteringTask.runPipeline(tmpFinalMolecules, tmpFinalParameters, tmpFinalPriorityTable,
+                            MainViewController.this.clusteringService.getDescriptorMatrixCache(),
                             this::isCancelled, (aStep, aMessage) -> this.updateMessage(aMessage));
                 }
                 return VigilanceScan.scan(tmpBaseRunResult[0], tmpVigilanceValues, this::isCancelled,
@@ -2409,16 +2569,9 @@ public class MainViewController {
         tmpClusterColumn.setPrefWidth(70.0);
         TableColumn<MoleculeDataModel, MoleculeDataModel> tmpStructureColumn = new TableColumn<>(Message.get("ClusteringResultView.descriptorValues.structureColumn.header"));
         tmpStructureColumn.setCellValueFactory(aCellData -> new ReadOnlyObjectWrapper<>(aCellData.getValue()));
-        //the structure of the molecule of the row is depicted by the cell itself when it becomes visible, so that every
-        // cell has its own image
-        tmpStructureColumn.setCellFactory(aColumn -> new TableCell<>() {
-            @Override
-            protected void updateItem(MoleculeDataModel aMolecule, boolean anIsEmpty) {
-                super.updateItem(aMolecule, anIsEmpty);
-                this.setText(null);
-                this.setGraphic(anIsEmpty || aMolecule == null ? null : aMolecule.getStructure());
-            }
-        });
+        //the structure of the molecule of the row is depicted by the cell itself when it becomes visible, centred and
+        // fitted to the column
+        tmpStructureColumn.setCellFactory(aColumn -> ClusteringResultView.createStructureCell());
         tmpStructureColumn.setSortable(false);
         tmpStructureColumn.setPrefWidth(ClusteringResultView.STRUCTURE_COLUMN_WIDTH);
         tmpTableView.getColumns().add(tmpNameColumn);
@@ -2920,6 +3073,8 @@ public class MainViewController {
         this.vigilanceScanStageMap.values().forEach(Stage::close);
         this.vigilanceScanStageMap.clear();
         this.similaritySearchMap.clear();
+        //the cached descriptor values belong to the molecules that are discarded now
+        this.clusteringService.clearDescriptorMatrixCache();
         this.lastClusteringRunResult = null;
         this.moleculeDataModelList.clear();
         this.mapOfFragmentDataModelLists.clear();
