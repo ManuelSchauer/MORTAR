@@ -43,5 +43,13 @@ public enum TabNames {
     /**
      * enum value for items tab.
      */
-    ITEMIZATION;
+    ITEMIZATION,
+    /**
+     * Tab name for a clustering result tab.
+     */
+    CLUSTERING,
+    /**
+     * Tab name for a tab with calculated descriptor values of molecules.
+     */
+    DESCRIPTORS;
 }

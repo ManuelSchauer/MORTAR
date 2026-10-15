@@ -131,6 +131,21 @@ public class GridTabForTableView extends Tab {
     }
     //
     /**
+     * Adds the given node as an additional row below the pagination, spanning all columns, e.g. a bar with further
+     * controls that must not overlap the page controls of the pagination.
+     *
+     * @param aNode Node to add
+     */
+    public void addNodeAsBottomRow(javafx.scene.Node aNode) {
+        RowConstraints tmpRowConstraints = new RowConstraints();
+        tmpRowConstraints.setMinHeight(GuiDefinitions.GUI_CONTROL_CONTAINER_HEIGHT);
+        tmpRowConstraints.setPrefHeight(GuiDefinitions.GUI_CONTROL_CONTAINER_HEIGHT);
+        tmpRowConstraints.setVgrow(Priority.NEVER);
+        this.gridPane.getRowConstraints().add(tmpRowConstraints);
+        this.gridPane.add(aNode, 0, this.gridPane.getRowConstraints().size() - 1, 3, 1);
+    }
+    //
+    /**
      * Adds given Pagination to GridPane.
      * Necessary to add the pagination via MainViewController
      *

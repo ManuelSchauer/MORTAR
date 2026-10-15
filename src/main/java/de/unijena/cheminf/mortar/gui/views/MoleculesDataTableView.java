@@ -40,6 +40,7 @@ import javafx.scene.Node;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.MenuItem;
+import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.cell.CheckBoxTableCell;
@@ -87,6 +88,14 @@ public class MoleculesDataTableView extends TableView implements IDataTableView 
      * MenuItem of ContextMenu to copy selected cell to clipboard.
      */
     private final MenuItem copyMenuItem;
+    /**
+     * MenuItem of ContextMenu to search molecules similar to the selected molecule in the feature space of a clustering.
+     */
+    private final MenuItem similaritySearchMenuItem;
+    /**
+     * MenuItem of ContextMenu to show the descriptor values of the selected molecule in a clustering.
+     */
+    private final MenuItem descriptorValuesMenuItem;
     /**
      * Boolean value to suppress going through all table rows and check selection status when the checx for selecting all
      * rows was used.
@@ -158,6 +167,14 @@ public class MoleculesDataTableView extends TableView implements IDataTableView 
                         + this.configuration.getProperty("mortar.icon.copy.name")).toExternalForm();
         this.copyMenuItem.setGraphic(new ImageView(new Image(tmpCopyIconURL)));
         this.contextMenu.getItems().add(this.copyMenuItem);
+        //-similaritySearchMenuItem, only enabled if a clustering result is available (set by the controller)
+        this.similaritySearchMenuItem = new MenuItem(Message.get("ClusteringSimilaritySearch.contextMenuItem.text"));
+        this.similaritySearchMenuItem.setDisable(true);
+        this.contextMenu.getItems().add(this.similaritySearchMenuItem);
+        //-descriptorValuesMenuItem, set apart, only enabled if a clustering result is available (set by the controller)
+        this.descriptorValuesMenuItem = new MenuItem(Message.get("OverviewView.contextMenu.descriptorValuesOfMoleculeMenuItem"));
+        this.descriptorValuesMenuItem.setDisable(true);
+        this.contextMenu.getItems().addAll(new SeparatorMenuItem(), this.descriptorValuesMenuItem);
     }
     //
     //<editor-fold desc="public methods" defaultstate="collapsed">
@@ -270,6 +287,24 @@ public class MoleculesDataTableView extends TableView implements IDataTableView 
      */
     public MenuItem getCopyMenuItem() {
         return this.copyMenuItem;
+    }
+    //
+    /**
+     * Returns MenuItem to show the descriptor values of the selected molecule in a clustering.
+     *
+     * @return MenuItem
+     */
+    public MenuItem getDescriptorValuesMenuItem() {
+        return this.descriptorValuesMenuItem;
+    }
+    //
+    /**
+     * Returns the MenuItem of the ContextMenu to search molecules similar to the selected molecule.
+     *
+     * @return MenuItem
+     */
+    public MenuItem getSimilaritySearchMenuItem() {
+        return this.similaritySearchMenuItem;
     }
     //
     /**

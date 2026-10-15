@@ -103,6 +103,18 @@ public class DepictionUtil {
      * Logger of this class.
      */
     private static final Logger LOGGER = Logger.getLogger(DepictionUtil.class.getName());
+    /**
+     * Fill colour of the bar below a structure that shows a fraction graphically (light blue).
+     */
+    private static final Color BAR_FILL_COLOR = new Color(173, 216, 230);
+    /**
+     * Outline colour of the bar below a structure, marking 100 % (light grey).
+     */
+    private static final Color BAR_OUTLINE_COLOR = new Color(200, 200, 200);
+    /**
+     * Distance in pixels between the bar below a structure and the borders of the text label area.
+     */
+    private static final int BAR_INSET = 2;
     //
     /**
      * Standard font name for depicting structure images with text.
@@ -533,6 +545,65 @@ public class DepictionUtil {
             boolean aFillToFit,
             boolean anIsBackgroundWhite
     ) {
+        return DepictionUtil.depictImageWithTextAndOptionalBar(anAtomContainer, aZoom, aWidth, aHeight, aText,
+                Double.NaN, aFillToFit, anIsBackgroundWhite);
+    }
+    //
+    /**
+     * Depicts and returns an image of the AtomContainer with the given text below it, centred in a bar whose filled
+     * part (light blue) shows the given fraction graphically, e.g. the share of a cluster in all clustered molecules.
+     *
+     * @param anAtomContainer the molecule to depict
+     * @param aZoom double; the zoom is a scaling factor, specifying a zoom of 2 is double size, 0.5 half size, etc.
+     * @param aWidth double for image width
+     * @param aHeight double for image height
+     * @param aText text label below the structure, centred in the bar
+     * @param aBarFraction fraction in [0,1] of the image width that is filled; values outside are clamped
+     * @param aFillToFit if true, resize depictions to fill all available space
+     * @param anIsBackgroundWhite true if the image should have an opaque white background; false if the background
+     *                            should be transparent
+     * @return Image of 2D structure of IAtomContainer with the given text and bar below
+     */
+    public static Image depictImageWithTextAndBar(
+            IAtomContainer anAtomContainer,
+            double aZoom,
+            double aWidth,
+            double aHeight,
+            String aText,
+            double aBarFraction,
+            boolean aFillToFit,
+            boolean anIsBackgroundWhite
+    ) {
+        return DepictionUtil.depictImageWithTextAndOptionalBar(anAtomContainer, aZoom, aWidth, aHeight, aText,
+                Double.isNaN(aBarFraction) ? 0.0 : Math.min(1.0, Math.max(0.0, aBarFraction)), aFillToFit, anIsBackgroundWhite);
+    }
+    //</editor-fold>
+    //
+    //<editor-fold desc="private static methods" defaultstate="collapsed">
+    /**
+     * Depicts an image of the AtomContainer with the given text below it and, if the bar fraction is not NaN, a bar in
+     * the text label area whose filled part shows the fraction; the text is centred horizontally.
+     *
+     * @param anAtomContainer the molecule to depict
+     * @param aZoom double; the zoom is a scaling factor, specifying a zoom of 2 is double size, 0.5 half size, etc.
+     * @param aWidth double for image width
+     * @param aHeight double for image height
+     * @param aText text label below the structure
+     * @param aBarFraction fraction in [0,1] of the bar to fill, NaN for no bar
+     * @param aFillToFit if true, resize depictions to fill all available space
+     * @param anIsBackgroundWhite true for an opaque white background, false for a transparent one
+     * @return Image of 2D structure of IAtomContainer with given text (and bar) below
+     */
+    private static Image depictImageWithTextAndOptionalBar(
+            IAtomContainer anAtomContainer,
+            double aZoom,
+            double aWidth,
+            double aHeight,
+            String aText,
+            double aBarFraction,
+            boolean aFillToFit,
+            boolean anIsBackgroundWhite
+    ) {
         if (aHeight < BasicDefinitions.DEFAULT_IMAGE_TEXT_LABEL_HEIGHT) {
             DepictionUtil.LOGGER.log(Level.WARNING,
                     "Given image height is smaller than the required text label height");
@@ -542,36 +613,8 @@ public class DepictionUtil {
                     aHeight > 0 ? (int) aHeight : (int) BasicDefinitions.DEFAULT_IMAGE_HEIGHT_DEFAULT);
         }
         try {
-            BufferedImage tmpMolBufferedImage = DepictionUtil.depictBufferedImage(
-                    anAtomContainer,
-                    aZoom,
-                    aWidth,
-                    aHeight - BasicDefinitions.DEFAULT_IMAGE_TEXT_LABEL_HEIGHT,
-                    aFillToFit,
-                    anIsBackgroundWhite);
-            BufferedImage tmpBufferedImage = new BufferedImage(
-                    tmpMolBufferedImage.getWidth(),
-                    tmpMolBufferedImage.getHeight() + BasicDefinitions.DEFAULT_IMAGE_TEXT_LABEL_HEIGHT,
-                    anIsBackgroundWhite ? BufferedImage.TYPE_INT_RGB : BufferedImage.TYPE_INT_ARGB);
-            Graphics2D tmpGraphics2d = tmpBufferedImage.createGraphics();
-            DepictionUtil.configureGraphics2D(tmpGraphics2d);
-            if (anIsBackgroundWhite) {
-                tmpGraphics2d.setColor(Color.WHITE);
-                tmpGraphics2d.fillRect(0, 0, tmpBufferedImage.getWidth(), tmpBufferedImage.getHeight());
-            }
-            tmpGraphics2d.drawImage(tmpMolBufferedImage, 0, 0,null);
-            tmpGraphics2d.setColor(Color.BLACK);
-            tmpGraphics2d.setFont(new Font(DepictionUtil.FONT_NAME_FOR_IMAGE_WITH_TEXT,
-                    DepictionUtil.FONT_STYLE_FOR_IMAGE_WITH_TEXT,
-                    DepictionUtil.FONT_SIZE_FOR_IMAGE_WITH_TEXT));
-            FontMetrics tmpFontMetric = tmpGraphics2d.getFontMetrics();
-            int tmpTextWidth = tmpFontMetric.stringWidth(aText);
-            tmpGraphics2d.drawString(
-                    aText,
-                    (tmpBufferedImage.getWidth() / 2) - tmpTextWidth / 2,
-                    tmpBufferedImage.getHeight() - tmpFontMetric.getDescent());
-            tmpGraphics2d.dispose();
-            return SwingFXUtils.toFXImage(tmpBufferedImage, null);
+            return SwingFXUtils.toFXImage(DepictionUtil.depictBufferedImageWithTextAndOptionalBar(anAtomContainer, aZoom,
+                    aWidth, aHeight, aText, aBarFraction, aFillToFit, anIsBackgroundWhite), null);
         } catch (CDKException anException) {
             DepictionUtil.LOGGER.log(Level.SEVERE, anException.toString(), anException);
             return DepictionUtil.depictErrorImage(
@@ -580,9 +623,75 @@ public class DepictionUtil {
                     aHeight > 0 ? (int) aHeight : (int) BasicDefinitions.DEFAULT_IMAGE_HEIGHT_DEFAULT);
         }
     }
-    //</editor-fold>
     //
-    //<editor-fold desc="private static methods" defaultstate="collapsed">
+    /**
+     * Draws the image of {@link #depictImageWithTextAndOptionalBar}; separated as BufferedImage, which can also be
+     * checked without a running JavaFX toolkit (e.g. in tests).
+     *
+     * @param anAtomContainer the molecule to depict
+     * @param aZoom double; the zoom is a scaling factor, specifying a zoom of 2 is double size, 0.5 half size, etc.
+     * @param aWidth double for image width
+     * @param aHeight double for image height, at least the text label height
+     * @param aText text label below the structure
+     * @param aBarFraction fraction in [0,1] of the bar to fill, NaN for no bar
+     * @param aFillToFit if true, resize depictions to fill all available space
+     * @param anIsBackgroundWhite true for an opaque white background, false for a transparent one
+     * @return BufferedImage of 2D structure of IAtomContainer with given text (and bar) below
+     * @throws CDKException if a depiction cannot be generated
+     */
+    static BufferedImage depictBufferedImageWithTextAndOptionalBar(
+            IAtomContainer anAtomContainer,
+            double aZoom,
+            double aWidth,
+            double aHeight,
+            String aText,
+            double aBarFraction,
+            boolean aFillToFit,
+            boolean anIsBackgroundWhite
+    ) throws CDKException {
+        BufferedImage tmpMolBufferedImage = DepictionUtil.depictBufferedImage(
+                anAtomContainer,
+                aZoom,
+                aWidth,
+                aHeight - BasicDefinitions.DEFAULT_IMAGE_TEXT_LABEL_HEIGHT,
+                aFillToFit,
+                anIsBackgroundWhite);
+        BufferedImage tmpBufferedImage = new BufferedImage(
+                tmpMolBufferedImage.getWidth(),
+                tmpMolBufferedImage.getHeight() + BasicDefinitions.DEFAULT_IMAGE_TEXT_LABEL_HEIGHT,
+                anIsBackgroundWhite ? BufferedImage.TYPE_INT_RGB : BufferedImage.TYPE_INT_ARGB);
+        Graphics2D tmpGraphics2d = tmpBufferedImage.createGraphics();
+        DepictionUtil.configureGraphics2D(tmpGraphics2d);
+        if (anIsBackgroundWhite) {
+            tmpGraphics2d.setColor(Color.WHITE);
+            tmpGraphics2d.fillRect(0, 0, tmpBufferedImage.getWidth(), tmpBufferedImage.getHeight());
+        }
+        tmpGraphics2d.drawImage(tmpMolBufferedImage, 0, 0,null);
+        if (!Double.isNaN(aBarFraction)) {
+            //bar in the text label area: light grey outline for 100 %, light blue fill for the given fraction
+            int tmpBarX = DepictionUtil.BAR_INSET;
+            int tmpBarY = tmpMolBufferedImage.getHeight() + DepictionUtil.BAR_INSET;
+            int tmpBarWidth = tmpBufferedImage.getWidth() - 2 * DepictionUtil.BAR_INSET;
+            int tmpBarHeight = BasicDefinitions.DEFAULT_IMAGE_TEXT_LABEL_HEIGHT - 2 * DepictionUtil.BAR_INSET;
+            tmpGraphics2d.setColor(DepictionUtil.BAR_FILL_COLOR);
+            tmpGraphics2d.fillRect(tmpBarX, tmpBarY, (int) Math.round(tmpBarWidth * aBarFraction), tmpBarHeight);
+            tmpGraphics2d.setColor(DepictionUtil.BAR_OUTLINE_COLOR);
+            tmpGraphics2d.drawRect(tmpBarX, tmpBarY, tmpBarWidth - 1, tmpBarHeight - 1);
+        }
+        tmpGraphics2d.setColor(Color.BLACK);
+        tmpGraphics2d.setFont(new Font(DepictionUtil.FONT_NAME_FOR_IMAGE_WITH_TEXT,
+                DepictionUtil.FONT_STYLE_FOR_IMAGE_WITH_TEXT,
+                DepictionUtil.FONT_SIZE_FOR_IMAGE_WITH_TEXT));
+        FontMetrics tmpFontMetric = tmpGraphics2d.getFontMetrics();
+        int tmpTextWidth = tmpFontMetric.stringWidth(aText);
+        tmpGraphics2d.drawString(
+                aText,
+                (tmpBufferedImage.getWidth() / 2) - tmpTextWidth / 2,
+                tmpBufferedImage.getHeight() - tmpFontMetric.getDescent());
+        tmpGraphics2d.dispose();
+        return tmpBufferedImage;
+    }
+    //
     /**
      * Creates and returns a BufferedImage of given IAtomContainer.
      *
