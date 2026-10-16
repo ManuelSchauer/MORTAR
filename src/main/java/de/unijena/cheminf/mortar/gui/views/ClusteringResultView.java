@@ -32,6 +32,7 @@ import de.unijena.cheminf.mortar.model.clustering.ClusterProfiler;
 import de.unijena.cheminf.mortar.model.clustering.ClusteringResult;
 import de.unijena.cheminf.mortar.model.clustering.ClusteringRunResult;
 import de.unijena.cheminf.mortar.model.data.MoleculeDataModel;
+import de.unijena.cheminf.mortar.model.depict.DepictionUtil;
 import de.unijena.cheminf.mortar.model.util.BasicDefinitions;
 import de.unijena.cheminf.mortar.model.util.CollectionUtil;
 
@@ -61,6 +62,7 @@ import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.control.Tooltip;
+import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
@@ -68,6 +70,8 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.scene.text.Text;
+
+import org.openscience.cdk.exception.CDKException;
 
 import java.util.Collections;
 import java.util.Comparator;
@@ -79,6 +83,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.ToDoubleFunction;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * View that shows the result of a clustering run: a summary, a warning in case of a cluster overflow and a table with
@@ -121,9 +127,9 @@ public class ClusteringResultView extends BorderPane {
      */
     private static final double DESCRIPTOR_COLUMN_MIN_WIDTH = 70.0;
     /**
-     * Horizontal margin between a structure image and the border of its column.
+     * Logger of this class.
      */
-    private static final double STRUCTURE_CELL_MARGIN = 10.0;
+    private static final Logger LOGGER = Logger.getLogger(ClusteringResultView.class.getName());
     //</editor-fold>
     //
     //<editor-fold desc="private final variables" defaultstate="collapsed">
@@ -772,9 +778,9 @@ public class ClusteringResultView extends BorderPane {
     }
     //
     /**
-     * Creates a cell that depicts the structure of its molecule when it becomes visible, centred and scaled down to the
-     * width of its column if necessary. The image width of a molecule is set by the other tables of MORTAR and can be
-     * larger than the structure column of the clustering tables.
+     * Creates a cell that depicts the structure of its molecule when it becomes visible, centred and always in MORTAR's
+     * default image size. The image size stored in a molecule is set by the other tables of MORTAR (e.g. very wide and
+     * low in the molecules tab) and is therefore not used here.
      *
      * @param <S> type of the table rows
      * @return structure cell
@@ -789,15 +795,16 @@ public class ClusteringResultView extends BorderPane {
                     this.setGraphic(null);
                     return;
                 }
-                ImageView tmpImageView = aMolecule.getStructure();
-                tmpImageView.setPreserveRatio(true);
-                double tmpImageWidth = tmpImageView.getImage() == null ? 0.0 : tmpImageView.getImage().getWidth();
-                if (this.getTableColumn() != null && tmpImageWidth > 0.0) {
-                    //scaled down to the column width, never enlarged
-                    tmpImageView.fitWidthProperty().bind(Bindings.min(
-                            this.getTableColumn().widthProperty().subtract(ClusteringResultView.STRUCTURE_CELL_MARGIN), tmpImageWidth));
+                Image tmpImage;
+                try {
+                    tmpImage = DepictionUtil.depictImageWithTransparentBackground(aMolecule.getAtomContainer(), 1.0,
+                            BasicDefinitions.DEFAULT_IMAGE_WIDTH_DEFAULT, BasicDefinitions.DEFAULT_IMAGE_HEIGHT_DEFAULT, false);
+                } catch (CDKException anException) {
+                    ClusteringResultView.LOGGER.log(Level.WARNING, anException.toString(), anException);
+                    tmpImage = DepictionUtil.depictErrorImage(anException.getMessage(),
+                            (int) BasicDefinitions.DEFAULT_IMAGE_WIDTH_DEFAULT, (int) BasicDefinitions.DEFAULT_IMAGE_HEIGHT_DEFAULT);
                 }
-                this.setGraphic(tmpImageView);
+                this.setGraphic(new ImageView(tmpImage));
             }
         };
         tmpCell.setAlignment(Pos.CENTER);
