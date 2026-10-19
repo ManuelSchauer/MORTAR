@@ -42,6 +42,7 @@ import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.SplitPane;
 import javafx.scene.control.TableColumn;
+import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
 import javafx.scene.control.Tooltip;
 import javafx.scene.layout.BorderPane;
@@ -60,7 +61,8 @@ import java.util.function.ToIntFunction;
  * against the vigilance and a table with all values per vigilance (clusters, singletons, largest cluster, not clusterable
  * molecules, mean similarity to the cluster vector, overflow, convergence). The buttons take over the clustering of the
  * selected vigilance (also by double click on a row), export the scan, discard it or close the window, which keeps the
- * scan; their actions are set by the controller.
+ * scan; their actions are set by the controller. The result of a search for a target number of clusters is shown in
+ * the same way, with the best entry highlighted and selected, a summary at the top and the target as line in the chart.
  *
  * @author Manuel Schauer
  * @version 1.0.0.0
@@ -71,6 +73,10 @@ public class VigilanceScanView extends BorderPane {
      * Tolerance for comparing vigilance values, which are rounded to 4 decimals in the scan.
      */
     private static final float VIGILANCE_TOLERANCE = 1.0e-5f;
+    /**
+     * Style of the row of the best entry of a target search.
+     */
+    private static final String HIGHLIGHTED_ROW_STYLE = "-fx-background-color: #ffe9a8; -fx-font-weight: bold;";
     //</editor-fold>
     //
     //<editor-fold desc="private final variables" defaultstate="collapsed">
@@ -78,6 +84,14 @@ public class VigilanceScanView extends BorderPane {
      * Table of the scan entries.
      */
     private final TableView<VigilanceScan.ScanEntry> scanTableView;
+    /**
+     * Chart of the number of clusters and singletons.
+     */
+    private final LineChart<Number, Number> chart;
+    /**
+     * Hint at the top, replaced by the summary of a target search.
+     */
+    private final Label hintLabel;
     /**
      * Button to take over the clustering of the selected vigilance.
      */
@@ -94,6 +108,13 @@ public class VigilanceScanView extends BorderPane {
      * Button to close (hide) the window; the scan is kept.
      */
     private final Button closeButton;
+    //</editor-fold>
+    //
+    //<editor-fold desc="private variables" defaultstate="collapsed">
+    /**
+     * Highlighted entry, the best entry of a target search; null if none.
+     */
+    private VigilanceScan.ScanEntry highlightedEntry;
     //</editor-fold>
     //
     //<editor-fold desc="Constructor" defaultstate="collapsed">
@@ -113,6 +134,7 @@ public class VigilanceScanView extends BorderPane {
         NumberAxis tmpYAxis = new NumberAxis();
         tmpYAxis.setLabel(Message.get("VigilanceScan.chart.yAxis.label"));
         LineChart<Number, Number> tmpChart = new LineChart<>(tmpXAxis, tmpYAxis);
+        this.chart = tmpChart;
         tmpChart.setTitle(Message.get("VigilanceScan.chart.title"));
         tmpChart.setAnimated(false);
         XYChart.Series<Number, Number> tmpClusterSeries = new XYChart.Series<>();
@@ -143,10 +165,19 @@ public class VigilanceScanView extends BorderPane {
         tmpSplitPane.setOrientation(Orientation.VERTICAL);
         tmpSplitPane.setDividerPositions(0.5);
         this.setCenter(tmpSplitPane);
-        Label tmpHintLabel = new Label(Message.get("VigilanceScan.hint.text"));
-        tmpHintLabel.setWrapText(true);
-        tmpHintLabel.setPadding(new Insets(GuiDefinitions.GUI_INSETS_VALUE));
-        this.setTop(tmpHintLabel);
+        this.hintLabel = new Label(Message.get("VigilanceScan.hint.text"));
+        this.hintLabel.setWrapText(true);
+        this.hintLabel.setPadding(new Insets(GuiDefinitions.GUI_INSETS_VALUE));
+        this.setTop(this.hintLabel);
+        //the best entry of a target search is highlighted, unless it is selected
+        this.scanTableView.setRowFactory(aTable -> new TableRow<>() {
+            @Override
+            protected void updateItem(VigilanceScan.ScanEntry anEntry, boolean anIsEmpty) {
+                super.updateItem(anEntry, anIsEmpty);
+                this.setStyle(!anIsEmpty && anEntry != null && anEntry == VigilanceScanView.this.highlightedEntry
+                        ? VigilanceScanView.HIGHLIGHTED_ROW_STYLE : "");
+            }
+        });
         //buttons for the selected vigilance on the left, for the window on the right
         this.adoptButton = new Button(Message.get("VigilanceScan.adoptButton.text"));
         this.adoptButton.setTooltip(new Tooltip(Message.get("VigilanceScan.adoptButton.tooltip")));
@@ -216,6 +247,34 @@ public class VigilanceScanView extends BorderPane {
      */
     public Button getCloseButton() {
         return this.closeButton;
+    }
+    //
+    /**
+     * Shows the result of a search for a target number of clusters: the best entry is highlighted and selected, the
+     * summary replaces the hint at the top and the target is drawn as horizontal line in the chart.
+     *
+     * @param aSearchResult result of the target search, whose entries this view shows
+     * @throws NullPointerException if the result is null
+     */
+    public void showTargetSearchResult(VigilanceScan.TargetSearchResult aSearchResult) throws NullPointerException {
+        Objects.requireNonNull(aSearchResult, "Given search result is null.");
+        VigilanceScan.ScanEntry tmpBest = aSearchResult.bestEntry();
+        this.highlightedEntry = tmpBest;
+        this.scanTableView.refresh();
+        this.scanTableView.getSelectionModel().select(tmpBest);
+        this.scanTableView.scrollTo(tmpBest);
+        String tmpVigilance = String.format(Locale.getDefault(), "%.2f", tmpBest.vigilance());
+        this.hintLabel.setText(String.format(Message.get(aSearchResult.isExact()
+                        ? "VigilanceScan.targetSearch.exact.text" : "VigilanceScan.targetSearch.closest.text"),
+                aSearchResult.targetNumberOfClusters(), tmpVigilance, tmpBest.numberOfClusters(), aSearchResult.entries().size()));
+        this.hintLabel.setStyle("-fx-font-weight: bold;");
+        //the target as horizontal line over the searched range
+        XYChart.Series<Number, Number> tmpTargetSeries = new XYChart.Series<>();
+        tmpTargetSeries.setName(Message.get("VigilanceScan.targetSeries.name"));
+        List<VigilanceScan.ScanEntry> tmpEntries = aSearchResult.entries();
+        tmpTargetSeries.getData().add(new XYChart.Data<>(tmpEntries.getFirst().vigilance(), aSearchResult.targetNumberOfClusters()));
+        tmpTargetSeries.getData().add(new XYChart.Data<>(tmpEntries.getLast().vigilance(), aSearchResult.targetNumberOfClusters()));
+        this.chart.getData().add(tmpTargetSeries);
     }
     //
     /**

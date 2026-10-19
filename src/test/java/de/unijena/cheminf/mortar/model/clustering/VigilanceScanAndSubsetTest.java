@@ -171,4 +171,42 @@ class VigilanceScanAndSubsetTest {
         Assertions.assertThrows(IllegalArgumentException.class, () -> DiverseSubsetSelector.selectFromCluster(tmpRunResult,
                 tmpRunResult.clusteringResult().numberOfClusters(), 1, DiverseSubsetSelector.SelectionMode.TYPICAL));
     }
+    //
+    /**
+     * Tests the search for a target number of clusters: at most 9 clusterings, vigilance values with two decimals in
+     * ascending order, the best entry is the one closest to the target, a target that is reached exactly by a grid value
+     * that the bisection visits is found exactly, and targets outside the range end at the corresponding end.
+     *
+     * @throws Exception if the pipeline fails
+     */
+    @Test
+    void testSearchForNumberOfClusters() throws Exception {
+        ClusteringRunResult tmpRunResult = SimilaritySearchTest.createRunResult();
+        int tmpMoleculeCount = tmpRunResult.molecules().size();
+        for (int tmpTarget : new int[] {1, 2, 3, 5, tmpMoleculeCount, tmpMoleculeCount + 5}) {
+            VigilanceScan.TargetSearchResult tmpResult = VigilanceScan.searchForNumberOfClusters(tmpRunResult, tmpTarget,
+                    () -> false, (aDone, aTotal) -> { });
+            List<VigilanceScan.ScanEntry> tmpEntries = tmpResult.entries();
+            Assertions.assertFalse(tmpEntries.isEmpty());
+            Assertions.assertTrue(tmpEntries.size() <= VigilanceScan.MAXIMUM_NUMBER_OF_SEARCH_STEPS);
+            float tmpPrevious = 0.0f;
+            for (VigilanceScan.ScanEntry tmpEntry : tmpEntries) {
+                Assertions.assertTrue(tmpEntry.vigilance() > tmpPrevious);
+                Assertions.assertEquals(Math.round(tmpEntry.vigilance() * 100.0f), tmpEntry.vigilance() * 100.0f, 1.0e-3f);
+                tmpPrevious = tmpEntry.vigilance();
+                Assertions.assertTrue(Math.abs(tmpResult.bestEntry().numberOfClusters() - tmpTarget)
+                        <= Math.abs(tmpEntry.numberOfClusters() - tmpTarget));
+            }
+            if (tmpEntries.stream().anyMatch(anEntry -> anEntry.numberOfClusters() == tmpTarget)) {
+                Assertions.assertTrue(tmpResult.isExact());
+            }
+        }
+        //a target not above the number of clusters at 0.01 ends the search at that end
+        VigilanceScan.TargetSearchResult tmpLowResult = VigilanceScan.searchForNumberOfClusters(tmpRunResult, 1, () -> false, (aDone, aTotal) -> { });
+        Assertions.assertEquals(0.01f, tmpLowResult.bestEntry().vigilance(), 1.0e-6f);
+        Assertions.assertThrows(IllegalArgumentException.class, () -> VigilanceScan.searchForNumberOfClusters(tmpRunResult, 0,
+                () -> false, (aDone, aTotal) -> { }));
+        Assertions.assertThrows(CancellationException.class, () -> VigilanceScan.searchForNumberOfClusters(tmpRunResult, 3,
+                () -> true, (aDone, aTotal) -> { }));
+    }
 }

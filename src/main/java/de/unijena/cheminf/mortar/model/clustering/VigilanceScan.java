@@ -26,8 +26,11 @@
 package de.unijena.cheminf.mortar.model.clustering;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.TreeMap;
 import java.util.concurrent.CancellationException;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
@@ -39,6 +42,9 @@ import java.util.function.BooleanSupplier;
  * general default. The features (fragment fingerprint, descriptors, transformation, filter) do not depend on the
  * vigilance and are taken from the given run, so all values of the scan are comparable and only the clustering itself is
  * repeated; all other parameters (kernel, epochs, learning parameter, seed, ...) are kept.
+ * <p>
+ * Instead of a range, a target number of clusters can be given ({@link #searchForNumberOfClusters}): the vigilance is
+ * searched with two decimals by bisection from both ends of (0,1), see the method description.
  *
  * @author Manuel Schauer
  * @version 1.0.0.0
@@ -63,6 +69,36 @@ public final class VigilanceScan {
                             int numberOfUnclusteredMolecules, double meanSimilarityToClusterVector, boolean isOverflow,
                             boolean isConverged, ClusteringRunResult runResult) {
     }
+    //
+    /**
+     * Result of the search for a target number of clusters.
+     *
+     * @param entries entries of all vigilance values clustered during the search, in ascending order of the vigilance
+     * @param bestEntry entry whose number of clusters is closest to the target
+     * @param targetNumberOfClusters requested number of clusters
+     */
+    public record TargetSearchResult(List<ScanEntry> entries, ScanEntry bestEntry, int targetNumberOfClusters) {
+        /**
+         * Returns whether the best entry has exactly the requested number of clusters.
+         *
+         * @return true if the target was hit exactly
+         */
+        public boolean isExact() {
+            return this.bestEntry.numberOfClusters() == this.targetNumberOfClusters;
+        }
+    }
+    //</editor-fold>
+    //
+    //<editor-fold desc="public static final class constants" defaultstate="collapsed">
+    /**
+     * Number of steps of the vigilance grid of the target search: the vigilance is searched with two decimals, i.e. in
+     * steps of 1 / 100.
+     */
+    public static final int SEARCH_GRID_STEPS = 100;
+    /**
+     * Upper bound of the number of clusterings of a target search: the two ends plus the bisection of 97 grid points.
+     */
+    public static final int MAXIMUM_NUMBER_OF_SEARCH_STEPS = 9;
     //</editor-fold>
     //
     //<editor-fold desc="Private constructor" defaultstate="collapsed">
@@ -122,29 +158,134 @@ public final class VigilanceScan {
             throws NullPointerException, CancellationException, Exception {
         Objects.requireNonNull(aRunResult, "Given clustering run result is null.");
         Objects.requireNonNull(aVigilanceValues, "Given vigilance values are null.");
-        ClusteringParameters tmpParameters = aRunResult.parameters();
         List<ScanEntry> tmpEntries = new ArrayList<>(aVigilanceValues.length);
         for (int v = 0; v < aVigilanceValues.length; v++) {
             if (anIsCancelledSupplier.getAsBoolean()) {
                 throw new CancellationException("Vigilance scan was cancelled.");
             }
             aProgressConsumer.accept(v, aVigilanceValues.length);
-            float tmpVigilance = aVigilanceValues[v];
-            ClusteringResult tmpResult = Art2aClusterer.cluster(aRunResult.processedMatrix(), tmpParameters.algorithm(),
-                    tmpVigilance, tmpParameters.maximumNumberOfClusters(), tmpParameters.maximumNumberOfEpochs(),
-                    tmpParameters.convergenceThreshold(), tmpParameters.learningParameter(),
-                    tmpParameters.offsetForContrastEnhancement(), tmpParameters.randomSeed(), tmpParameters.isParallelCalculation());
-            ClusteringParameters tmpScanParameters = VigilanceScan.withVigilance(tmpParameters, tmpVigilance);
-            ClusteringRunResult tmpRunResult = new ClusteringRunResult(tmpScanParameters, aRunResult.molecules(), aRunResult.rawMatrix(),
-                    aRunResult.transformedMatrix(), aRunResult.processedMatrix(), aRunResult.removedFeatures(), tmpResult);
-            tmpEntries.add(VigilanceScan.createEntry(tmpRunResult));
+            tmpEntries.add(VigilanceScan.clusterWithVigilance(aRunResult, aVigilanceValues[v]));
         }
         aProgressConsumer.accept(aVigilanceValues.length, aVigilanceValues.length);
         return tmpEntries;
     }
+    //
+    /**
+     * Searches the vigilance (two decimals, 0.01 to 0.99) whose clustering has the given number of clusters. The number
+     * of clusters rises with the vigilance, so the search narrows the vigilance from both sides (bisection):
+     * <ol>
+     *     <li>Both ends 0.01 and 0.99 are clustered. If the target is not above the number of clusters at 0.01 or not
+     *     below the one at 0.99, the search ends there.</li>
+     *     <li>Otherwise, the middle of the interval between the lower bound (fewer clusters than the target) and the upper
+     *     bound (more clusters) is clustered and replaces the bound on its side, until the target is hit exactly or no
+     *     vigilance with two decimals lies between the bounds.</li>
+     * </ol>
+     * Since ART-2A is not strictly monotone, the best entry is chosen among all clustered values: the smallest deviation
+     * from the target, then the fewest singletons, then the highest mean similarity to the cluster vector. At most
+     * {@link #MAXIMUM_NUMBER_OF_SEARCH_STEPS} clusterings are needed.
+     *
+     * @param aRunResult clustering run whose features and parameters are used
+     * @param aTargetNumberOfClusters requested number of clusters, at least 1
+     * @param anIsCancelledSupplier returns true if the search should be stopped
+     * @param aProgressConsumer receives the number of finished clusterings and the maximum number
+     * @return clustered entries and the best one
+     * @throws NullPointerException if a parameter is null
+     * @throws IllegalArgumentException if the target is smaller than 1
+     * @throws CancellationException if the search was cancelled
+     * @throws Exception if a clustering fails
+     */
+    public static TargetSearchResult searchForNumberOfClusters(ClusteringRunResult aRunResult, int aTargetNumberOfClusters,
+                                                               BooleanSupplier anIsCancelledSupplier, BiConsumer<Integer, Integer> aProgressConsumer)
+            throws NullPointerException, IllegalArgumentException, CancellationException, Exception {
+        Objects.requireNonNull(aRunResult, "Given clustering run result is null.");
+        Objects.requireNonNull(anIsCancelledSupplier, "Given cancellation supplier is null.");
+        Objects.requireNonNull(aProgressConsumer, "Given progress consumer is null.");
+        if (aTargetNumberOfClusters < 1) {
+            throw new IllegalArgumentException("The target number of clusters must be at least 1.");
+        }
+        //clustered grid points (vigilance = index / SEARCH_GRID_STEPS) in ascending order
+        TreeMap<Integer, ScanEntry> tmpEntryOfGridPointMap = new TreeMap<>();
+        int tmpLower = 1;
+        int tmpUpper = VigilanceScan.SEARCH_GRID_STEPS - 1;
+        //both ends first; if the target lies outside, the search ends at the corresponding end
+        if (VigilanceScan.evaluateGridPoint(aRunResult, tmpLower, tmpEntryOfGridPointMap, anIsCancelledSupplier, aProgressConsumer)
+                .numberOfClusters() < aTargetNumberOfClusters
+                && VigilanceScan.evaluateGridPoint(aRunResult, tmpUpper, tmpEntryOfGridPointMap, anIsCancelledSupplier, aProgressConsumer)
+                .numberOfClusters() > aTargetNumberOfClusters) {
+            //bisection: the lower bound has fewer, the upper bound more clusters than the target
+            while (tmpUpper - tmpLower > 1) {
+                int tmpMiddle = (tmpLower + tmpUpper) / 2;
+                int tmpNumberOfClusters = VigilanceScan.evaluateGridPoint(aRunResult, tmpMiddle, tmpEntryOfGridPointMap,
+                        anIsCancelledSupplier, aProgressConsumer).numberOfClusters();
+                if (tmpNumberOfClusters == aTargetNumberOfClusters) {
+                    break;
+                } else if (tmpNumberOfClusters < aTargetNumberOfClusters) {
+                    tmpLower = tmpMiddle;
+                } else {
+                    tmpUpper = tmpMiddle;
+                }
+            }
+        }
+        aProgressConsumer.accept(VigilanceScan.MAXIMUM_NUMBER_OF_SEARCH_STEPS, VigilanceScan.MAXIMUM_NUMBER_OF_SEARCH_STEPS);
+        List<ScanEntry> tmpEntries = new ArrayList<>(tmpEntryOfGridPointMap.values());
+        ScanEntry tmpBest = tmpEntries.stream().min(Comparator
+                .comparingInt((ScanEntry anEntry) -> Math.abs(anEntry.numberOfClusters() - aTargetNumberOfClusters))
+                .thenComparingInt(ScanEntry::numberOfSingletons)
+                .thenComparing(Comparator.comparingDouble(ScanEntry::meanSimilarityToClusterVector).reversed())).orElseThrow();
+        return new TargetSearchResult(List.copyOf(tmpEntries), tmpBest, aTargetNumberOfClusters);
+    }
     //</editor-fold>
     //
     //<editor-fold desc="private static methods" defaultstate="collapsed">
+    /**
+     * Clusters the given grid point of the target search (vigilance = grid point / {@link #SEARCH_GRID_STEPS}) unless
+     * it was already clustered, and stores its entry.
+     *
+     * @param aRunResult clustering run whose features and parameters are used
+     * @param aGridPoint grid point between 1 and SEARCH_GRID_STEPS - 1
+     * @param anEntryOfGridPointMap entries of the grid points clustered so far (IS CHANGED)
+     * @param anIsCancelledSupplier returns true if the search should be stopped
+     * @param aProgressConsumer receives the number of finished clusterings and the maximum number
+     * @return entry of the grid point
+     * @throws CancellationException if the search was cancelled
+     * @throws Exception if the clustering fails
+     */
+    private static ScanEntry evaluateGridPoint(ClusteringRunResult aRunResult, int aGridPoint, Map<Integer, ScanEntry> anEntryOfGridPointMap,
+                                               BooleanSupplier anIsCancelledSupplier, BiConsumer<Integer, Integer> aProgressConsumer)
+            throws CancellationException, Exception {
+        ScanEntry tmpEntry = anEntryOfGridPointMap.get(aGridPoint);
+        if (tmpEntry != null) {
+            return tmpEntry;
+        }
+        if (anIsCancelledSupplier.getAsBoolean()) {
+            throw new CancellationException("Vigilance search was cancelled.");
+        }
+        aProgressConsumer.accept(anEntryOfGridPointMap.size(), VigilanceScan.MAXIMUM_NUMBER_OF_SEARCH_STEPS);
+        tmpEntry = VigilanceScan.clusterWithVigilance(aRunResult, (float) aGridPoint / VigilanceScan.SEARCH_GRID_STEPS);
+        anEntryOfGridPointMap.put(aGridPoint, tmpEntry);
+        return tmpEntry;
+    }
+    //
+    /**
+     * Clusters the processed matrix of the given run with the given vigilance; the other parameters of the run are kept.
+     *
+     * @param aRunResult clustering run whose features and parameters are used
+     * @param aVigilance vigilance in (0,1)
+     * @return scan entry of the clustering
+     * @throws Exception if the clustering fails
+     */
+    private static ScanEntry clusterWithVigilance(ClusteringRunResult aRunResult, float aVigilance) throws Exception {
+        ClusteringParameters tmpParameters = aRunResult.parameters();
+        ClusteringResult tmpResult = Art2aClusterer.cluster(aRunResult.processedMatrix(), tmpParameters.algorithm(),
+                aVigilance, tmpParameters.maximumNumberOfClusters(), tmpParameters.maximumNumberOfEpochs(),
+                tmpParameters.convergenceThreshold(), tmpParameters.learningParameter(),
+                tmpParameters.offsetForContrastEnhancement(), tmpParameters.randomSeed(), tmpParameters.isParallelCalculation());
+        ClusteringParameters tmpScanParameters = VigilanceScan.withVigilance(tmpParameters, aVigilance);
+        ClusteringRunResult tmpRunResult = new ClusteringRunResult(tmpScanParameters, aRunResult.molecules(), aRunResult.rawMatrix(),
+                aRunResult.transformedMatrix(), aRunResult.processedMatrix(), aRunResult.removedFeatures(), tmpResult);
+        return VigilanceScan.createEntry(tmpRunResult);
+    }
+    //
     /**
      * Creates the scan entry of the given clustering result.
      *

@@ -85,6 +85,7 @@ import javafx.event.EventHandler;
 import javafx.event.EventType;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
@@ -95,6 +96,7 @@ import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.Pagination;
+import javafx.scene.control.RadioButton;
 import javafx.scene.control.RadioMenuItem;
 import javafx.scene.control.SortEvent;
 import javafx.scene.control.Spinner;
@@ -292,6 +294,10 @@ public class MainViewController {
      * Training/test ratio proposed in the dialog of the cluster-based training/test partitioning.
      */
     private static final String TRAIN_TEST_RATIO_DEFAULT = "80:20";
+    /**
+     * Number of clusters proposed in the dialog of the vigilance scan for the search of a target number of clusters.
+     */
+    private static final int TARGET_NUMBER_OF_CLUSTERS_DEFAULT = 20;
     /**
      * Number of molecules proposed in the dialog for selecting molecules from a cluster.
      */
@@ -2076,8 +2082,9 @@ public class MainViewController {
     }
     //
     /**
-     * Asks for the vigilance range and starts a vigilance scan in the background; the result is shown in a new window.
-     * With a given clustering result, its features and parameters are reused and only the clustering is repeated. Without
+     * Asks for the vigilance range or a target number of clusters and starts a vigilance scan or the search for the target
+     * (see {@link VigilanceScan#searchForNumberOfClusters}) in the background; the result is shown in a new window, for a
+     * search with the best clustering highlighted. With a given clustering result, its features and parameters are reused and only the clustering is repeated. Without
      * one (scan before the first clustering), the features of the selected molecules are calculated once with the
      * current clustering settings.
      *
@@ -2105,26 +2112,61 @@ public class MainViewController {
         tmpDialog.initOwner(this.primaryStage);
         tmpDialog.setTitle(Message.get("VigilanceScan.dialog.title"));
         tmpDialog.setHeaderText(Message.get(aBaseRunResult == null ? "VigilanceScan.dialog.header.new" : "VigilanceScan.dialog.header"));
+        //either a range of vigilance values or a target number of clusters
+        ToggleGroup tmpModeGroup = new ToggleGroup();
+        RadioButton tmpRangeRadioButton = new RadioButton(Message.get("VigilanceScan.rangeMode.label"));
+        tmpRangeRadioButton.setToggleGroup(tmpModeGroup);
+        tmpRangeRadioButton.setSelected(true);
+        RadioButton tmpTargetRadioButton = new RadioButton(Message.get("VigilanceScan.targetMode.label"));
+        tmpTargetRadioButton.setToggleGroup(tmpModeGroup);
+        tmpTargetRadioButton.setTooltip(GuiUtil.createTooltip(Message.get("VigilanceScan.targetMode.tooltip")));
         TextField tmpStartField = new TextField("0.1");
         TextField tmpEndField = new TextField("0.9");
         TextField tmpStepField = new TextField("0.1");
+        int tmpNumberOfMolecules = aBaseRunResult == null ? tmpMolecules.size() : aBaseRunResult.molecules().size();
+        Spinner<Integer> tmpTargetSpinner = new Spinner<>(1, Math.max(1, tmpNumberOfMolecules),
+                Math.min(MainViewController.TARGET_NUMBER_OF_CLUSTERS_DEFAULT, Math.max(1, tmpNumberOfMolecules)));
+        tmpTargetSpinner.setEditable(true);
         GridPane tmpGrid = new GridPane();
         tmpGrid.setHgap(GuiDefinitions.GUI_SPACING_VALUE);
         tmpGrid.setVgap(GuiDefinitions.GUI_SPACING_VALUE);
-        tmpGrid.addRow(0, new Label(Message.get("VigilanceScan.start.label")), tmpStartField);
-        tmpGrid.addRow(1, new Label(Message.get("VigilanceScan.end.label")), tmpEndField);
-        tmpGrid.addRow(2, new Label(Message.get("VigilanceScan.step.label")), tmpStepField);
+        tmpGrid.add(tmpRangeRadioButton, 0, 0, 2, 1);
+        Label tmpStartLabel = new Label(Message.get("VigilanceScan.start.label"));
+        Label tmpEndLabel = new Label(Message.get("VigilanceScan.end.label"));
+        Label tmpStepLabel = new Label(Message.get("VigilanceScan.step.label"));
+        tmpGrid.addRow(1, tmpStartLabel, tmpStartField);
+        tmpGrid.addRow(2, tmpEndLabel, tmpEndField);
+        tmpGrid.addRow(3, tmpStepLabel, tmpStepField);
+        tmpGrid.add(tmpTargetRadioButton, 0, 4, 2, 1);
+        Label tmpTargetLabel = new Label(Message.get("VigilanceScan.target.label"));
+        tmpGrid.addRow(5, tmpTargetLabel, tmpTargetSpinner);
+        //only the fields of the chosen mode are enabled
+        for (Node tmpNode : List.of(tmpStartLabel, tmpStartField, tmpEndLabel, tmpEndField, tmpStepLabel, tmpStepField)) {
+            tmpNode.disableProperty().bind(tmpTargetRadioButton.selectedProperty());
+        }
+        tmpTargetLabel.disableProperty().bind(tmpRangeRadioButton.selectedProperty());
+        tmpTargetSpinner.disableProperty().bind(tmpRangeRadioButton.selectedProperty());
         tmpDialog.getDialogPane().setContent(tmpGrid);
         tmpDialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
         if (tmpDialog.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) {
             return;
         }
-        float[] tmpVigilanceValues;
+        boolean tmpIsTargetSearch = tmpTargetRadioButton.isSelected();
+        float[] tmpVigilanceValues = null;
+        int tmpTargetNumberOfClusters = 0;
         try {
-            tmpVigilanceValues = VigilanceScan.getVigilanceValues(
-                    Double.parseDouble(tmpStartField.getText().trim().replace(',', '.')),
-                    Double.parseDouble(tmpEndField.getText().trim().replace(',', '.')),
-                    Double.parseDouble(tmpStepField.getText().trim().replace(',', '.')));
+            if (tmpIsTargetSearch) {
+                //a typed value is only taken over by the spinner with enter, so it is read from the editor
+                tmpTargetNumberOfClusters = Integer.parseInt(tmpTargetSpinner.getEditor().getText().trim());
+                if (tmpTargetNumberOfClusters < 1) {
+                    throw new IllegalArgumentException("The target number of clusters must be at least 1.");
+                }
+            } else {
+                tmpVigilanceValues = VigilanceScan.getVigilanceValues(
+                        Double.parseDouble(tmpStartField.getText().trim().replace(',', '.')),
+                        Double.parseDouble(tmpEndField.getText().trim().replace(',', '.')),
+                        Double.parseDouble(tmpStepField.getText().trim().replace(',', '.')));
+            }
         } catch (IllegalArgumentException anException) {
             GuiUtil.guiMessageAlert(Alert.AlertType.WARNING, Message.get("VigilanceScan.dialog.title"),
                     Message.get("VigilanceScan.invalidInput.header"), anException.getMessage());
@@ -2146,8 +2188,12 @@ public class MainViewController {
         List<MoleculeDataModel> tmpFinalMolecules = tmpMolecules;
         ClusteringParameters tmpFinalParameters = tmpParameters;
         DescriptorPriorityTable tmpFinalPriorityTable = tmpPriorityTable;
+        float[] tmpFinalVigilanceValues = tmpVigilanceValues;
+        int tmpFinalTargetNumberOfClusters = tmpTargetNumberOfClusters;
         //holds the clustering result the scan is based on, calculated in the task if not given
         ClusteringRunResult[] tmpBaseRunResult = new ClusteringRunResult[] {aBaseRunResult};
+        //holds the result of a target search, null for a range scan
+        VigilanceScan.TargetSearchResult[] tmpSearchResult = new VigilanceScan.TargetSearchResult[1];
         Task<List<VigilanceScan.ScanEntry>> tmpScanTask = new Task<>() {
             @Override
             protected List<VigilanceScan.ScanEntry> call() throws Exception {
@@ -2157,7 +2203,12 @@ public class MainViewController {
                             MainViewController.this.clusteringService.getDescriptorMatrixCache(),
                             this::isCancelled, (aStep, aMessage) -> this.updateMessage(aMessage));
                 }
-                return VigilanceScan.scan(tmpBaseRunResult[0], tmpVigilanceValues, this::isCancelled,
+                if (tmpIsTargetSearch) {
+                    tmpSearchResult[0] = VigilanceScan.searchForNumberOfClusters(tmpBaseRunResult[0], tmpFinalTargetNumberOfClusters,
+                            this::isCancelled, (aDone, aTotal) -> this.updateProgress(aDone, aTotal));
+                    return tmpSearchResult[0].entries();
+                }
+                return VigilanceScan.scan(tmpBaseRunResult[0], tmpFinalVigilanceValues, this::isCancelled,
                         (aDone, aTotal) -> this.updateProgress(aDone, aTotal));
             }
         };
@@ -2169,7 +2220,7 @@ public class MainViewController {
         tmpScanTask.setOnSucceeded(event -> {
             this.updateStatusBar(tmpScanThread, Message.get("Status.finished"));
             this.setClusteringRunningState(false);
-            this.showVigilanceScanResult(aScanKey, tmpBaseRunResult[0], tmpScanTask.getValue(), aBaseRunResult != null);
+            this.showVigilanceScanResult(aScanKey, tmpBaseRunResult[0], tmpScanTask.getValue(), aBaseRunResult != null, tmpSearchResult[0]);
         });
         tmpScanTask.setOnCancelled(event -> {
             this.updateStatusBar(tmpScanThread, Message.get("Status.canceled"));
@@ -2200,11 +2251,15 @@ public class MainViewController {
      * @param anEntryList entries of the scan
      * @param anIsSelectingBaseVigilance true to select the row of the vigilance of the base result, i.e. of the
      *                                   clustering shown in the result tab the scan was started from
+     * @param aTargetSearchResult result of a search for a target number of clusters, whose best entry is highlighted and
+     *                            selected instead; null for a range scan
      */
     private void showVigilanceScanResult(String aScanKey, ClusteringRunResult aBaseRunResult, List<VigilanceScan.ScanEntry> anEntryList,
-                                         boolean anIsSelectingBaseVigilance) {
+                                         boolean anIsSelectingBaseVigilance, VigilanceScan.TargetSearchResult aTargetSearchResult) {
         VigilanceScanView tmpView = new VigilanceScanView(anEntryList);
-        if (anIsSelectingBaseVigilance) {
+        if (aTargetSearchResult != null) {
+            tmpView.showTargetSearchResult(aTargetSearchResult);
+        } else if (anIsSelectingBaseVigilance) {
             tmpView.selectVigilance(aBaseRunResult.clusteringResult().vigilance());
         }
         Stage tmpOldStage = this.vigilanceScanStageMap.remove(aScanKey);
