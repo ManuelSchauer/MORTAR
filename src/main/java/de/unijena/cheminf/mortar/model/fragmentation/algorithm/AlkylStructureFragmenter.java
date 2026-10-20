@@ -133,9 +133,11 @@ public class AlkylStructureFragmenter implements IMoleculeFragmenter {
      */
     public static final String ALGORITHM_NAME = "Alkyl Fragmenter";
     /**
-     * Default value of the setting for keeping non-fragmentable molecules in the fragmentation pipeline.
+     * Default value of the setting for keeping non-fragmentable molecules in the fragmentation pipeline. Active by
+     * default, since the fragmenter is mainly applied as downstream step in a pipeline (e.g. after the
+     * {@link ErtlFunctionalGroupsFinderFragmenter}), where fragments of the previous steps would be lost otherwise.
      */
-    public static final boolean KEEP_NON_FRAGMENTABLE_MOLECULES_SETTING_DEFAULT = false;
+    public static final boolean KEEP_NON_FRAGMENTABLE_MOLECULES_SETTING_DEFAULT = true;
     /**
      * Default value of the maximum length of linear chain fragments.
      */

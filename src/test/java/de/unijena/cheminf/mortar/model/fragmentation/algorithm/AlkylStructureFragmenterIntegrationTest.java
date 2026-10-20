@@ -292,9 +292,11 @@ public class AlkylStructureFragmenterIntegrationTest {
     @Test
     public void naturalProductLibraryTest() throws Exception {
         List<String> tmpViolations = new ArrayList<>();
+        //non-fragmentable molecules are only filtered if they are not kept in the pipeline
         AlkylStructureFragmenter tmpDefaultASF = new AlkylStructureFragmenter();
+        tmpDefaultASF.setKeepNonFragmentableMoleculesSetting(false);
         AlkylStructureFragmenter tmpKeepingASF = new AlkylStructureFragmenter();
-        tmpKeepingASF.setKeepNonFragmentableMoleculesSetting(true);
+        Assertions.assertTrue(tmpKeepingASF.getKeepNonFragmentableMoleculesSetting(), "Non-fragmentable molecules are kept by default.");
         for (IAtomContainer tmpMolecule : this.loadNaturalProductLibrary()) {
             String tmpContext = tmpMolecule.getTitle() + " " + ChemUtil.createUniqueSmiles(tmpMolecule, false);
             boolean tmpIsHydrocarbon = this.isHydrocarbon(tmpMolecule);
