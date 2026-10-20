@@ -1155,6 +1155,12 @@ public class AlkylStructureFragmenterTest extends AlkylStructureFragmenter {
         tmpExpectedFragmentsMap.put("CC(C)(C)ccc", List.of("*C(*)(*)*", "ccc", "C", "C", "C"));
         tmpExpectedFragmentsMap.put("cc(C)cc(CCCCCCCC)c", List.of("ccccc", "C", "CCCCCC", "CC"));
         tmpExpectedFragmentsMap.put("cc(CC)ccc", List.of("ccccc", "CC"));
+        //single aromatic remnant atoms (no aromatic bond) stay conjugated with neighboring aromatic atoms and are
+        // neither part of alkyl chains nor tertiary/quaternary carbons
+        tmpExpectedFragmentsMap.put("c-c1ccccc1", List.of("c-c1ccccc1"));
+        tmpExpectedFragmentsMap.put("cc-c", List.of("cc-c"));
+        tmpExpectedFragmentsMap.put("cCCC", List.of("c", "CCC"));
+        tmpExpectedFragmentsMap.put("c(C)(C)C", List.of("c", "C", "C", "C"));
         for (Map.Entry<String, List<String>> tmpEntry : tmpExpectedFragmentsMap.entrySet()) {
             //parsed as in the MORTAR pipeline, kekulization of these remnants fails
             Assertions.assertThrows(CDKException.class, () -> ChemUtil.parseSmilesToAtomContainer(tmpEntry.getKey(), true, true));

@@ -950,6 +950,7 @@ public class AlkylStructureFragmenter implements IMoleculeFragmenter{
         for (IAtom tmpAtom : tmpAtomArray) {
             if (tmpAtom != null && (tmpAtom.getBondCount() == 3 || tmpAtom.getBondCount() == 4)
                     && this.getMaxBondOrder(tmpAtom) == IBond.Order.SINGLE
+                    && !tmpAtom.isAromatic()
                     && !this.hasAromaticBondWithoutOrder(tmpAtom)
                     && !((boolean) tmpAtom.getProperty(AlkylStructureFragmenter.INTERNAL_ASF_RING_MARKER_KEY))) {
                 if (tmpAtom.getBondCount() == 3) {
@@ -1021,18 +1022,29 @@ public class AlkylStructureFragmenter implements IMoleculeFragmenter{
     protected void markConjugatedPiSystems(MolecularArrays aMolecularArraysInstance) throws IllegalArgumentException{
         IAtom[] tmpAtomArray = aMolecularArraysInstance.getAtomArray();
         IBond[] tmpBondArray = aMolecularArraysInstance.getBondArray();
+        //aromatic atoms are always part of a conjugated system, also if they are single remnants of aromatic rings
+        // without any aromatic bond (e.g. after hetero atom removal by a previous fragmentation in a pipeline)
+        for (IAtom tmpArrayAtom : tmpAtomArray) {
+            if (tmpArrayAtom.isAromatic()) {
+                tmpArrayAtom.setProperty(AlkylStructureFragmenter.INTERNAL_ASF_CONJ_PI_MARKER_KEY, true);
+            }
+        }
         for (IBond tmpArrayBond: tmpBondArray) {
             if ((boolean) tmpArrayBond.getProperty(AlkylStructureFragmenter.INTERNAL_ASF_CONJ_PI_MARKER_KEY)) {
                 continue;
             }
-            //aromatic bonds without assigned order are part of an aromatic (conjugated) system
-            if (this.isAromaticBondWithoutOrder(tmpArrayBond)) {
+            //aromatic bonds without assigned order and bonds between two aromatic atoms (of any order) are part of an
+            // aromatic (conjugated) system
+            if (this.isAromaticBondWithoutOrder(tmpArrayBond)
+                    || (tmpArrayBond.getBegin().isAromatic() && tmpArrayBond.getEnd().isAromatic())) {
                 tmpArrayBond.setProperty(AlkylStructureFragmenter.INTERNAL_ASF_CONJ_PI_MARKER_KEY, true);
                 for (IAtom tmpAtom : tmpArrayBond.atoms()) {
                     tmpAtomArray[(int) tmpAtom.getProperty(AlkylStructureFragmenter.INTERNAL_ASF_ATOM_INDEX_PROPERTY_KEY)]
                             .setProperty(AlkylStructureFragmenter.INTERNAL_ASF_CONJ_PI_MARKER_KEY, true);
                 }
-                continue;
+                if (tmpArrayBond.getOrder() != IBond.Order.DOUBLE && tmpArrayBond.getOrder() != IBond.Order.TRIPLE) {
+                    continue;
+                }
             }
             if (tmpArrayBond.getOrder() != IBond.Order.DOUBLE && tmpArrayBond.getOrder() != IBond.Order.TRIPLE) {
                 //single bond between two atoms of double bonds or aromatic bonds without assigned order
@@ -1792,8 +1804,9 @@ public class AlkylStructureFragmenter implements IMoleculeFragmenter{
         }
     }
     /**
-     * Corrects the implicit hydrogen counts of atoms with aromatic bonds without assigned bond order, which cannot be
-     * handled by the atom type based hydrogen saturation. Such atoms keep their original implicit hydrogen count plus
+     * Corrects the implicit hydrogen counts of atoms with aromatic bonds without assigned bond order and of aromatic
+     * atoms without any double bond (non-kekulized aromatic remnants), which cannot be handled by the atom type based
+     * hydrogen saturation. Such atoms keep their original implicit hydrogen count plus
      * one hydrogen for every bond that was cut during fragmentation (bonds replaced by pseudo atoms count as kept).
      * This way, identical aromatic remnants are represented identically, independent of the cut substituents.
      *
@@ -1807,7 +1820,9 @@ public class AlkylStructureFragmenter implements IMoleculeFragmenter{
                     continue;
                 }
                 IAtom tmpOriginalAtom = anAtomArray[(int) tmpAtom.getProperty(AlkylStructureFragmenter.INTERNAL_ASF_ATOM_INDEX_PROPERTY_KEY)];
-                if (!this.hasAromaticBondWithoutOrder(tmpOriginalAtom)) {
+                //kekulized aromatic atoms (with a double bond) are handled by the atom type based saturation
+                if (!this.hasAromaticBondWithoutOrder(tmpOriginalAtom)
+                        && !(tmpOriginalAtom.isAromatic() && this.getMaxBondOrder(tmpOriginalAtom) == IBond.Order.SINGLE)) {
                     continue;
                 }
                 int tmpOriginalHydrogenCount = tmpOriginalAtom.getImplicitHydrogenCount() == null ? 0 : tmpOriginalAtom.getImplicitHydrogenCount();
@@ -2078,14 +2093,14 @@ public class AlkylStructureFragmenter implements IMoleculeFragmenter{
     }
 
     /**
-     * Checks whether the given atom's highest bond order is double or whether it has an aromatic bond without assigned
-     * order, i.e. whether it can be part of a conjugated pi system connected via a single bond.
+     * Checks whether the given atom's highest bond order is double, whether it is aromatic or whether it has an aromatic
+     * bond without assigned order, i.e. whether it can be part of a conjugated pi system connected via a single bond.
      *
      * @param anAtom the atom to check
      * @return true if the atom is part of a double bond or an aromatic bond without assigned order
      */
     protected boolean isDoubleOrAromaticBondAtom(IAtom anAtom) {
-        return this.getMaxBondOrder(anAtom) == IBond.Order.DOUBLE || this.hasAromaticBondWithoutOrder(anAtom);
+        return this.getMaxBondOrder(anAtom) == IBond.Order.DOUBLE || anAtom.isAromatic() || this.hasAromaticBondWithoutOrder(anAtom);
     }
 
     /**

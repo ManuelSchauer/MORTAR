@@ -882,8 +882,9 @@ public class AlkylStructureFragmenterIntegrationTest {
      * the input (rings, multi bonds, conjugation, tertiary/quaternary carbons) are determined independently of the
      * fragmenter's internal markers:
      * <ul>
-     *     <li>ring bonds, double/triple bonds, aromatic bonds without bond order and single bonds of conjugated systems
-     *     (D-S-D, T-S-T, including aromatic bonds without bond order instead of double bonds) are never cut;</li>
+     *     <li>ring bonds, double/triple bonds, bonds between aromatic atoms (of any order, also without bond order) and
+     *     single bonds of conjugated systems (D-S-D, T-S-T, aromatic atoms counting like double bond atoms) are never
+     *     cut; aromatic atoms are never tertiary/quaternary carbons;</li>
      *     <li>with isolation of tertiary/quaternary carbons, such a carbon is returned as single carbon saturated with
      *     pseudo atoms, unless it is bonded to a ring and not to be separated from it;</li>
      *     <li>without isolation (or when kept at a ring), a tertiary/quaternary carbon keeps its saturated non-ring
@@ -937,17 +938,24 @@ public class AlkylStructureFragmenterIntegrationTest {
                     tmpHeavyDegree++;
                 }
             }
-            tmpIsTertQuat[i] = !tmpIsRing[i] && tmpOnlySingleBonds && (tmpHeavyDegree == 3 || tmpHeavyDegree == 4);
+            //aromatic atoms (also remnants without aromatic bonds) are never tertiary/quaternary carbons
+            tmpIsTertQuat[i] = !tmpIsRing[i] && !tmpAtom.isAromatic() && tmpOnlySingleBonds && (tmpHeavyDegree == 3 || tmpHeavyDegree == 4);
         }
         //conjugated single bonds and atoms of conjugated systems (extended along the multi bonds)
         Set<Long> tmpConjugatedSingleBonds = new HashSet<>();
         boolean[] tmpIsConjugated = new boolean[tmpAtomCount];
+        //aromatic atoms are always conjugated, bonds between aromatic atoms (of any order) are never cut
+        Set<Long> tmpAromaticBonds = new HashSet<>();
+        for (int i = 0; i < tmpAtomCount; i++) {
+            tmpIsConjugated[i] = aMolecule.getAtom(i).isAromatic();
+        }
         for (IBond tmpBond : aMolecule.bonds()) {
             int tmpBegin = aMolecule.indexOf(tmpBond.getBegin());
             int tmpEnd = aMolecule.indexOf(tmpBond.getEnd());
-            boolean tmpIsBeginPi = tmpHasDouble[tmpBegin] || tmpHasAromaticWithoutOrder[tmpBegin];
-            boolean tmpIsEndPi = tmpHasDouble[tmpEnd] || tmpHasAromaticWithoutOrder[tmpEnd];
-            if (this.isAromaticWithoutOrder(tmpBond)) {
+            boolean tmpIsBeginPi = tmpHasDouble[tmpBegin] || tmpHasAromaticWithoutOrder[tmpBegin] || tmpBond.getBegin().isAromatic();
+            boolean tmpIsEndPi = tmpHasDouble[tmpEnd] || tmpHasAromaticWithoutOrder[tmpEnd] || tmpBond.getEnd().isAromatic();
+            if (this.isAromaticWithoutOrder(tmpBond) || (tmpBond.getBegin().isAromatic() && tmpBond.getEnd().isAromatic())) {
+                tmpAromaticBonds.add(this.atomPairKey(tmpBegin, tmpEnd));
                 tmpIsConjugated[tmpBegin] = true;
                 tmpIsConjugated[tmpEnd] = true;
             } else if (tmpBond.getOrder() == IBond.Order.SINGLE
@@ -985,7 +993,7 @@ public class AlkylStructureFragmenterIntegrationTest {
             }
             if (tmpRingMolecule.getBond(tmpRingMolecule.getAtom(tmpBegin), tmpRingMolecule.getAtom(tmpEnd)).isInRing()) {
                 tmpViolations.add(String.format("%s: ring bond %d-%d cut", aContext, tmpBegin, tmpEnd));
-            } else if (this.isAromaticWithoutOrder(tmpBond)) {
+            } else if (tmpAromaticBonds.contains(tmpKey)) {
                 tmpViolations.add(String.format("%s: aromatic bond %d-%d cut", aContext, tmpBegin, tmpEnd));
             } else if (tmpBond.getOrder() != IBond.Order.SINGLE) {
                 tmpViolations.add(String.format("%s: multi bond %d-%d cut", aContext, tmpBegin, tmpEnd));
