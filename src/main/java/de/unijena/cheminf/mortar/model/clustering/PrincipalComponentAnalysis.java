@@ -26,10 +26,13 @@
 package de.unijena.cheminf.mortar.model.clustering;
 
 import java.util.Arrays;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Objects;
 import java.util.Random;
 import java.util.concurrent.CancellationException;
 import java.util.function.BooleanSupplier;
+import java.util.stream.IntStream;
 
 /**
  * Principal component analysis (PCA) of a clustering result for its visualisation. The PCA is calculated on the vectors
@@ -46,7 +49,7 @@ import java.util.function.BooleanSupplier;
  * @version 1.0.0.0
  */
 public final class PrincipalComponentAnalysis {
-    //<editor-fold desc="Record PcaResult" defaultstate="collapsed">
+    //<editor-fold desc="Records" defaultstate="collapsed">
     /**
      * Result of a PCA.
      *
@@ -55,8 +58,11 @@ public final class PrincipalComponentAnalysis {
      *                            no cluster vectors were given
      * @param eigenvalues variance along every component, descending
      * @param explainedVarianceRatios share of the total variance explained by every component, in [0,1]
+     * @param loadings weight of every feature (column of the data) in every component, components x features; the
+     *                 orthonormal component vectors, with the sign fixed so that the largest weight is positive
      */
-    public record PcaResult(double[][] scores, double[][] clusterVectorScores, double[] eigenvalues, double[] explainedVarianceRatios) {
+    public record PcaResult(double[][] scores, double[][] clusterVectorScores, double[] eigenvalues, double[] explainedVarianceRatios,
+                            double[][] loadings) {
         /**
          * Returns the number of components.
          *
@@ -65,6 +71,33 @@ public final class PrincipalComponentAnalysis {
         public int getNumberOfComponents() {
             return this.eigenvalues.length;
         }
+        //
+        /**
+         * Returns the features with the largest absolute weight in the given component, i.e. the features the component
+         * mainly stands for; a positive loading means that molecules with a higher value of the feature lie further in
+         * the positive direction of the component.
+         *
+         * @param aComponent component index
+         * @param aNumber maximum number of features
+         * @return feature loadings, the largest absolute weight first
+         */
+        public List<FeatureLoading> getTopLoadings(int aComponent, int aNumber) {
+            double[] tmpLoadings = this.loadings[aComponent];
+            return IntStream.range(0, tmpLoadings.length).boxed()
+                    .sorted(Comparator.comparingDouble((Integer aFeature) -> -Math.abs(tmpLoadings[aFeature])).thenComparingInt(aFeature -> aFeature))
+                    .limit(aNumber)
+                    .map(aFeature -> new FeatureLoading(aFeature, tmpLoadings[aFeature]))
+                    .toList();
+        }
+    }
+    //
+    /**
+     * Weight of one feature in a component.
+     *
+     * @param featureIndex index of the feature (column of the data)
+     * @param loading weight of the feature in the component, in [-1, 1]
+     */
+    public record FeatureLoading(int featureIndex, double loading) {
     }
     //</editor-fold>
     //
@@ -266,7 +299,7 @@ public final class PrincipalComponentAnalysis {
         for (int k = 0; k < anAdditionalVectors.length; k++) {
             tmpAdditionalScores[k] = PrincipalComponentAnalysis.project(anAdditionalVectors[k], tmpMeans, tmpBasis);
         }
-        return new PcaResult(tmpScores, tmpAdditionalScores, tmpEigenvalues, tmpRatios);
+        return new PcaResult(tmpScores, tmpAdditionalScores, tmpEigenvalues, tmpRatios, tmpBasis);
     }
     //</editor-fold>
     //

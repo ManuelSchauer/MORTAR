@@ -28,6 +28,7 @@ package de.unijena.cheminf.mortar.model.clustering;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.Random;
 import java.util.concurrent.CancellationException;
@@ -132,5 +133,53 @@ class PrincipalComponentAnalysisTest {
         Assertions.assertEquals(tmpRunResult.molecules().size(), tmpResult.scores().length);
         Assertions.assertEquals(tmpRunResult.clusteringResult().numberOfClusters(), tmpResult.clusterVectorScores().length);
         Assertions.assertTrue(tmpResult.explainedVarianceRatios()[0] > 0.0);
+    }
+    //
+    /**
+     * Tests the loadings: the component vectors are orthonormal, the scores are the centred data projected onto them,
+     * and the feature with by far the largest variance has the largest weight in the first component.
+     */
+    @Test
+    void testLoadings() {
+        Random tmpRandom = new Random(7L);
+        int tmpRowCount = 300;
+        double[][] tmpData = new double[tmpRowCount][4];
+        for (int i = 0; i < tmpRowCount; i++) {
+            tmpData[i][0] = 0.1 * tmpRandom.nextGaussian();
+            tmpData[i][1] = 5.0 * tmpRandom.nextGaussian();
+            tmpData[i][2] = 0.5 * tmpRandom.nextGaussian();
+            tmpData[i][3] = 0.2 * tmpRandom.nextGaussian();
+        }
+        PrincipalComponentAnalysis.PcaResult tmpResult = PrincipalComponentAnalysis.calculate(tmpData, new double[0][], 3, () -> false);
+        double[][] tmpLoadings = tmpResult.loadings();
+        Assertions.assertEquals(3, tmpLoadings.length);
+        for (int a = 0; a < 3; a++) {
+            for (int b = 0; b < 3; b++) {
+                double tmpDot = 0.0;
+                for (int j = 0; j < 4; j++) {
+                    tmpDot += tmpLoadings[a][j] * tmpLoadings[b][j];
+                }
+                Assertions.assertEquals(a == b ? 1.0 : 0.0, tmpDot, 1.0e-9);
+            }
+        }
+        //scores = centred data x loadings
+        double[] tmpMeans = new double[4];
+        for (double[] tmpRow : tmpData) {
+            for (int j = 0; j < 4; j++) {
+                tmpMeans[j] += tmpRow[j] / tmpRowCount;
+            }
+        }
+        for (int c = 0; c < 3; c++) {
+            double tmpScore = 0.0;
+            for (int j = 0; j < 4; j++) {
+                tmpScore += (tmpData[5][j] - tmpMeans[j]) * tmpLoadings[c][j];
+            }
+            Assertions.assertEquals(tmpScore, tmpResult.scores()[5][c], 1.0e-9);
+        }
+        List<PrincipalComponentAnalysis.FeatureLoading> tmpTop = tmpResult.getTopLoadings(0, 2);
+        Assertions.assertEquals(2, tmpTop.size());
+        Assertions.assertEquals(1, tmpTop.getFirst().featureIndex());
+        Assertions.assertTrue(Math.abs(tmpTop.getFirst().loading()) > 0.99);
+        Assertions.assertTrue(Math.abs(tmpTop.getFirst().loading()) >= Math.abs(tmpTop.get(1).loading()));
     }
 }

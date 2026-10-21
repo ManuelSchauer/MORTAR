@@ -30,6 +30,7 @@ import de.unijena.cheminf.mortar.gui.util.GuiDefinitions;
 import de.unijena.cheminf.mortar.message.Message;
 import de.unijena.cheminf.mortar.model.clustering.ClusterDescriptorStatistics;
 import de.unijena.cheminf.mortar.model.clustering.ClusteringRunResult;
+import de.unijena.cheminf.mortar.model.clustering.FeatureMatrix;
 import de.unijena.cheminf.mortar.model.clustering.PrincipalComponentAnalysis;
 import de.unijena.cheminf.mortar.model.data.MoleculeDataModel;
 import de.unijena.cheminf.mortar.model.depict.DepictionUtil;
@@ -94,7 +95,9 @@ import java.util.logging.Logger;
  * chosen and clusters can be shown, hidden and highlighted (by selecting them in the list). Instead of by cluster, the
  * points can be coloured by a calculated descriptor (raw value, viridis colour scale from the 2nd to the 98th percentile,
  * grey for missing values), to see what the components mean chemically. The tick marks of both axes lie on round
- * values (see {@link AlignedNumberAxis}). With "3D", the molecules are shown on the first three components in a rotatable
+ * values (see {@link AlignedNumberAxis}). What the components stand for is shown below the plot and at the axes: the
+ * features with the largest weight (loading) in every component, with the direction in the raw values (sign of the
+ * correlation r of the raw feature values with the component scores), e.g. "PC1: Heavy Atom Count +, Molecular Weight +". With "3D", the molecules are shown on the first three components in a rotatable
  * three-dimensional view ({@link Pca3dView}) with the same colours, visibility, highlighting and mouse actions; there,
  * dimmed clusters are drawn in a pale colour instead of transparent.
  *
@@ -160,6 +163,18 @@ public class PcaView extends BorderPane {
      * Item of the colour combo box that colours the points by cluster.
      */
     private static final String CLUSTER_COLOUR_ITEM = "";
+    /**
+     * Number of main features shown per component below the plot.
+     */
+    private static final int NUMBER_OF_MAIN_FEATURES = 5;
+    /**
+     * Number of main features shown in the axis labels.
+     */
+    private static final int NUMBER_OF_AXIS_FEATURES = 3;
+    /**
+     * Maximum length of a feature name in the axis labels and the overview; longer names (e.g. fragment SMILES) are cut.
+     */
+    private static final int MAXIMUM_FEATURE_NAME_LENGTH = 28;
     /**
      * Logger of this class.
      */
@@ -244,6 +259,10 @@ public class PcaView extends BorderPane {
      */
     private final boolean[] isRepresentative;
     /**
+     * Axis label of every component: name, explained variance and main features.
+     */
+    private final String[] axisLabels;
+    /**
      * Toggle button of the three-dimensional view.
      */
     private final ToggleButton threeDimensionalToggleButton;
@@ -309,6 +328,22 @@ public class PcaView extends BorderPane {
         }
         //</editor-fold>
         //<editor-fold desc="scatter plot">
+        //what the components stand for, at the axes and below the plot
+        this.axisLabels = new String[aPcaResult.getNumberOfComponents()];
+        VBox tmpMeaningBox = new VBox(2.0);
+        Label tmpMeaningTitle = new Label(Message.get("PcaView.loadings.title"));
+        tmpMeaningTitle.setStyle("-fx-font-weight: bold;");
+        tmpMeaningTitle.setTooltip(new Tooltip(Message.get("PcaView.loadings.tooltip")));
+        tmpMeaningBox.getChildren().add(tmpMeaningTitle);
+        for (int c = 0; c < aPcaResult.getNumberOfComponents(); c++) {
+            this.axisLabels[c] = PcaView.getComponentName(c, aPcaResult) + ": " + this.describeComponent(c, PcaView.NUMBER_OF_AXIS_FEATURES, false);
+            Label tmpComponentLabel = new Label(PcaView.getComponentName(c, aPcaResult) + ": "
+                    + this.describeComponent(c, PcaView.NUMBER_OF_MAIN_FEATURES, true));
+            tmpComponentLabel.setWrapText(true);
+            tmpComponentLabel.setTooltip(new Tooltip(this.describeComponentInFull(c)));
+            tmpMeaningBox.getChildren().add(tmpComponentLabel);
+        }
+        tmpMeaningBox.setPadding(new Insets(GuiDefinitions.GUI_INSETS_VALUE, GuiDefinitions.GUI_INSETS_VALUE, 0.0, GuiDefinitions.GUI_INSETS_VALUE));
         this.xAxis = new AlignedNumberAxis();
         this.yAxis = new AlignedNumberAxis();
         this.chart = new ScatterChart<>(this.xAxis, this.yAxis);
@@ -473,7 +508,7 @@ public class PcaView extends BorderPane {
         this.plotPane = new StackPane(this.chart);
         this.setCenter(this.plotPane);
         this.setRight(tmpRightBox);
-        this.setBottom(this.hoverLabel);
+        this.setBottom(new VBox(tmpMeaningBox, this.hoverLabel));
         this.updateCoordinates();
         this.updatePointStyles();
         this.updatePointColours();
@@ -658,6 +693,103 @@ public class PcaView extends BorderPane {
     }
     //
     /**
+     * Returns the main features of a component: the features with the largest weight (loading), each with "+" or "-" for
+     * the direction in the raw values (sign of the correlation of the raw feature values with the component scores; the
+     * sign of the loading if there are no raw values) and optionally the correlation r.
+     *
+     * @param aComponent component index
+     * @param aNumber number of features
+     * @param anIsWithCorrelation true to add the correlation r of every feature
+     * @return description, e.g. "Heavy Atom Count +, TPSA -"
+     */
+    private String describeComponent(int aComponent, int aNumber, boolean anIsWithCorrelation) {
+        List<String> tmpParts = new ArrayList<>();
+        for (PrincipalComponentAnalysis.FeatureLoading tmpLoading : this.pcaResult.getTopLoadings(aComponent, aNumber)) {
+            String tmpName = this.runResult.processedMatrix().getFeatureName(tmpLoading.featureIndex());
+            double tmpCorrelation = this.getCorrelationWithScores(tmpName, aComponent);
+            double tmpDirection = Double.isNaN(tmpCorrelation) ? tmpLoading.loading() : tmpCorrelation;
+            String tmpShortName = tmpName.length() > PcaView.MAXIMUM_FEATURE_NAME_LENGTH
+                    ? tmpName.substring(0, PcaView.MAXIMUM_FEATURE_NAME_LENGTH - 1) + "\u2026" : tmpName;
+            String tmpPart = tmpShortName + (tmpDirection >= 0.0 ? " +" : " \u2212");
+            if (anIsWithCorrelation && !Double.isNaN(tmpCorrelation)) {
+                tmpPart += String.format(Locale.getDefault(), " (r %.2f)", tmpCorrelation);
+            }
+            tmpParts.add(tmpPart);
+        }
+        return String.join(", ", tmpParts);
+    }
+    //
+    /**
+     * Returns the main features of a component with full names, loadings and correlations, one per line, e.g. for a
+     * tooltip.
+     *
+     * @param aComponent component index
+     * @return description
+     */
+    private String describeComponentInFull(int aComponent) {
+        StringBuilder tmpText = new StringBuilder();
+        for (PrincipalComponentAnalysis.FeatureLoading tmpLoading : this.pcaResult.getTopLoadings(aComponent, PcaView.NUMBER_OF_MAIN_FEATURES)) {
+            String tmpName = this.runResult.processedMatrix().getFeatureName(tmpLoading.featureIndex());
+            double tmpCorrelation = this.getCorrelationWithScores(tmpName, aComponent);
+            tmpText.append(String.format(Locale.getDefault(), Message.get("PcaView.loadings.line.text"), tmpName, tmpLoading.loading(),
+                    Double.isNaN(tmpCorrelation) ? "-" : String.format(Locale.getDefault(), "%.2f", tmpCorrelation))).append(System.lineSeparator());
+        }
+        return tmpText.toString().trim();
+    }
+    //
+    /**
+     * Returns the Pearson correlation of the raw values of the feature with the given name with the scores of the given
+     * component, i.e. the direction of the component in the units of the feature; missing values are left out.
+     *
+     * @param aFeatureName name of the feature (column of the raw matrix)
+     * @param aComponent component index
+     * @return correlation in [-1, 1], NaN if the feature has no raw column or no variance
+     */
+    private double getCorrelationWithScores(String aFeatureName, int aComponent) {
+        FeatureMatrix tmpRaw = this.runResult.rawMatrix();
+        int tmpColumn = -1;
+        for (int j = 0; j < tmpRaw.getColumnCount() && tmpColumn < 0; j++) {
+            if (tmpRaw.getFeatureName(j).equals(aFeatureName)) {
+                tmpColumn = j;
+            }
+        }
+        if (tmpColumn < 0) {
+            return Double.NaN;
+        }
+        double[][] tmpScores = this.pcaResult.scores();
+        double tmpSumX = 0.0;
+        double tmpSumY = 0.0;
+        int tmpCount = 0;
+        for (int i = 0; i < tmpScores.length; i++) {
+            float tmpValue = tmpRaw.getValue(i, tmpColumn);
+            if (Float.isFinite(tmpValue)) {
+                tmpSumX += tmpValue;
+                tmpSumY += tmpScores[i][aComponent];
+                tmpCount++;
+            }
+        }
+        if (tmpCount < 2) {
+            return Double.NaN;
+        }
+        double tmpMeanX = tmpSumX / tmpCount;
+        double tmpMeanY = tmpSumY / tmpCount;
+        double tmpCovariance = 0.0;
+        double tmpVarianceX = 0.0;
+        double tmpVarianceY = 0.0;
+        for (int i = 0; i < tmpScores.length; i++) {
+            float tmpValue = tmpRaw.getValue(i, tmpColumn);
+            if (Float.isFinite(tmpValue)) {
+                double tmpDeltaX = tmpValue - tmpMeanX;
+                double tmpDeltaY = tmpScores[i][aComponent] - tmpMeanY;
+                tmpCovariance += tmpDeltaX * tmpDeltaY;
+                tmpVarianceX += tmpDeltaX * tmpDeltaX;
+                tmpVarianceY += tmpDeltaY * tmpDeltaY;
+            }
+        }
+        return tmpVarianceX > 0.0 && tmpVarianceY > 0.0 ? tmpCovariance / Math.sqrt(tmpVarianceX * tmpVarianceY) : Double.NaN;
+    }
+    //
+    /**
      * Returns the descriptor the points are coloured by.
      *
      * @return descriptor column name, null if the points are coloured by cluster
@@ -749,8 +881,8 @@ public class PcaView extends BorderPane {
             this.centreDataList.get(k).setXValue(tmpCentreScores[k][tmpX]);
             this.centreDataList.get(k).setYValue(tmpCentreScores[k][tmpY]);
         }
-        this.xAxis.setLabel(PcaView.getComponentName(tmpX, this.pcaResult));
-        this.yAxis.setLabel(PcaView.getComponentName(tmpY, this.pcaResult));
+        this.xAxis.setLabel(this.axisLabels[tmpX]);
+        this.yAxis.setLabel(this.axisLabels[tmpY]);
     }
     //
     /**
@@ -785,7 +917,7 @@ public class PcaView extends BorderPane {
      */
     private void showDimension(boolean anIsThreeDimensional) {
         if (anIsThreeDimensional && this.pca3dView == null) {
-            this.pca3dView = new Pca3dView(this.pcaResult);
+            this.pca3dView = new Pca3dView(this.pcaResult, this.axisLabels);
             int[] tmpLabels = this.runResult.clusteringResult().clusterLabels();
             this.pca3dView.setMoleculeActions(
                     aRowIndex -> this.hoverLabel.setText(aRowIndex < 0 ? Message.get("PcaView.hover.text") : this.describeMolecule(aRowIndex)),

@@ -215,12 +215,17 @@ public class Pca3dView extends Pane {
      * Constructor, builds the scene with the axes; the points are added by {@link #update}.
      *
      * @param aPcaResult PCA with at least three components
-     * @throws NullPointerException if the result is null
-     * @throws IllegalArgumentException if the PCA has fewer than three components
+     * @param anAxisNameArray names of the first three axes, e.g. with explained variance and main features
+     * @throws NullPointerException if a parameter is null
+     * @throws IllegalArgumentException if the PCA has fewer than three components or fewer than three names are given
      */
-    public Pca3dView(PrincipalComponentAnalysis.PcaResult aPcaResult) throws NullPointerException, IllegalArgumentException {
+    public Pca3dView(PrincipalComponentAnalysis.PcaResult aPcaResult, String[] anAxisNameArray) throws NullPointerException, IllegalArgumentException {
         super();
         this.pcaResult = Objects.requireNonNull(aPcaResult, "Given PCA result is null.");
+        Objects.requireNonNull(anAxisNameArray, "Given axis names are null.");
+        if (anAxisNameArray.length < 3) {
+            throw new IllegalArgumentException("Three axis names are needed.");
+        }
         if (aPcaResult.getNumberOfComponents() < 3) {
             throw new IllegalArgumentException("A 3D view needs three components.");
         }
@@ -238,7 +243,7 @@ public class Pca3dView extends Pane {
         this.labelOverlay.setMouseTransparent(true);
         this.labelAnchors = new ArrayList<>();
         this.world = new Group(this.moleculeMeshView, this.centreMeshView);
-        this.world.getChildren().addAll(this.createAxes(tmpMaximum));
+        this.world.getChildren().addAll(this.createAxes(tmpMaximum, anAxisNameArray));
         this.rotateX = new Rotate(Pca3dView.START_ANGLE_X, Rotate.X_AXIS);
         this.rotateY = new Rotate(Pca3dView.START_ANGLE_Y, Rotate.Y_AXIS);
         this.world.getTransforms().addAll(this.rotateX, this.rotateY);
@@ -383,9 +388,10 @@ public class Pca3dView extends Pane {
      *
      * @param aMaximumScore largest absolute score of the first three components, the half length of the axes in score
      *                      units
+     * @param anAxisNameArray names of the three axes
      * @return axis nodes
      */
-    private List<Node> createAxes(double aMaximumScore) {
+    private List<Node> createAxes(double aMaximumScore, String[] anAxisNameArray) {
         List<Node> tmpNodes = new ArrayList<>();
         PhongMaterial tmpMaterial = new PhongMaterial(Color.GREY);
         double tmpLength = 2.2 * Pca3dView.HALF_SIZE;
@@ -401,8 +407,7 @@ public class Pca3dView extends Pane {
             tmpNodes.add(tmpAxis);
             //name of the axis at its positive end
             double[] tmpEnd = this.toScene(Pca3dView.unitScores(tmpComponent, 1.12 * Pca3dView.HALF_SIZE / this.scale));
-            tmpNodes.add(this.addLabel(tmpEnd, String.format(Locale.getDefault(), "PC%d (%.1f %%)", tmpComponent + 1,
-                    100.0 * this.pcaResult.explainedVarianceRatios()[tmpComponent]), true));
+            tmpNodes.add(this.addLabel(tmpEnd, anAxisNameArray[tmpComponent], true));
             if (!(aMaximumScore > 0.0)) {
                 continue;
             }
