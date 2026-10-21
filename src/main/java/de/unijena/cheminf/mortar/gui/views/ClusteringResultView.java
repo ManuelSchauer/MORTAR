@@ -29,6 +29,8 @@ import de.unijena.cheminf.mortar.gui.util.GuiDefinitions;
 import de.unijena.cheminf.mortar.message.Message;
 import de.unijena.cheminf.mortar.model.clustering.ClusterDescriptorStatistics;
 import de.unijena.cheminf.mortar.model.clustering.ClusterProfiler;
+import de.unijena.cheminf.mortar.model.clustering.ClusterQuality;
+import de.unijena.cheminf.mortar.model.clustering.ClusterStability;
 import de.unijena.cheminf.mortar.model.clustering.ClusteringResult;
 import de.unijena.cheminf.mortar.model.clustering.ClusteringRunResult;
 import de.unijena.cheminf.mortar.model.data.MoleculeDataModel;
@@ -39,9 +41,11 @@ import de.unijena.cheminf.mortar.model.util.CollectionUtil;
 import javafx.beans.Observable;
 import javafx.beans.binding.Bindings;
 import javafx.beans.property.BooleanProperty;
+import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.beans.property.SimpleBooleanProperty;
+import javafx.beans.property.SimpleObjectProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.SortedList;
@@ -162,6 +166,22 @@ public class ClusteringResultView extends BorderPane {
      */
     private final Button diverseSubsetButton;
     /**
+     * Button to open the interactive PCA of this clustering in a new tab.
+     */
+    private final Button pcaButton;
+    /**
+     * Button to open the quality of all clusters and the distances between them.
+     */
+    private final Button clusterQualityButton;
+    /**
+     * Quality line of the selected cluster below the profile title: silhouette, neighbour purity and nearest cluster.
+     */
+    private final Label profileQualityLabel;
+    /**
+     * Quality of the clusters, set when its calculation in the background has finished; null before.
+     */
+    private final ObjectProperty<ClusterQuality> clusterQualityProperty;
+    /**
      * Text field for the name or SMILES of the query of the similarity search.
      */
     private final TextField similaritySearchTextField;
@@ -240,6 +260,10 @@ public class ClusteringResultView extends BorderPane {
      * Conditions of the last applied range filter, proposed when the filter is opened again.
      */
     private List<ClusterDescriptorStatistics.RangeCondition> lastRangeConditions;
+    /**
+     * Result of the optional stability check, null if it was not run.
+     */
+    private ClusterStability.StabilityResult stabilityResult;
     //</editor-fold>
     //
     //<editor-fold desc="Constructor" defaultstate="collapsed">
@@ -337,6 +361,15 @@ public class ClusteringResultView extends BorderPane {
         this.trainTestSplitButton.setTooltip(new Tooltip(Message.get("ClusteringResultView.trainTestSplitButton.tooltip")));
         this.diverseSubsetButton = new Button(Message.get("ClusteringResultView.diverseSubsetButton.text"));
         this.diverseSubsetButton.setTooltip(new Tooltip(Message.get("ClusteringResultView.diverseSubsetButton.tooltip")));
+        this.pcaButton = new Button(Message.get("ClusteringResultView.pcaButton.text"));
+        this.pcaButton.setTooltip(new Tooltip(Message.get("ClusteringResultView.pcaButton.tooltip")));
+        this.pcaButton.setMinWidth(Region.USE_PREF_SIZE);
+        this.clusterQualityButton = new Button(Message.get("ClusteringResultView.clusterQualityButton.text"));
+        this.clusterQualityButton.setTooltip(new Tooltip(Message.get("ClusteringResultView.clusterQualityButton.tooltip")));
+        this.clusterQualityButton.setMinWidth(Region.USE_PREF_SIZE);
+        //the quality is calculated in the background, the button is enabled when it is available
+        this.clusterQualityProperty = new SimpleObjectProperty<>(null);
+        this.clusterQualityButton.disableProperty().bind(this.clusterQualityProperty.isNull());
         //similarity search on the left, view and export buttons on the right
         this.similaritySearchTextField = new TextField();
         this.similaritySearchTextField.setPromptText(Message.get("ClusteringSimilaritySearch.textField.prompt"));
@@ -360,7 +393,7 @@ public class ClusteringResultView extends BorderPane {
                 new Label(Message.get("ClusteringSimilaritySearch.label.text")), this.similaritySearchTextField,
                 this.similaritySearchButton, new Separator(Orientation.VERTICAL),
                 this.representativesOverviewButton, this.overviewButton, this.exportButton, this.trainTestSplitButton,
-                this.diverseSubsetButton);
+                this.diverseSubsetButton, new Separator(Orientation.VERTICAL), this.clusterQualityButton, this.pcaButton);
         tmpButtonBox.setAlignment(Pos.CENTER_LEFT);
         tmpButtonBox.setPadding(new Insets(GuiDefinitions.GUI_INSETS_VALUE));
         this.bottomBox = new VBox(tmpButtonBox);
@@ -372,8 +405,11 @@ public class ClusteringResultView extends BorderPane {
         this.profileTitleLabel.setWrapText(true);
         this.fragmentProfileTableView = this.createFragmentProfileTableView();
         this.descriptorProfileTableView = this.createDescriptorProfileTableView();
+        this.profileQualityLabel = new Label();
+        this.profileQualityLabel.setWrapText(true);
+        this.profileQualityLabel.setTooltip(new Tooltip(Message.get("ClusterProfile.quality.tooltip")));
         VBox tmpProfileBox = new VBox(GuiDefinitions.GUI_SPACING_VALUE,
-                this.profileTitleLabel,
+                this.profileTitleLabel, this.profileQualityLabel,
                 new Label(Message.get("ClusterProfile.fragmentSection.text")), this.fragmentProfileTableView,
                 new Label(Message.get("ClusterProfile.descriptorSection.text")), this.descriptorProfileTableView);
         tmpProfileBox.setPadding(new Insets(GuiDefinitions.GUI_INSETS_VALUE));
@@ -606,6 +642,61 @@ public class ClusteringResultView extends BorderPane {
     }
     //
     /**
+     * Returns the quality of the clusters and the distances between them.
+     *
+     * @return cluster quality of this result, null while it is calculated in the background
+     */
+    public ClusterQuality getClusterQuality() {
+        return this.clusterQualityProperty.get();
+    }
+    //
+    /**
+     * Sets the quality of the clusters when its calculation has finished; the profile of the selected cluster is updated.
+     *
+     * @param aClusterQuality cluster quality of this result
+     */
+    public void setClusterQuality(ClusterQuality aClusterQuality) {
+        this.clusterQualityProperty.set(aClusterQuality);
+        this.showProfile(this.clusterTableView.getSelectionModel().getSelectedItem());
+    }
+    //
+    /**
+     * Returns the result of the optional stability check.
+     *
+     * @return stability result, null if the check was not run
+     */
+    public ClusterStability.StabilityResult getStabilityResult() {
+        return this.stabilityResult;
+    }
+    //
+    /**
+     * Sets the result of the optional stability check, so that it is shown again when the quality window is reopened.
+     *
+     * @param aStabilityResult stability result
+     */
+    public void setStabilityResult(ClusterStability.StabilityResult aStabilityResult) {
+        this.stabilityResult = aStabilityResult;
+    }
+    //
+    /**
+     * Returns the button that opens the quality of all clusters and the distances between them.
+     *
+     * @return cluster quality button
+     */
+    public Button getClusterQualityButton() {
+        return this.clusterQualityButton;
+    }
+    //
+    /**
+     * Returns the button that opens the interactive PCA of this clustering.
+     *
+     * @return PCA button
+     */
+    public Button getPcaButton() {
+        return this.pcaButton;
+    }
+    //
+    /**
      * Returns the button that selects a diverse subset.
      *
      * @return diverse subset button
@@ -643,12 +734,31 @@ public class ClusteringResultView extends BorderPane {
     private void showProfile(ClusteringRunResult.ClusterSummary aCluster) {
         if (aCluster == null || aCluster.clusterIndex() < 0) {
             this.profileTitleLabel.setText(Message.get("ClusterProfile.noSelection.text"));
+            this.profileQualityLabel.setText("");
             this.fragmentProfileTableView.getItems().clear();
             this.descriptorProfileTableView.getItems().clear();
             return;
         }
         ClusterProfiler.ClusterProfile tmpProfile = this.clusterProfiler.getProfile(aCluster.clusterIndex());
         this.profileTitleLabel.setText(String.format(Message.get("ClusterProfile.title.text"), aCluster.clusterIndex(), tmpProfile.size()));
+        ClusterQuality tmpClusterQuality = this.clusterQualityProperty.get();
+        if (tmpClusterQuality == null) {
+            this.profileQualityLabel.setText(Message.get("ClusterProfile.quality.calculating.text"));
+        } else {
+            ClusterQuality.ClusterQualityEntry tmpQuality = tmpClusterQuality.getEntry(aCluster.clusterIndex());
+            if (tmpQuality.nearestClusterIndex() < 0) {
+                this.profileQualityLabel.setText(String.format(Locale.getDefault(), Message.get("ClusterProfile.quality.single.text"),
+                        tmpQuality.meanSimilarityToOwnCentre()));
+            } else if (tmpQuality.numberOfNeighbours() == 0) {
+                //a single molecule has no neighbours in its cluster and no distance within the cluster
+                this.profileQualityLabel.setText(String.format(Locale.getDefault(), Message.get("ClusterProfile.quality.singleton.text"),
+                        tmpQuality.nearestClusterIndex(), tmpQuality.meanDistanceToNearestCluster()));
+            } else {
+                this.profileQualityLabel.setText(String.format(Locale.getDefault(), Message.get("ClusterProfile.quality.text"), tmpQuality.silhouette(),
+                            100.0 * tmpQuality.neighbourPurity(), tmpQuality.numberOfNegativeSilhouettes(), tmpQuality.nearestClusterIndex(),
+                            tmpQuality.meanDistanceToNearestCluster(), tmpQuality.meanDistanceWithinCluster(), tmpQuality.numberOfNeighbours()));
+            }
+        }
         this.fragmentProfileTableView.setItems(FXCollections.observableArrayList(
                 tmpProfile.getTopFeatures(ClusterProfiler.FeatureCategory.FRAGMENT, ClusteringResultView.NUMBER_OF_PROFILE_FEATURES, true)));
         this.descriptorProfileTableView.setItems(FXCollections.observableArrayList(
@@ -761,7 +871,7 @@ public class ClusteringResultView extends BorderPane {
      * @param <T> type of the rows
      * @return table column
      */
-    private static <T> TableColumn<T, Double> createNumberColumn(String aHeader, ToDoubleFunction<T> aValueFunction, String aFormat) {
+    public static <T> TableColumn<T, Double> createNumberColumn(String aHeader, ToDoubleFunction<T> aValueFunction, String aFormat) {
         TableColumn<T, Double> tmpColumn = new TableColumn<>(aHeader);
         tmpColumn.setCellValueFactory(aCellData -> {
             double tmpValue = aValueFunction.applyAsDouble(aCellData.getValue());

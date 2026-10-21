@@ -178,9 +178,13 @@ public class ClusteringTask extends Task<ClusteringRunResult> {
         }
         //step 1: fragment fingerprint block
         aProgressConsumer.accept(0, "Building fragment fingerprints...");
-        FeatureMatrix tmpFragmentMatrix = FeatureMatrixBuilder.buildFragmentFingerprintMatrix(aMoleculeList,
-                aParameters.fragmentationName(), aParameters.isCountFingerprint(), aParameters.minimumFragmentMoleculeFrequency(),
-                aParameters.maximumNumberOfFragmentFeatures());
+        //without fragment fingerprint, an empty block (no columns) keeps the structure of the raw matrix
+        FeatureMatrix tmpFragmentMatrix = aParameters.isFragmentFingerprintUsed()
+                ? FeatureMatrixBuilder.buildFragmentFingerprintMatrix(aMoleculeList, aParameters.fragmentationName(),
+                        aParameters.isCountFingerprint(), aParameters.minimumFragmentMoleculeFrequency(),
+                        aParameters.maximumNumberOfFragmentFeatures())
+                : new FeatureMatrix(new float[aMoleculeList.size()][0], FeatureMatrixBuilder.getRowNames(aMoleculeList),
+                        new String[0], new FeatureType[0], new String[0]);
         ClusteringTask.checkCancellation(anIsCancelledSupplier);
         //step 2: descriptor block, calculated on the molecules
         aProgressConsumer.accept(1, "Calculating descriptors...");

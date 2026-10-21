@@ -76,9 +76,9 @@ class ClusteringServiceTest {
             Assertions.assertNotNull(tmpService.getSettingNameToDisplayNameMap().get(tmpSetting.getName()), tmpSetting.getName());
             Assertions.assertNotNull(tmpService.getSettingNameToTooltipTextMap().get(tmpSetting.getName()), tmpSetting.getName());
         }
-        //7 preset and fingerprint settings plus one setting per descriptor that is no fingerprint
+        //7 preset and fingerprint settings, the descriptor and fingerprint switches, plus one setting per descriptor that is no fingerprint
         long tmpNumberOfDescriptors = java.util.Arrays.stream(Descriptor.getAllDescriptors()).filter(aDescriptor -> !aDescriptor.isFingerprint()).count();
-        Assertions.assertEquals(tmpNumberOfDescriptors + 7, tmpService.descriptorSettingsProperties().size());
+        Assertions.assertEquals(tmpNumberOfDescriptors + 9, tmpService.descriptorSettingsProperties().size());
         ClusteringParameters tmpParameters = tmpService.createClusteringParameters(ClusteringServiceTest.FRAGMENTATION_NAME, false);
         Assertions.assertEquals(IMoleculeFragmenter.ElectronDonationModelOption.DAYLIGHT, tmpParameters.electronDonationModelOption());
         Assertions.assertEquals(IMoleculeFragmenter.CycleFinderOption.CDK_AROMATIC_SET, tmpParameters.cycleFinderOption());
@@ -258,6 +258,68 @@ class ClusteringServiceTest {
         Assertions.assertEquals(java.util.Set.of(Descriptor.TPSA, Descriptor.X_LOG_P),
                 java.util.Set.of(tmpService.getSelectedNonFingerprintDescriptors()));
         Assertions.assertNotNull(tmpService.createAromaticityModel());
+    }
+    //
+    /**
+     * Tests the switches of the feature blocks: without fragment fingerprint, the raw matrix contains only the descriptor
+     * columns and the parameters say so; switching off the descriptors or the fingerprints removes them from the
+     * clustering, but keeps the selection (and the descriptors of a descriptor calculation).
+     *
+     * @throws Exception if the pipeline fails
+     */
+    @Test
+    void testFeatureBlockSwitches() throws Exception {
+        ClusteringService tmpService = new ClusteringService();
+        tmpService.applyDescriptorPreset(ClusteringService.DescriptorPresetOption.NONE);
+        tmpService.setDescriptorSelected(Descriptor.TPSA, true);
+        for (Property<?> tmpSetting : tmpService.fingerprintSettingsProperties()) {
+            if (tmpSetting.getName().startsWith("MACCS") && tmpSetting instanceof javafx.beans.property.SimpleBooleanProperty tmpBooleanSetting) {
+                tmpBooleanSetting.set(true);
+            }
+        }
+        Assertions.assertEquals(java.util.Set.of(Descriptor.TPSA, Descriptor.MACCS_FINGERPRINTER), java.util.Set.of(tmpService.getSelectedDescriptors()));
+        tmpService.fingerprintsProperty().set(false);
+        Assertions.assertArrayEquals(new Descriptor[] {Descriptor.TPSA}, tmpService.getSelectedDescriptors());
+        tmpService.fingerprintsProperty().set(true);
+        tmpService.descriptorsProperty().set(false);
+        Assertions.assertArrayEquals(new Descriptor[] {Descriptor.MACCS_FINGERPRINTER}, tmpService.getSelectedDescriptors());
+        //the descriptor calculation is not affected by the switch
+        Assertions.assertArrayEquals(new Descriptor[] {Descriptor.TPSA}, tmpService.getSelectedNonFingerprintDescriptors());
+        tmpService.restoreDefaultDescriptorSelection();
+        Assertions.assertTrue(tmpService.descriptorsProperty().get() && tmpService.fingerprintsProperty().get());
+        //clustering without fragment fingerprint
+        tmpService.applyDescriptorPreset(ClusteringService.DescriptorPresetOption.NONE);
+        tmpService.setDescriptorSelected(Descriptor.AROMATIC_ATOMS_COUNT, true);
+        tmpService.setDescriptorSelected(Descriptor.ATOM_COUNT_O, true);
+        tmpService.fragmentFingerprintProperty().set(false);
+        List<de.unijena.cheminf.mortar.model.data.MoleculeDataModel> tmpMolecules = new ArrayList<>();
+        for (String tmpSmiles : new String[] {"c1ccccc1C", "c1ccccc1CC", "CCO", "CCCO", "OCCO"}) {
+            tmpMolecules.add(new de.unijena.cheminf.mortar.model.data.MoleculeDataModel(tmpSmiles, tmpSmiles, new java.util.HashMap<>()));
+        }
+        ClusteringParameters tmpParameters = tmpService.createClusteringParameters(ClusteringServiceTest.FRAGMENTATION_NAME, false);
+        Assertions.assertFalse(tmpParameters.isFragmentFingerprintUsed());
+        Assertions.assertTrue(tmpParameters.getParameterLines().contains("isFragmentFingerprintUsed=false"));
+        ClusteringRunResult tmpRunResult = ClusteringTask.runPipeline(tmpMolecules, tmpParameters, tmpService.getPriorityTable(),
+                () -> false, (aStep, aMessage) -> { });
+        FeatureMatrix tmpRaw = tmpRunResult.rawMatrix();
+        Assertions.assertEquals(2, tmpRaw.getColumnCount());
+        for (int j = 0; j < tmpRaw.getColumnCount(); j++) {
+            Assertions.assertEquals(FeatureType.CONTINUOUS, tmpRaw.getFeatureType(j));
+        }
+        //clustering without fragmentation: fragment fingerprint off, given descriptors plus the selected fingerprints
+        tmpService.fragmentFingerprintProperty().set(true);
+        ClusteringParameters tmpWithoutFragmentation = tmpService.createClusteringParametersWithoutFragmentation(
+                new Descriptor[] {Descriptor.TPSA}, false);
+        Assertions.assertFalse(tmpWithoutFragmentation.isFragmentFingerprintUsed());
+        Assertions.assertEquals(ClusteringService.WITHOUT_FRAGMENTATION_NAME, tmpWithoutFragmentation.fragmentationName());
+        Assertions.assertTrue(java.util.Arrays.asList(tmpWithoutFragmentation.descriptors()).contains(Descriptor.TPSA));
+        Assertions.assertFalse(tmpService.createClusteringParametersWithoutFragmentation(null, false).isFragmentFingerprintUsed());
+        tmpService.fragmentFingerprintProperty().set(false);
+        //the fragment fingerprint settings are restored with the descriptor tab, not with the general settings
+        tmpService.restoreDefaultSettings();
+        Assertions.assertFalse(tmpService.fragmentFingerprintProperty().get());
+        tmpService.restoreDefaultFragmentFingerprintSettings();
+        Assertions.assertTrue(tmpService.fragmentFingerprintProperty().get());
     }
     //
     /**

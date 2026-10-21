@@ -25,6 +25,8 @@
 
 package de.unijena.cheminf.mortar.model.clustering;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -168,6 +170,20 @@ public final class VigilanceScan {
         }
         aProgressConsumer.accept(aVigilanceValues.length, aVigilanceValues.length);
         return tmpEntries;
+    }
+    //
+    /**
+     * Formats a vigilance with as many decimals as it has, at most four (the precision of the range scan): 0.43, 0.5 or
+     * 0.125; values of the target search have at most two decimals.
+     *
+     * @param aVigilance vigilance
+     * @return formatted vigilance with a decimal point
+     */
+    public static String formatVigilance(float aVigilance) {
+        //the float is converted via its decimal representation, e.g. 0.3 instead of 0.30000001192092896
+        BigDecimal tmpValue = BigDecimal.valueOf(ClusteringService.toDecimalDouble(aVigilance)).setScale(4, RoundingMode.HALF_UP)
+                .stripTrailingZeros();
+        return tmpValue.scale() < 1 ? tmpValue.setScale(1, RoundingMode.UNNECESSARY).toPlainString() : tmpValue.toPlainString();
     }
     //
     /**
@@ -337,7 +353,8 @@ public final class VigilanceScan {
                 aParameters.isCorrelationFilterEnabled(), aParameters.correlationThreshold(), aParameters.correlationMethod(),
                 aParameters.algorithm(), aVigilance, aParameters.maximumNumberOfClusters(), aParameters.maximumNumberOfEpochs(),
                 aParameters.convergenceThreshold(), aParameters.learningParameter(), aParameters.offsetForContrastEnhancement(),
-                aParameters.randomSeed(), aParameters.circularFingerprintSize(), aParameters.isParallelCalculation());
+                aParameters.randomSeed(), aParameters.circularFingerprintSize(), aParameters.isParallelCalculation(),
+                aParameters.isFragmentFingerprintUsed());
     }
     //</editor-fold>
 }

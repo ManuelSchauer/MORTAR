@@ -28,6 +28,7 @@ package de.unijena.cheminf.mortar.gui.views;
 import de.unijena.cheminf.mortar.gui.util.GuiDefinitions;
 import de.unijena.cheminf.mortar.message.Message;
 import de.unijena.cheminf.mortar.model.clustering.FeatureMatrix;
+import de.unijena.cheminf.mortar.model.clustering.FeatureType;
 import de.unijena.cheminf.mortar.model.data.MoleculeDataModel;
 
 import javafx.beans.property.ReadOnlyObjectWrapper;
@@ -51,7 +52,8 @@ import java.util.stream.IntStream;
 
 /**
  * View of a tab with calculated descriptor values: one row per molecule with name, structure and one sortable column
- * per descriptor component (untransformed values). The columns have fixed widths, so that the table scrolls
+ * per descriptor component (untransformed values). Calculated fingerprint bits are not shown as columns (only their
+ * number), but are part of the matrix, the export and a clustering started from the tab. The columns have fixed widths, so that the table scrolls
  * horizontally with many descriptors. At the bottom, the clustering controls set by the controller (e.g. to cluster
  * these molecules with these descriptors) are shown on the left and the export button on the right; their actions are
  * set by the controller.
@@ -100,8 +102,15 @@ public class DescriptorTableView extends BorderPane {
         if (this.moleculeList.size() != aDescriptorMatrix.getRowCount()) {
             throw new IllegalArgumentException("Number of molecules does not match the number of rows.");
         }
+        //fingerprint bits (BIT columns) are calculated and exported, but not shown as hundreds of columns
+        int tmpBitCount = 0;
+        for (int j = 0; j < aDescriptorMatrix.getColumnCount(); j++) {
+            if (aDescriptorMatrix.getFeatureType(j) == FeatureType.BIT) {
+                tmpBitCount++;
+            }
+        }
         Label tmpSummaryLabel = new Label(String.format(Message.get("DescriptorTableView.summary.text"),
-                this.moleculeList.size(), aDescriptorMatrix.getColumnCount()));
+                this.moleculeList.size(), aDescriptorMatrix.getColumnCount() - tmpBitCount, tmpBitCount));
         tmpSummaryLabel.setWrapText(true);
         tmpSummaryLabel.setPadding(new Insets(GuiDefinitions.GUI_INSETS_VALUE));
         this.setTop(tmpSummaryLabel);
@@ -122,7 +131,9 @@ public class DescriptorTableView extends BorderPane {
         this.tableView.getColumns().add(tmpNameColumn);
         this.tableView.getColumns().add(tmpStructureColumn);
         for (int j = 0; j < aDescriptorMatrix.getColumnCount(); j++) {
-            this.tableView.getColumns().add(this.createDescriptorColumn(j));
+            if (aDescriptorMatrix.getFeatureType(j) != FeatureType.BIT) {
+                this.tableView.getColumns().add(this.createDescriptorColumn(j));
+            }
         }
         this.setCenter(this.tableView);
         this.exportButton = new Button(Message.get("DescriptorTableView.exportButton.text"));

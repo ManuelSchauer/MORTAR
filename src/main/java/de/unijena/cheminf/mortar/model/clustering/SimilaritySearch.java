@@ -270,6 +270,21 @@ public class SimilaritySearch {
     }
     //
     /**
+     * Returns the vector of the clustered molecule with the given row index in the kernel space, i.e. the vector the
+     * ART-2A clustering compared with the cluster vectors.
+     *
+     * @param aRowIndex row index of the molecule in the clustered data
+     * @return copy of the kernel vector
+     * @throws IllegalArgumentException if the row index is out of range
+     */
+    public float[] getKernelVectorOfRow(int aRowIndex) throws IllegalArgumentException {
+        if (aRowIndex < 0 || aRowIndex >= this.kernelVectors.length) {
+            throw new IllegalArgumentException("Row index out of range: " + aRowIndex);
+        }
+        return this.kernelVectors[aRowIndex].clone();
+    }
+    //
+    /**
      * Transforms and preprocesses the given raw feature vector into the kernel space, like the clustered data.
      *
      * @param aRawFeatureVector raw feature vector (columns of the raw matrix of the run), may contain NaN

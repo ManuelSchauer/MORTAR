@@ -209,4 +209,17 @@ class VigilanceScanAndSubsetTest {
         Assertions.assertThrows(CancellationException.class, () -> VigilanceScan.searchForNumberOfClusters(tmpRunResult, 3,
                 () -> true, (aDone, aTotal) -> { }));
     }
+    //
+    /**
+     * Tests the formatting of the vigilance with as many decimals as it has, at most four.
+     */
+    @Test
+    void testFormatVigilance() {
+        Assertions.assertEquals("0.43", VigilanceScan.formatVigilance(0.43f));
+        Assertions.assertEquals("0.5", VigilanceScan.formatVigilance(0.5f));
+        Assertions.assertEquals("0.125", VigilanceScan.formatVigilance(0.125f));
+        Assertions.assertEquals("0.3", VigilanceScan.formatVigilance(0.3f));
+        Assertions.assertEquals("0.1235", VigilanceScan.formatVigilance(0.12345f));
+        Assertions.assertEquals("0.01", VigilanceScan.formatVigilance(1.0f / 100));
+    }
 }

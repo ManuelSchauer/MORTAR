@@ -62,6 +62,9 @@ import java.util.Objects;
  * @param randomSeed seed of the random number generator
  * @param circularFingerprintSize length of the circular fingerprint in bits (only relevant if one is selected)
  * @param isParallelCalculation true: descriptor calculation and winner search are parallelized
+ * @param isFragmentFingerprintUsed true: the fragment fingerprint is part of the features; false: only the descriptors
+ *                                  and fingerprints calculated on the molecules are used (the fragment settings are
+ *                                  ignored)
  * @author Manuel Schauer
  * @version 1.0.0.0
  */
@@ -88,7 +91,8 @@ public record ClusteringParameters(
         float offsetForContrastEnhancement,
         long randomSeed,
         int circularFingerprintSize,
-        boolean isParallelCalculation) {
+        boolean isParallelCalculation,
+        boolean isFragmentFingerprintUsed) {
     /**
      * Compact constructor that checks the parameters for null and copies the descriptor array.
      *
@@ -104,6 +108,51 @@ public record ClusteringParameters(
         Objects.requireNonNull(correlationMethod, "Given correlation method is null.");
         Objects.requireNonNull(algorithm, "Given algorithm is null.");
         descriptors = descriptors.clone();
+    }
+    //
+    /**
+     * Constructor with the fragment fingerprint as part of the features, see the record description for the parameters.
+     *
+     * @param fragmentationName name of the fragmentation whose fragments form the fragment fingerprint
+     * @param isCountFingerprint true: fragment counts, false: fragment presence bits
+     * @param minimumFragmentMoleculeFrequency minimum number of molecules a fragment must occur in to become a feature
+     * @param maximumNumberOfFragmentFeatures maximum number of fragment features, 0 = no limit
+     * @param descriptors descriptors calculated on the molecules, may be empty
+     * @param electronDonationModelOption electron donation model of the aromaticity model
+     * @param cycleFinderOption cycle finder of the aromaticity model
+     * @param countTransformation transformation of COUNT features
+     * @param continuousTransformation transformation of CONTINUOUS features
+     * @param maximumNaNFraction maximum fraction of NaN values per feature
+     * @param isCorrelationFilterEnabled true if the correlation filter is applied
+     * @param correlationThreshold absolute correlation above which features are regarded as redundant
+     * @param correlationMethod correlation coefficient of the correlation filter
+     * @param algorithm ART-2A kernel
+     * @param vigilance vigilance parameter
+     * @param maximumNumberOfClusters maximum number of clusters
+     * @param maximumNumberOfEpochs maximum number of epochs
+     * @param convergenceThreshold convergence threshold of the kernel
+     * @param learningParameter learning parameter
+     * @param offsetForContrastEnhancement offset for the contrast enhancement threshold
+     * @param randomSeed seed of the random number generator
+     * @param circularFingerprintSize length of the circular fingerprint in bits
+     * @param isParallelCalculation true: descriptor calculation and winner search are parallelized
+     * @throws NullPointerException if an object parameter is null
+     */
+    public ClusteringParameters(String fragmentationName, boolean isCountFingerprint, int minimumFragmentMoleculeFrequency,
+                                int maximumNumberOfFragmentFeatures, Descriptor[] descriptors,
+                                IMoleculeFragmenter.ElectronDonationModelOption electronDonationModelOption,
+                                IMoleculeFragmenter.CycleFinderOption cycleFinderOption, FeatureTransformation countTransformation,
+                                FeatureTransformation continuousTransformation, double maximumNaNFraction, boolean isCorrelationFilterEnabled,
+                                double correlationThreshold, FeatureFilter.CorrelationMethod correlationMethod,
+                                Art2aClusterer.Art2aAlgorithm algorithm, float vigilance, int maximumNumberOfClusters,
+                                int maximumNumberOfEpochs, float convergenceThreshold, float learningParameter,
+                                float offsetForContrastEnhancement, long randomSeed, int circularFingerprintSize,
+                                boolean isParallelCalculation) throws NullPointerException {
+        this(fragmentationName, isCountFingerprint, minimumFragmentMoleculeFrequency, maximumNumberOfFragmentFeatures, descriptors,
+                electronDonationModelOption, cycleFinderOption, countTransformation, continuousTransformation, maximumNaNFraction,
+                isCorrelationFilterEnabled, correlationThreshold, correlationMethod, algorithm, vigilance, maximumNumberOfClusters,
+                maximumNumberOfEpochs, convergenceThreshold, learningParameter, offsetForContrastEnhancement, randomSeed,
+                circularFingerprintSize, isParallelCalculation, true);
     }
     //
     /**
@@ -124,6 +173,7 @@ public record ClusteringParameters(
     public List<String> getParameterLines() {
         List<String> tmpLines = new ArrayList<>(20);
         tmpLines.add("fragmentationName=" + this.fragmentationName);
+        tmpLines.add("isFragmentFingerprintUsed=" + this.isFragmentFingerprintUsed);
         tmpLines.add("isCountFingerprint=" + this.isCountFingerprint);
         tmpLines.add("minimumFragmentMoleculeFrequency=" + this.minimumFragmentMoleculeFrequency);
         tmpLines.add("maximumNumberOfFragmentFeatures=" + this.maximumNumberOfFragmentFeatures);

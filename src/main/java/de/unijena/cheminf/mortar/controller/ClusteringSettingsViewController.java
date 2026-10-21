@@ -66,9 +66,10 @@ import java.util.logging.Logger;
 /**
  * Controls a {@link SettingsView} for the clustering settings. Both tabs consist of visually separated sections whose
  * rows are created from the properties of the {@link ClusteringService} like the fragmentation settings:
- * the clustering tab (fragment fingerprint, aromaticity, transformation, filter with the correlation settings only shown
- * if the correlation filter is switched on, ART-2A) and the descriptor tab (preset with saving and deleting of own
- * presets, fingerprints with hidden advanced settings, descriptor list). A button at the bottom applies the settings
+ * the clustering tab (aromaticity, transformation, filter with the correlation settings only shown if the correlation
+ * filter is switched on, ART-2A, similarity search) and the descriptor tab with all features of the molecules (fragment
+ * fingerprint, preset with saving and deleting of own presets, fingerprints with hidden advanced settings, descriptor
+ * list). A button at the bottom applies the settings
  * and starts the clustering. In the descriptor calculation mode, only the aromaticity, preset and descriptor sections
  * are shown (fingerprints are not part of a descriptor table) and the button starts the descriptor calculation; the
  * selection and the aromaticity model are the same as for the clustering.
@@ -126,6 +127,11 @@ public class ClusteringSettingsViewController {
      */
     private final boolean isDescriptorCalculationMode;
     /**
+     * False if the clustering is done without fragmentation, e.g. from the molecules tab; the fragment fingerprint
+     * settings are then greyed out.
+     */
+    private final boolean isFragmentFingerprintAvailable;
+    /**
      * Configuration class to read resource file paths from.
      */
     private final IConfiguration configuration;
@@ -161,8 +167,29 @@ public class ClusteringSettingsViewController {
      */
     public ClusteringSettingsViewController(Stage aStage, ClusteringService aClusteringService, IConfiguration aConfiguration,
                                             Runnable aStartAction, boolean anIsDescriptorCalculationMode) throws NullPointerException {
+        this(aStage, aClusteringService, aConfiguration, aStartAction, anIsDescriptorCalculationMode, true);
+    }
+    //
+    /**
+     * Constructor, opens the view with the clustering settings or for the choice of the descriptors of a descriptor
+     * calculation; for a clustering without fragmentation, the fragment fingerprint settings are greyed out.
+     *
+     * @param aStage main stage
+     * @param aClusteringService clustering service whose settings are displayed
+     * @param aConfiguration configuration instance to read resource file paths from
+     * @param aStartAction action that starts the clustering or the descriptor calculation with the applied settings;
+     *                     null disables the start button
+     * @param anIsDescriptorCalculationMode true to show only the aromaticity, preset and descriptor sections and to start
+     *                                      the descriptor calculation
+     * @param anIsFragmentFingerprintAvailable false for a clustering without fragmentation (fragment settings greyed out)
+     * @throws NullPointerException if the stage, service or configuration is null
+     */
+    public ClusteringSettingsViewController(Stage aStage, ClusteringService aClusteringService, IConfiguration aConfiguration,
+                                            Runnable aStartAction, boolean anIsDescriptorCalculationMode,
+                                            boolean anIsFragmentFingerprintAvailable) throws NullPointerException {
         this.startClusteringAction = aStartAction;
         this.isDescriptorCalculationMode = anIsDescriptorCalculationMode;
+        this.isFragmentFingerprintAvailable = anIsFragmentFingerprintAvailable;
         this.mainStage = Objects.requireNonNull(aStage, "aStage (instance of Stage) is null");
         this.clusteringService = Objects.requireNonNull(aClusteringService, "aClusteringService is null");
         this.configuration = Objects.requireNonNull(aConfiguration, "aConfiguration is null");
@@ -201,14 +228,17 @@ public class ClusteringSettingsViewController {
         if (!this.isDescriptorCalculationMode) {
             this.settingsView.addTab(Message.get("ClusteringSettingsView.generalTab.text"), this.createGeneralTabContent());
         }
-        this.settingsView.addTab(Message.get("ClusteringSettingsView.descriptorTab.text"), this.createDescriptorTabContent());
+        //"Features" holds fragments, descriptors and fingerprints; a descriptor calculation only shows descriptors
+        this.settingsView.addTab(Message.get(this.isDescriptorCalculationMode ? "ClusteringSettingsView.descriptorTab.text"
+                : "ClusteringSettingsView.featureTab.text"), this.createDescriptorTabContent());
         this.addListener();
         this.clusteringSettingsViewStage.show();
     }
     //
     /**
-     * Creates the content of the clustering tab with the sections fragment fingerprint, aromaticity, transformation,
-     * filter (correlation settings only visible if the correlation filter is switched on) and ART-2A.
+     * Creates the content of the clustering tab with the sections aromaticity, transformation, filter (correlation
+     * settings only visible if the correlation filter is switched on), ART-2A and similarity search; the fragment
+     * fingerprint settings are in the descriptor tab with the other features.
      *
      * @return content of the clustering tab
      */
@@ -216,8 +246,6 @@ public class ClusteringSettingsViewController {
         VBox tmpContent = new VBox(GuiDefinitions.GUI_SPACING_VALUE);
         tmpContent.setPadding(new Insets(GuiDefinitions.GUI_INSETS_VALUE));
         tmpContent.getChildren().addAll(
-                this.createSectionTitle("ClusteringSettingsView.fragmentFingerprintSection.title"),
-                this.createGrid(this.clusteringService.fragmentFingerprintSettingsProperties()),
                 this.createSectionTitle("ClusteringSettingsView.aromaticitySection.title"),
                 this.createGrid(this.clusteringService.aromaticitySettingsProperties()),
                 this.createSectionTitle("ClusteringSettingsView.transformationSection.title"),
@@ -251,9 +279,11 @@ public class ClusteringSettingsViewController {
     }
     //
     /**
-     * Creates the content of the descriptor tab with the sections aromaticity model (only in the descriptor calculation
-     * mode, otherwise in the clustering tab), preset, fingerprints (not in the descriptor calculation mode) and
-     * descriptors.
+     * Creates the content of the feature tab with all features of the molecules, each section with its switch and the
+     * settings shown only while it is switched on: fragment fingerprint, fingerprints, descriptors (preset and descriptor
+     * list). In the descriptor calculation mode, the aromaticity model (otherwise in the clustering tab) comes first and
+     * the fragment fingerprint is left out; the switched on fingerprints and descriptors are calculated, e.g. only
+     * fingerprints.
      *
      * @return content of the descriptor tab
      */
@@ -284,10 +314,28 @@ public class ClusteringSettingsViewController {
         tmpPresetBox.setPadding(new Insets(GuiDefinitions.GUI_INSETS_VALUE));
         Label tmpPresetLabel = new Label(Message.get("ClusteringService.descriptorPresetSetting.tooltip"));
         tmpPresetLabel.setWrapText(true);
-        tmpContent.getChildren().addAll(this.createSectionTitle("ClusteringSettingsView.presetSection.title"),
-                tmpPresetLabel, tmpPresetBox);
         //</editor-fold>
-        //<editor-fold desc="fingerprint section">
+        GridPane tmpDescriptorGrid = this.createGrid(this.clusteringService.descriptorSelectionSettingsProperties());
+        //a descriptor calculation has no fragments, otherwise the fragment fingerprint comes first
+        if (!this.isDescriptorCalculationMode) {
+            //<editor-fold desc="fragment fingerprint: switch, then its settings only while switched on">
+            GridPane tmpFragmentFingerprintGrid = this.createGrid(this.clusteringService.fragmentFingerprintSettingsProperties());
+            tmpFragmentFingerprintGrid.visibleProperty().bind(this.clusteringService.fragmentFingerprintProperty());
+            tmpFragmentFingerprintGrid.managedProperty().bind(this.clusteringService.fragmentFingerprintProperty());
+            VBox tmpFragmentFingerprintBox = new VBox(GuiDefinitions.GUI_SPACING_VALUE,
+                    this.createGrid(this.clusteringService.fragmentFingerprintSwitchSettingsProperties()), tmpFragmentFingerprintGrid);
+            tmpContent.getChildren().add(this.createSectionTitle("ClusteringSettingsView.fragmentFingerprintSection.title"));
+            if (!this.isFragmentFingerprintAvailable) {
+                //clustering without fragmentation: the settings stay visible for orientation, but cannot be changed
+                tmpFragmentFingerprintBox.setDisable(true);
+                Label tmpUnavailableLabel = new Label(Message.get("ClusteringSettingsView.fragmentFingerprintUnavailable.text"));
+                tmpUnavailableLabel.setWrapText(true);
+                tmpContent.getChildren().add(tmpUnavailableLabel);
+            }
+            tmpContent.getChildren().add(tmpFragmentFingerprintBox);
+            //</editor-fold>
+        }
+        //<editor-fold desc="fingerprints: switch, then the fingerprints only while switched on">
         GridPane tmpFingerprintGrid = this.createGrid(this.clusteringService.fingerprintSettingsProperties());
         //radius and length of the circular fingerprint are hidden until the user asks for them
         GridPane tmpAdvancedGrid = this.createGrid(this.clusteringService.advancedFingerprintSettingsProperties());
@@ -295,15 +343,18 @@ public class ClusteringSettingsViewController {
         tmpAdvancedCheckBox.setPadding(new Insets(GuiDefinitions.GUI_INSETS_VALUE));
         tmpAdvancedGrid.visibleProperty().bind(tmpAdvancedCheckBox.selectedProperty());
         tmpAdvancedGrid.managedProperty().bind(tmpAdvancedCheckBox.selectedProperty());
-        if (!this.isDescriptorCalculationMode) {
-            tmpContent.getChildren().addAll(this.createSectionTitle("ClusteringSettingsView.fingerprintSection.title"),
-                    tmpFingerprintGrid, tmpAdvancedCheckBox, tmpAdvancedGrid);
-        }
+        VBox tmpFingerprintBox = new VBox(GuiDefinitions.GUI_SPACING_VALUE, tmpFingerprintGrid, tmpAdvancedCheckBox, tmpAdvancedGrid);
+        tmpFingerprintBox.visibleProperty().bind(this.clusteringService.fingerprintsProperty());
+        tmpFingerprintBox.managedProperty().bind(this.clusteringService.fingerprintsProperty());
+        tmpContent.getChildren().addAll(this.createSectionTitle("ClusteringSettingsView.fingerprintSection.title"),
+                this.createGrid(this.clusteringService.fingerprintSwitchSettingsProperties()), tmpFingerprintBox);
         //</editor-fold>
-        //<editor-fold desc="descriptor section">
-        GridPane tmpDescriptorGrid = this.createGrid(this.clusteringService.descriptorSelectionSettingsProperties());
+        //<editor-fold desc="descriptors: switch, then preset and descriptor list only while switched on">
+        VBox tmpDescriptorBox = new VBox(GuiDefinitions.GUI_SPACING_VALUE, tmpPresetLabel, tmpPresetBox, tmpDescriptorGrid);
+        tmpDescriptorBox.visibleProperty().bind(this.clusteringService.descriptorsProperty());
+        tmpDescriptorBox.managedProperty().bind(this.clusteringService.descriptorsProperty());
         tmpContent.getChildren().addAll(this.createSectionTitle("ClusteringSettingsView.descriptorSection.title"),
-                tmpDescriptorGrid);
+                this.createGrid(this.clusteringService.descriptorSwitchSettingsProperties()), tmpDescriptorBox);
         //</editor-fold>
         return tmpContent;
     }
@@ -388,6 +439,8 @@ public class ClusteringSettingsViewController {
             } else if (this.settingsView.getSelectionModel().getSelectedIndex() == 0) {
                 this.clusteringService.restoreDefaultSettings();
             } else {
+                //the descriptor tab also holds the fragment fingerprint settings
+                this.clusteringService.restoreDefaultFragmentFingerprintSettings();
                 this.clusteringService.restoreDefaultDescriptorSelection();
             }
         });

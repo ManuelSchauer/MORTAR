@@ -152,7 +152,8 @@ class ClusteringDataCsvWriterTest {
         File[] tmpFiles = aTempDirectory.toFile().listFiles();
         Assertions.assertNotNull(tmpFiles);
         //without transformation (transformed matrix = raw matrix), no transformed file is written
-        Assertions.assertEquals(6, tmpFiles.length);
+        Assertions.assertEquals(7, tmpFiles.length);
+        Assertions.assertTrue(Files.exists(aTempDirectory.resolve("Clustering_Frag_1_cluster_quality.csv")));
         Assertions.assertFalse(Files.exists(aTempDirectory.resolve("Clustering_Frag_1_transformed.csv")));
         List<String> tmpClusterLines = Files.readAllLines(aTempDirectory.resolve("Clustering_Frag_1_clusters.csv"));
         Assertions.assertEquals("m1,C,0,true", tmpClusterLines.get(1));
@@ -190,12 +191,19 @@ class ClusteringDataCsvWriterTest {
                 java.util.Set.of(0), ',');
         Assertions.assertTrue(tmpFailed.isEmpty());
         Assertions.assertTrue(Files.exists(aTempDirectory.resolve("Clustering_Frag_1_transformed.csv")));
-        Assertions.assertEquals(List.of("Name,C,ALOGP", "m1,1.0,2.0", "m3,1.0,4.0"),
+        //name and SMILES of every molecule
+        Assertions.assertEquals(List.of("Name,SMILES,C,ALOGP", "m1,C,1.0,2.0", "m3,CCC,1.0,4.0"),
                 Files.readAllLines(aTempDirectory.resolve("Clustering_Frag_1_raw.csv")));
+        Assertions.assertTrue(Files.readAllLines(aTempDirectory.resolve("Clustering_Frag_1_processed.csv")).getFirst()
+                .startsWith("Name,SMILES,Cluster,"));
         List<String> tmpClusterLines = Files.readAllLines(aTempDirectory.resolve("Clustering_Frag_1_clusters.csv"));
         Assertions.assertEquals(3, tmpClusterLines.size());
         Assertions.assertTrue(tmpClusterLines.stream().noneMatch(aLine -> aLine.startsWith("m2,")));
         Assertions.assertTrue(Files.readAllLines(aTempDirectory.resolve("Clustering_Frag_1_parameters.txt")).contains("exportedClusters=0"));
+        //only the marked cluster in the quality file
+        List<String> tmpQualityLines = Files.readAllLines(aTempDirectory.resolve("Clustering_Frag_1_cluster_quality.csv"));
+        Assertions.assertEquals(2, tmpQualityLines.size());
+        Assertions.assertTrue(tmpQualityLines.get(1).startsWith("0,"));
     }
     //
     /**

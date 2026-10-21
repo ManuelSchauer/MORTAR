@@ -39,9 +39,12 @@ import de.unijena.cheminf.mortar.gui.views.IDataTableView;
 import de.unijena.cheminf.mortar.gui.views.ItemizationDataTableView;
 import de.unijena.cheminf.mortar.gui.views.MainView;
 import de.unijena.cheminf.mortar.gui.views.MoleculesDataTableView;
+import de.unijena.cheminf.mortar.gui.views.PcaView;
 import de.unijena.cheminf.mortar.gui.views.VigilanceScanView;
 import de.unijena.cheminf.mortar.message.Message;
 import de.unijena.cheminf.mortar.model.clustering.ClusterDescriptorStatistics;
+import de.unijena.cheminf.mortar.model.clustering.ClusterQuality;
+import de.unijena.cheminf.mortar.model.clustering.ClusterStability;
 import de.unijena.cheminf.mortar.model.clustering.ClusteringParameters;
 import de.unijena.cheminf.mortar.model.clustering.ClusteringRunResult;
 import de.unijena.cheminf.mortar.model.clustering.ClusteringService;
@@ -50,6 +53,7 @@ import de.unijena.cheminf.mortar.model.clustering.DescriptorPriorityTable;
 import de.unijena.cheminf.mortar.model.clustering.DiverseSubsetSelector;
 import de.unijena.cheminf.mortar.model.clustering.FeatureMatrix;
 import de.unijena.cheminf.mortar.model.clustering.FeatureMatrixBuilder;
+import de.unijena.cheminf.mortar.model.clustering.PrincipalComponentAnalysis;
 import de.unijena.cheminf.mortar.model.clustering.SimilaritySearch;
 import de.unijena.cheminf.mortar.model.clustering.TrainTestSplitter;
 import de.unijena.cheminf.mortar.model.clustering.VigilanceScan;
@@ -100,6 +104,7 @@ import javafx.scene.control.RadioButton;
 import javafx.scene.control.RadioMenuItem;
 import javafx.scene.control.SortEvent;
 import javafx.scene.control.Spinner;
+import javafx.scene.control.SplitPane;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TableCell;
@@ -254,6 +259,14 @@ public class MainViewController {
      * Task of a running descriptor calculation, cancelled by the cancel controls of the clustering.
      */
     private Task<FeatureMatrix> descriptorCalculationTask;
+    /**
+     * Task of a running PCA calculation, cancelled by the cancel controls of the clustering.
+     */
+    private Task<PrincipalComponentAnalysis.PcaResult> pcaTask;
+    /**
+     * Task of a running stability check, cancelled by the cancel controls of the clustering.
+     */
+    private Task<ClusterStability.StabilityResult> stabilityTask;
     /**
      * Number of descriptor tabs created so far, used to give every tab a unique title.
      */
@@ -1216,6 +1229,8 @@ public class MainViewController {
         tmpViewButtonsHBox.getChildren().add(tmpOpenOverviewViewButton);
         tmpMoleculesTab.addNodeToGridPane(tmpViewButtonsHBox, 2, 1, 1, 1);
         tmpOpenOverviewViewButton.setOnAction(event -> this.openOverviewView(OverviewViewController.DataSources.MOLECULES_TAB));
+        //descriptors of the molecules without fragmentation, which can then be clustered without fragment fingerprint
+        tmpMoleculesTab.addNodeAsBottomRow(this.createMoleculesDescriptorBar());
         this.moleculesDataTableView.addTableViewHeightListener(this.settingsContainer);
         this.moleculesDataTableView.getCopyMenuItem().setOnAction(event -> GuiUtil.copySelectedTableViewCellsToClipboard(this.moleculesDataTableView));
         //similarity search for the selected molecule, available once there is a clustering result
@@ -1437,7 +1452,8 @@ public class MainViewController {
      * descriptor cache. The result is shown in a new tab.
      *
      * @param aFragmentationName name of the fragmentation to use; null to use the fragmentation of the selected fragments
-     *                           or items tab (or the last fragmentation if another tab is selected)
+     *                           or items tab (or the last fragmentation if another tab is selected);
+     *                           {@link ClusteringService#WITHOUT_FRAGMENTATION_NAME} to cluster without fragment fingerprint
      * @param aMoleculeList molecules to cluster; null for the selected molecules
      * @param aNonFingerprintDescriptors descriptors to use instead of the selected ones (the selected fingerprints are
      *                                   added); null for the selected descriptors
@@ -1446,7 +1462,9 @@ public class MainViewController {
         if (this.isClusteringRunningProperty.get()) {
             return;
         }
-        String tmpFragmentationName = this.getFragmentationNameToCluster(aFragmentationName);
+        //without fragmentation, e.g. from the molecules tab, only descriptors and fingerprints are the features
+        boolean tmpIsWithoutFragmentation = ClusteringService.WITHOUT_FRAGMENTATION_NAME.equals(aFragmentationName);
+        String tmpFragmentationName = tmpIsWithoutFragmentation ? aFragmentationName : this.getFragmentationNameToCluster(aFragmentationName);
         if (tmpFragmentationName == null) {
             return;
         }
@@ -1456,9 +1474,15 @@ public class MainViewController {
         }
         boolean tmpIsParallel = this.settingsContainer.getNumberOfTasksForFragmentationSetting() > 1;
         try {
-            this.clusteringTask = this.clusteringService.createClusteringTask(tmpSelectedMolecules, aNonFingerprintDescriptors == null
-                    ? this.clusteringService.createClusteringParameters(tmpFragmentationName, tmpIsParallel)
-                    : this.clusteringService.createClusteringParameters(tmpFragmentationName, aNonFingerprintDescriptors, tmpIsParallel));
+            ClusteringParameters tmpParameters;
+            if (tmpIsWithoutFragmentation) {
+                tmpParameters = this.clusteringService.createClusteringParametersWithoutFragmentation(aNonFingerprintDescriptors, tmpIsParallel);
+            } else if (aNonFingerprintDescriptors == null) {
+                tmpParameters = this.clusteringService.createClusteringParameters(tmpFragmentationName, tmpIsParallel);
+            } else {
+                tmpParameters = this.clusteringService.createClusteringParameters(tmpFragmentationName, aNonFingerprintDescriptors, tmpIsParallel);
+            }
+            this.clusteringTask = this.clusteringService.createClusteringTask(tmpSelectedMolecules, tmpParameters);
         } catch (IOException anException) {
             MainViewController.LOGGER.log(Level.SEVERE, anException.toString(), anException);
             GuiUtil.guiExceptionAlert(Message.get("MainViewController.ClusteringError.Title"),
@@ -1551,6 +1575,12 @@ public class MainViewController {
         if (this.descriptorCalculationTask != null) {
             this.descriptorCalculationTask.cancel(true);
         }
+        if (this.pcaTask != null) {
+            this.pcaTask.cancel(true);
+        }
+        if (this.stabilityTask != null) {
+            this.stabilityTask.cancel(true);
+        }
         this.setClusteringRunningState(false);
     }
     //
@@ -1577,10 +1607,14 @@ public class MainViewController {
      * @param aFragmentationName name of the fragmentation to cluster with, null for the fragmentation of the selected tab
      */
     private void openClusteringSettingsView(String aFragmentationName) {
+        //without fragmentation (clustering by descriptors only, or no fragmentation done yet), only the fragment fingerprint
+        // settings are greyed out; fingerprints and descriptors stay available
+        boolean tmpIsWithoutFragmentation = ClusteringService.WITHOUT_FRAGMENTATION_NAME.equals(aFragmentationName);
+        boolean tmpIsFragmentFingerprintAvailable = !tmpIsWithoutFragmentation && !this.mapOfFragmentDataModelLists.isEmpty();
         new ClusteringSettingsViewController(this.primaryStage, this.clusteringService, this.configuration,
-                this.mapOfFragmentDataModelLists.isEmpty() || this.isClusteringRunningProperty.get()
+                (this.mapOfFragmentDataModelLists.isEmpty() && !tmpIsWithoutFragmentation) || this.isClusteringRunningProperty.get()
                         ? null
-                        : () -> this.startClustering(aFragmentationName));
+                        : () -> this.startClustering(aFragmentationName), false, tmpIsFragmentFingerprintAvailable);
     }
     //
     /**
@@ -1730,7 +1764,23 @@ public class MainViewController {
         tmpView.getRangeFilterButton().setOnAction(event -> this.applyClusterRangeFilter(tmpView));
         //the scan window of this result is discarded at the latest when the result tab is closed
         String tmpScanKey = MainViewController.VIGILANCE_SCAN_KEY_RESULT_PREFIX + this.clusteringRunCounter;
+        //the cluster quality (all pairwise distances) is calculated in the background, the tab can be used meanwhile
+        Task<ClusterQuality> tmpQualityTask = new Task<>() {
+            @Override
+            protected ClusterQuality call() {
+                return new ClusterQuality(aRunResult, this::isCancelled);
+            }
+        };
+        tmpQualityTask.setOnSucceeded(event -> tmpView.setClusterQuality(tmpQualityTask.getValue()));
+        tmpQualityTask.setOnFailed(event -> MainViewController.LOGGER.log(Level.WARNING, "Cluster quality could not be calculated.",
+                event.getSource().getException()));
+        Thread tmpQualityThread = new Thread(tmpQualityTask);
+        tmpQualityThread.setName(ThreadType.CLUSTERING_THREAD.getThreadName());
+        tmpQualityThread.setUncaughtExceptionHandler(LogUtil.getUncaughtExceptionHandler());
+        tmpQualityThread.setDaemon(true);
+        tmpQualityThread.start();
         tmpTab.setOnClosed(event -> {
+            tmpQualityTask.cancel(true);
             this.clusteringService.displayedDescriptorColumnsProperty().removeListener(tmpDisplayedDescriptorsListener);
             Stage tmpScanStage = this.vigilanceScanStageMap.remove(tmpScanKey);
             if (tmpScanStage != null) {
@@ -1738,6 +1788,8 @@ public class MainViewController {
             }
         });
         tmpView.getDiverseSubsetButton().setOnAction(event -> this.createDiverseSubset(aRunResult, tmpView.getMarkedClusterIndices()));
+        tmpView.getPcaButton().setOnAction(event -> this.openPcaTab(aRunResult, tmpTab.getText(), tmpView.getMarkedClusterIndices()));
+        tmpView.getClusterQualityButton().setOnAction(event -> this.showClusterQuality(aRunResult, tmpView, tmpTab.getText()));
         //similarity search for a name or SMILES and for the representative of the selected cluster
         tmpView.getSimilaritySearchButton().setOnAction(event ->
                 this.searchSimilarMolecules(tmpView.getSimilaritySearchTextField().getText(), aRunResult));
@@ -1905,7 +1957,9 @@ public class MainViewController {
                 tmpResult = tmpSearch.searchByRowIndex(tmpRowIndex, tmpNumberOfMolecules);
             } else {
                 MoleculeDataModel tmpFragmentedQuery = aQuery;
-                if (aQuery.getFragmentFrequencyOfSpecificFragmentation(tmpFragmentationName) == null) {
+                //without fragment fingerprint, the query needs no fragmentation
+                if (aRunResult.parameters().isFragmentFingerprintUsed()
+                        && aQuery.getFragmentFrequencyOfSpecificFragmentation(tmpFragmentationName) == null) {
                     if (!this.fragmentationService.canFragmentSingleMolecule(tmpFragmentationName)) {
                         GuiUtil.guiMessageAlert(Alert.AlertType.INFORMATION, Message.get("ClusteringSimilaritySearch.error.title"),
                                 Message.get("ClusteringSimilaritySearch.cannotFragment.header"),
@@ -1967,6 +2021,308 @@ public class MainViewController {
     }
     //
     /**
+     * Shows the quality of all clusters of the given result in a new window (see {@link ClusterQuality}): overall
+     * silhouette and neighbour purity at the top, a sortable table with one row per cluster and, for the selected
+     * cluster, its distances to all other clusters (mean distance of the molecules, distance of the centres, share of
+     * neighbour contacts), nearest first. The optional stability check clusters the features again with other seeds and
+     * adds the stability of every cluster; the quality can be exported as CSV. A double click on a row opens the cluster.
+     *
+     * @param aRunResult clustering result
+     * @param aResultView result view, which provides the cluster quality, the selected cluster and the stability result
+     * @param aResultTabTitle title of the result tab, used in the window title
+     */
+    private void showClusterQuality(ClusteringRunResult aRunResult, ClusteringResultView aResultView, String aResultTabTitle) {
+        ClusterQuality tmpQuality = aResultView.getClusterQuality();
+        if (tmpQuality == null) {
+            return;
+        }
+        Map<Integer, ClusteringRunResult.ClusterSummary> tmpClusterMap = new HashMap<>();
+        aRunResult.getClusterSummaries().forEach(aCluster -> tmpClusterMap.put(aCluster.clusterIndex(), aCluster));
+        //table of all clusters
+        TableView<ClusterQuality.ClusterQualityEntry> tmpQualityTable = new TableView<>(FXCollections.observableArrayList(tmpQuality.getEntries()));
+        tmpQualityTable.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
+        TableColumn<ClusterQuality.ClusterQualityEntry, Integer> tmpClusterColumn = new TableColumn<>(Message.get("ClusteringResultView.clusterColumn.header"));
+        tmpClusterColumn.setCellValueFactory(aCellData -> new ReadOnlyObjectWrapper<>(aCellData.getValue().clusterIndex()));
+        TableColumn<ClusterQuality.ClusterQualityEntry, Integer> tmpSizeColumn = new TableColumn<>(Message.get("ClusteringResultView.sizeColumn.header"));
+        tmpSizeColumn.setCellValueFactory(aCellData -> new ReadOnlyObjectWrapper<>(aCellData.getValue().size()));
+        TableColumn<ClusterQuality.ClusterQualityEntry, Integer> tmpNegativeColumn = new TableColumn<>(Message.get("ClusterQuality.negativeColumn.header"));
+        tmpNegativeColumn.setCellValueFactory(aCellData -> new ReadOnlyObjectWrapper<>(aCellData.getValue().numberOfNegativeSilhouettes()));
+        //number of neighbours used for the purity, min(10, size - 1), so that small clusters can reach 100 %
+        TableColumn<ClusterQuality.ClusterQualityEntry, Integer> tmpNeighbourCountColumn = new TableColumn<>(Message.get("ClusterQuality.neighbourCountColumn.header"));
+        tmpNeighbourCountColumn.setCellValueFactory(aCellData -> new ReadOnlyObjectWrapper<>(
+                aCellData.getValue().numberOfNeighbours() == 0 ? null : aCellData.getValue().numberOfNeighbours()));
+        TableColumn<ClusterQuality.ClusterQualityEntry, Integer> tmpNearestColumn = new TableColumn<>(Message.get("ClusterQuality.nearestColumn.header"));
+        tmpNearestColumn.setCellValueFactory(aCellData -> new ReadOnlyObjectWrapper<>(
+                aCellData.getValue().nearestClusterIndex() < 0 ? null : aCellData.getValue().nearestClusterIndex()));
+        TableColumn<ClusterQuality.ClusterQualityEntry, Integer> tmpContactColumn = new TableColumn<>(Message.get("ClusterQuality.contactColumn.header"));
+        tmpContactColumn.setCellValueFactory(aCellData -> new ReadOnlyObjectWrapper<>(
+                aCellData.getValue().mostContactsClusterIndex() < 0 ? null : aCellData.getValue().mostContactsClusterIndex()));
+        TableColumn<ClusterQuality.ClusterQualityEntry, Double> tmpStabilityColumn = ClusteringResultView.createNumberColumn(
+                Message.get("ClusterQuality.stabilityColumn.header"), anEntry -> aResultView.getStabilityResult() == null ? Double.NaN
+                        : aResultView.getStabilityResult().getClusterJaccardIndex(anEntry.clusterIndex()), "%.2f");
+        List<TableColumn<ClusterQuality.ClusterQualityEntry, ?>> tmpColumns = List.of(tmpClusterColumn, tmpSizeColumn,
+                ClusteringResultView.createNumberColumn(Message.get("ClusterQuality.silhouetteColumn.header"),
+                        ClusterQuality.ClusterQualityEntry::silhouette, "%+.3f"),
+                tmpNegativeColumn,
+                tmpNeighbourCountColumn,
+                ClusteringResultView.createNumberColumn(Message.get("ClusterQuality.purityColumn.header"),
+                        anEntry -> 100.0 * anEntry.neighbourPurity(), "%.0f %%"),
+                ClusteringResultView.createNumberColumn(Message.get("ClusterQuality.withinColumn.header"),
+                        ClusterQuality.ClusterQualityEntry::meanDistanceWithinCluster, "%.3f"),
+                tmpNearestColumn,
+                ClusteringResultView.createNumberColumn(Message.get("ClusterQuality.nearestDistanceColumn.header"),
+                        ClusterQuality.ClusterQualityEntry::meanDistanceToNearestCluster, "%.3f"),
+                tmpContactColumn,
+                ClusteringResultView.createNumberColumn(Message.get("ClusterQuality.contactShareColumn.header"),
+                        anEntry -> 100.0 * anEntry.contactShareWithMostContacts(), "%.0f %%"),
+                ClusteringResultView.createNumberColumn(Message.get("ClusterQuality.cohesionColumn.header"),
+                        ClusterQuality.ClusterQualityEntry::meanSimilarityToOwnCentre, "%.3f"),
+                tmpStabilityColumn);
+        for (TableColumn<ClusterQuality.ClusterQualityEntry, ?> tmpColumn : tmpColumns) {
+            ClusteringResultView.setFixedWidthForHeader(tmpColumn, tmpColumn.getText());
+            tmpQualityTable.getColumns().add(tmpColumn);
+        }
+        //distances of the selected cluster to all other clusters
+        TableView<ClusterQuality.ClusterDistance> tmpDistanceTable = new TableView<>();
+        tmpDistanceTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        tmpDistanceTable.setPlaceholder(new Label(Message.get("ClusterQuality.distances.noSelection.text")));
+        TableColumn<ClusterQuality.ClusterDistance, Integer> tmpOtherColumn = new TableColumn<>(Message.get("ClusteringResultView.clusterColumn.header"));
+        tmpOtherColumn.setCellValueFactory(aCellData -> new ReadOnlyObjectWrapper<>(aCellData.getValue().clusterIndex()));
+        TableColumn<ClusterQuality.ClusterDistance, Integer> tmpOtherSizeColumn = new TableColumn<>(Message.get("ClusteringResultView.sizeColumn.header"));
+        tmpOtherSizeColumn.setCellValueFactory(aCellData -> new ReadOnlyObjectWrapper<>(tmpQuality.getEntry(aCellData.getValue().clusterIndex()).size()));
+        tmpDistanceTable.getColumns().addAll(List.of(tmpOtherColumn, tmpOtherSizeColumn,
+                ClusteringResultView.createNumberColumn(Message.get("ClusterQuality.meanDistanceColumn.header"),
+                        ClusterQuality.ClusterDistance::meanDistance, "%.3f"),
+                ClusteringResultView.createNumberColumn(Message.get("ClusterQuality.centreDistanceColumn.header"),
+                        ClusterQuality.ClusterDistance::centreDistance, "%.3f"),
+                ClusteringResultView.createNumberColumn(Message.get("ClusterQuality.neighbourContactColumn.header"),
+                        aDistance -> 100.0 * aDistance.neighbourContactShare(), "%.1f %%")));
+        Label tmpDistanceLabel = new Label(Message.get("ClusterQuality.distances.noSelection.text"));
+        tmpDistanceLabel.setWrapText(true);
+        tmpQualityTable.getSelectionModel().selectedItemProperty().addListener((anObservable, anOldValue, aNewValue) -> {
+            if (aNewValue == null) {
+                tmpDistanceTable.getItems().clear();
+                tmpDistanceLabel.setText(Message.get("ClusterQuality.distances.noSelection.text"));
+                return;
+            }
+            tmpDistanceTable.setItems(FXCollections.observableArrayList(tmpQuality.getDistancesToOtherClusters(aNewValue.clusterIndex())));
+            tmpDistanceLabel.setText(String.format(Message.get("ClusterQuality.distances.title.text"), aNewValue.clusterIndex()));
+        });
+        //a double click opens the cluster in the overview
+        tmpQualityTable.setOnMouseClicked(event -> {
+            ClusterQuality.ClusterQualityEntry tmpEntry = tmpQualityTable.getSelectionModel().getSelectedItem();
+            if (event.getClickCount() == 2 && tmpEntry != null && tmpClusterMap.containsKey(tmpEntry.clusterIndex())) {
+                this.openClusterOverview(aRunResult, tmpClusterMap.get(tmpEntry.clusterIndex()), this.getFocusedStage());
+            }
+        });
+        tmpDistanceTable.setOnMouseClicked(event -> {
+            ClusterQuality.ClusterDistance tmpDistance = tmpDistanceTable.getSelectionModel().getSelectedItem();
+            if (event.getClickCount() == 2 && tmpDistance != null && tmpClusterMap.containsKey(tmpDistance.clusterIndex())) {
+                this.openClusterOverview(aRunResult, tmpClusterMap.get(tmpDistance.clusterIndex()), this.getFocusedStage());
+            }
+        });
+        //overall values, the stability once it was checked
+        Label tmpOverallLabel = new Label(String.format(Locale.getDefault(), Message.get("ClusterQuality.overall.text"),
+                tmpQuality.getOverallSilhouette(), 100.0 * tmpQuality.getOverallNeighbourPurity(), ClusterQuality.NUMBER_OF_NEIGHBOURS,
+                ClusterQuality.NUMBER_OF_NEIGHBOURS + 1)
+                + (tmpQuality.isSampled() ? " " + String.format(Message.get("ClusterQuality.sampled.text"), tmpQuality.getNumberOfEvaluatedMolecules()) : ""));
+        tmpOverallLabel.setStyle("-fx-font-weight: bold;");
+        tmpOverallLabel.setWrapText(true);
+        Label tmpStabilityLabel = new Label(aResultView.getStabilityResult() == null ? Message.get("ClusterQuality.stability.notChecked.text")
+                : String.format(Locale.getDefault(), Message.get("ClusterQuality.stability.text"),
+                        aResultView.getStabilityResult().meanAdjustedRandIndex(), aResultView.getStabilityResult().numberOfRuns()));
+        Button tmpStabilityButton = new Button(String.format(Message.get("ClusterQuality.stabilityButton.text"), ClusterStability.NUMBER_OF_RUNS_DEFAULT));
+        tmpStabilityButton.setTooltip(GuiUtil.createTooltip(Message.get("ClusterQuality.stabilityButton.tooltip")));
+        tmpStabilityButton.setMinWidth(Region.USE_PREF_SIZE);
+        tmpStabilityButton.disableProperty().bind(this.isClusteringRunningProperty);
+        tmpStabilityButton.setOnAction(event -> this.checkClusterStability(aRunResult, aResultView, tmpQualityTable, tmpStabilityLabel));
+        Button tmpExportButton = new Button(Message.get("ClusterQuality.exportButton.text"));
+        tmpExportButton.setMinWidth(Region.USE_PREF_SIZE);
+        Label tmpHintLabel = new Label(Message.get("ClusterQuality.hint.text"));
+        tmpHintLabel.setWrapText(true);
+        HBox tmpStabilityBox = new HBox(GuiDefinitions.GUI_SPACING_VALUE, tmpStabilityButton, tmpStabilityLabel);
+        tmpStabilityBox.setAlignment(Pos.CENTER_LEFT);
+        VBox tmpTopBox = new VBox(GuiDefinitions.GUI_SPACING_VALUE, tmpOverallLabel, tmpStabilityBox, tmpHintLabel);
+        tmpTopBox.setPadding(new Insets(GuiDefinitions.GUI_INSETS_VALUE));
+        VBox tmpDistanceBox = new VBox(GuiDefinitions.GUI_SPACING_VALUE, tmpDistanceLabel, tmpDistanceTable);
+        tmpDistanceBox.setPadding(new Insets(GuiDefinitions.GUI_INSETS_VALUE));
+        VBox.setVgrow(tmpDistanceTable, Priority.ALWAYS);
+        SplitPane tmpSplitPane = new SplitPane(tmpQualityTable, tmpDistanceBox);
+        tmpSplitPane.setDividerPositions(0.68);
+        HBox tmpBottomBox = new HBox(GuiDefinitions.GUI_SPACING_VALUE, tmpExportButton);
+        tmpBottomBox.setAlignment(Pos.CENTER_RIGHT);
+        tmpBottomBox.setPadding(new Insets(GuiDefinitions.GUI_INSETS_VALUE));
+        BorderPane tmpPane = new BorderPane(tmpSplitPane);
+        tmpPane.setTop(tmpTopBox);
+        tmpPane.setBottom(tmpBottomBox);
+        //the cluster selected in the result tab is preselected
+        ClusteringRunResult.ClusterSummary tmpSelectedCluster = aResultView.getClusterTableView().getSelectionModel().getSelectedItem();
+        if (tmpSelectedCluster != null && tmpSelectedCluster.clusterIndex() >= 0) {
+            tmpQualityTable.getSelectionModel().select(tmpQuality.getEntry(tmpSelectedCluster.clusterIndex()));
+            tmpQualityTable.scrollTo(tmpQuality.getEntry(tmpSelectedCluster.clusterIndex()));
+        }
+        Stage tmpStage = new Stage();
+        tmpStage.initOwner(this.primaryStage);
+        tmpStage.setTitle(String.format(Message.get("ClusterQuality.window.title"), aResultTabTitle));
+        tmpStage.setScene(new Scene(tmpPane, GuiDefinitions.GUI_MAIN_VIEW_WIDTH_VALUE, GuiDefinitions.GUI_MAIN_VIEW_HEIGHT_VALUE));
+        tmpExportButton.setOnAction(event -> {
+            Exporter tmpExporter = new Exporter(this.settingsContainer);
+            File tmpDirectory = tmpExporter.openFileChooserForExportFileOrDir(tmpStage, Exporter.ExportTypes.CLUSTER_QUALITY_CSV_FILE,
+                    aRunResult.parameters().fragmentationName());
+            if (tmpDirectory != null) {
+                this.showExportOutcome(tmpExporter.exportClusterQualityCsvFile(tmpDirectory, aRunResult, tmpQuality,
+                        aResultView.getStabilityResult(), this.settingsContainer.getCsvExportSeparatorSettingCharacter()));
+            }
+        });
+        tmpStage.show();
+    }
+    //
+    /**
+     * Runs the optional stability check of the given clustering result in the background (see {@link ClusterStability})
+     * and shows its result in the given quality table and label; the result is kept in the result view.
+     *
+     * @param aRunResult clustering result
+     * @param aResultView result view that keeps the stability result
+     * @param aQualityTable quality table whose stability column is updated
+     * @param aStabilityLabel label that shows the mean adjusted Rand index
+     */
+    private void checkClusterStability(ClusteringRunResult aRunResult, ClusteringResultView aResultView,
+                                       TableView<ClusterQuality.ClusterQualityEntry> aQualityTable, Label aStabilityLabel) {
+        if (this.isClusteringRunningProperty.get()) {
+            return;
+        }
+        Task<ClusterStability.StabilityResult> tmpTask = new Task<>() {
+            @Override
+            protected ClusterStability.StabilityResult call() throws Exception {
+                return ClusterStability.check(aRunResult, ClusterStability.NUMBER_OF_RUNS_DEFAULT, this::isCancelled,
+                        (aDone, aTotal) -> this.updateProgress(aDone, aTotal));
+            }
+        };
+        aStabilityLabel.setText(Message.get("ClusterQuality.stability.running.text"));
+        //the check uses the clustering controls (start disabled, cancel visible) like a clustering
+        Thread tmpThread = new Thread(tmpTask);
+        tmpThread.setName(ThreadType.CLUSTERING_THREAD.getThreadName());
+        tmpThread.setUncaughtExceptionHandler(LogUtil.getUncaughtExceptionHandler());
+        tmpThread.setDaemon(true);
+        tmpTask.setOnSucceeded(event -> {
+            this.updateStatusBar(tmpThread, Message.get("Status.finished"));
+            this.setClusteringRunningState(false);
+            ClusterStability.StabilityResult tmpResult = tmpTask.getValue();
+            aResultView.setStabilityResult(tmpResult);
+            aStabilityLabel.setText(String.format(Locale.getDefault(), Message.get("ClusterQuality.stability.text"),
+                    tmpResult.meanAdjustedRandIndex(), tmpResult.numberOfRuns()));
+            aQualityTable.refresh();
+        });
+        tmpTask.setOnCancelled(event -> {
+            this.updateStatusBar(tmpThread, Message.get("Status.canceled"));
+            this.setClusteringRunningState(false);
+            aStabilityLabel.setText(Message.get("ClusterQuality.stability.notChecked.text"));
+        });
+        tmpTask.setOnFailed(event -> {
+            this.updateStatusBar(tmpThread, Message.get("Status.failed"));
+            this.setClusteringRunningState(false);
+            aStabilityLabel.setText(Message.get("ClusterQuality.stability.notChecked.text"));
+            Throwable tmpCause = event.getSource().getException();
+            MainViewController.LOGGER.log(Level.SEVERE, tmpCause.toString(), tmpCause);
+            GuiUtil.guiExceptionAlert(Message.get("ClusterQuality.stabilityButton.tooltip"), Message.get("MainViewController.ClusteringError.Header"),
+                    tmpCause.getMessage(), tmpCause instanceof Exception tmpException ? tmpException : new Exception(tmpCause));
+        });
+        this.stabilityTask = tmpTask;
+        this.setClusteringRunningState(true);
+        this.updateStatusBar(tmpThread, Message.get("Status.stability"));
+        tmpThread.start();
+    }
+    //
+    /**
+     * Calculates the PCA of the given clustering result in the background (on the vectors the ART-2A clustering compared)
+     * and shows it in a new tab as interactive scatter plot; a double click on a point or cluster centre opens the cluster.
+     *
+     * @param aRunResult clustering result
+     * @param aResultTabTitle title of the result tab, used in the title of the PCA tab
+     * @param aVisibleClusterIndices clusters shown at the start, e.g. the marked ones; empty to show all
+     */
+    private void openPcaTab(ClusteringRunResult aRunResult, String aResultTabTitle, Set<Integer> aVisibleClusterIndices) {
+        if (this.isClusteringRunningProperty.get()) {
+            return;
+        }
+        if (aRunResult.molecules().size() < 2) {
+            GuiUtil.guiMessageAlert(Alert.AlertType.INFORMATION, Message.get("PcaView.title.text"),
+                    Message.get("PcaView.tooFewMolecules.header"), null);
+            return;
+        }
+        Task<PrincipalComponentAnalysis.PcaResult> tmpTask = new Task<>() {
+            @Override
+            protected PrincipalComponentAnalysis.PcaResult call() {
+                return PrincipalComponentAnalysis.calculate(aRunResult, PrincipalComponentAnalysis.NUMBER_OF_COMPONENTS_DEFAULT, this::isCancelled);
+            }
+        };
+        //the calculation uses the clustering controls (start disabled, cancel visible) like a clustering
+        Thread tmpThread = new Thread(tmpTask);
+        tmpThread.setName(ThreadType.CLUSTERING_THREAD.getThreadName());
+        tmpThread.setUncaughtExceptionHandler(LogUtil.getUncaughtExceptionHandler());
+        tmpThread.setDaemon(true);
+        tmpTask.setOnSucceeded(event -> {
+            this.updateStatusBar(tmpThread, Message.get("Status.finished"));
+            this.setClusteringRunningState(false);
+            PcaView tmpView = new PcaView(aRunResult, tmpTask.getValue(), aVisibleClusterIndices);
+            Map<Integer, ClusteringRunResult.ClusterSummary> tmpClusterMap = new HashMap<>();
+            aRunResult.getClusterSummaries().forEach(aCluster -> tmpClusterMap.put(aCluster.clusterIndex(), aCluster));
+            tmpView.setClusterDoubleClickAction(aClusterIndex -> {
+                ClusteringRunResult.ClusterSummary tmpCluster = tmpClusterMap.get(aClusterIndex);
+                if (tmpCluster != null) {
+                    this.openClusterOverview(aRunResult, tmpCluster, this.primaryStage);
+                }
+            });
+            Tab tmpTab = new Tab(Message.get("PcaView.tabTitle") + " - " + aResultTabTitle);
+            tmpTab.setId(TabNames.PCA.toString());
+            tmpTab.setClosable(true);
+            tmpTab.setContent(tmpView);
+            this.mainTabPane.getTabs().add(tmpTab);
+            this.mainTabPane.getSelectionModel().select(tmpTab);
+        });
+        tmpTask.setOnCancelled(event -> {
+            this.updateStatusBar(tmpThread, Message.get("Status.canceled"));
+            this.setClusteringRunningState(false);
+        });
+        tmpTask.setOnFailed(event -> {
+            this.updateStatusBar(tmpThread, Message.get("Status.failed"));
+            this.setClusteringRunningState(false);
+            Throwable tmpCause = event.getSource().getException();
+            MainViewController.LOGGER.log(Level.SEVERE, tmpCause.toString(), tmpCause);
+            GuiUtil.guiExceptionAlert(Message.get("PcaView.title.text"), Message.get("PcaView.error.header"),
+                    tmpCause.getMessage(), tmpCause instanceof Exception tmpException ? tmpException : new Exception(tmpCause));
+        });
+        this.pcaTask = tmpTask;
+        this.setClusteringRunningState(true);
+        this.updateStatusBar(tmpThread, Message.get("Status.pca"));
+        tmpThread.start();
+    }
+    //
+    /**
+     * Creates the bar for an additional row below the pagination of the molecules tab with a button on the right that
+     * calculates descriptors of the selected molecules without fragmentation; the descriptor tab opened then clusters
+     * without fragment fingerprint.
+     *
+     * @return box with the descriptor calculation button
+     */
+    private HBox createMoleculesDescriptorBar() {
+        HBox tmpBar = new HBox();
+        tmpBar.setPadding(new Insets(GuiDefinitions.GUI_INSETS_VALUE));
+        tmpBar.setSpacing(GuiDefinitions.GUI_SPACING_VALUE);
+        tmpBar.setAlignment(Pos.CENTER_RIGHT);
+        //separated from the pagination above by a line, like the clustering bars
+        tmpBar.setStyle("-fx-border-color: lightgrey; -fx-border-width: 1 0 0 0;");
+        Button tmpCalculateDescriptorsButton = new Button(Message.get("MainTabPane.clusteringBar.calculateDescriptorsButton.text"));
+        tmpCalculateDescriptorsButton.setMinWidth(Region.USE_PREF_SIZE);
+        tmpCalculateDescriptorsButton.setPrefHeight(GuiDefinitions.GUI_BUTTON_HEIGHT_VALUE);
+        tmpCalculateDescriptorsButton.setTooltip(GuiUtil.createTooltip(Message.get("MainTabPane.moleculesTab.calculateDescriptorsButton.tooltip")));
+        tmpCalculateDescriptorsButton.disableProperty().bind(this.isClusteringRunningProperty);
+        tmpCalculateDescriptorsButton.setOnAction(anEvent -> this.openDescriptorCalculationView(ClusteringService.WITHOUT_FRAGMENTATION_NAME));
+        tmpBar.getChildren().add(tmpCalculateDescriptorsButton);
+        return tmpBar;
+    }
+    //
+    /**
      * Opens the descriptor tab of the clustering settings for the choice of the descriptors (presets and single
      * descriptors, the same selection as for the clustering); its button starts the descriptor calculation.
      *
@@ -1994,7 +2350,8 @@ public class MainViewController {
         if (tmpMolecules == null) {
             return;
         }
-        Descriptor[] tmpDescriptors = this.clusteringService.getSelectedNonFingerprintDescriptors();
+        //the switched on descriptors and fingerprints, e.g. only fingerprints
+        Descriptor[] tmpDescriptors = this.clusteringService.getSelectedDescriptors();
         if (tmpDescriptors.length == 0) {
             GuiUtil.guiMessageAlert(Alert.AlertType.INFORMATION, Message.get("DescriptorTableView.title.text"),
                     Message.get("DescriptorTableView.noDescriptors.header"), null);
@@ -2055,11 +2412,20 @@ public class MainViewController {
         //clustering of exactly these molecules and descriptors
         Button tmpStartButton = new Button(Message.get("DescriptorTableView.startClusteringButton.text"));
         tmpStartButton.setMinWidth(Region.USE_PREF_SIZE);
-        tmpStartButton.setTooltip(GuiUtil.createTooltip(String.format(Message.get("DescriptorTableView.startClusteringButton.tooltip"),
-                aFragmentationName)));
+        tmpStartButton.setTooltip(GuiUtil.createTooltip(ClusteringService.WITHOUT_FRAGMENTATION_NAME.equals(aFragmentationName)
+                ? Message.get("DescriptorTableView.startClusteringButton.withoutFragmentation.tooltip")
+                : String.format(Message.get("DescriptorTableView.startClusteringButton.tooltip"), aFragmentationName)));
         tmpStartButton.disableProperty().bind(this.isClusteringRunningProperty);
         tmpStartButton.setOnAction(event -> this.startClustering(aFragmentationName, aMoleculeList, aDescriptors));
-        HBox tmpClusteringBox = new HBox(GuiDefinitions.GUI_SPACING_VALUE,
+        //settings, e.g. to choose the fingerprints that are calculated additionally for the clustering
+        Button tmpSettingsButton = new Button();
+        String tmpIconURL = this.getClass().getClassLoader().getResource(
+                this.configuration.getProperty("mortar.imagesFolder")
+                        + this.configuration.getProperty("mortar.icon.gear.name")).toExternalForm();
+        tmpSettingsButton.setGraphic(new ImageView(new Image(tmpIconURL)));
+        tmpSettingsButton.setTooltip(GuiUtil.createTooltip(Message.get("MainTabPane.clusteringBar.settingsButton.tooltip")));
+        tmpSettingsButton.setOnAction(event -> this.openClusteringSettingsView(aFragmentationName));
+        HBox tmpClusteringBox = new HBox(GuiDefinitions.GUI_SPACING_VALUE, tmpSettingsButton,
                 new Label(Message.get("MainTabPane.clusteringBar.vigilanceLabel.text")), new VigilanceSpinner(this.clusteringService),
                 tmpStartButton);
         tmpClusteringBox.setAlignment(Pos.CENTER_LEFT);

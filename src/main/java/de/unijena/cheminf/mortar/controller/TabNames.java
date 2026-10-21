@@ -51,5 +51,9 @@ public enum TabNames {
     /**
      * Tab name for a tab with calculated descriptor values of molecules.
      */
-    DESCRIPTORS;
+    DESCRIPTORS,
+    /**
+     * Tab name for a tab with the PCA of a clustering result.
+     */
+    PCA;
 }

@@ -29,6 +29,7 @@ import de.unijena.cheminf.mortar.gui.util.GuiUtil;
 import de.unijena.cheminf.mortar.message.Message;
 import de.unijena.cheminf.mortar.model.data.MoleculeDataModel;
 import de.unijena.cheminf.mortar.model.descriptor.Descriptor;
+import de.unijena.cheminf.mortar.model.descriptor.DescriptorCalculator;
 import de.unijena.cheminf.mortar.model.fragmentation.algorithm.IMoleculeFragmenter;
 import de.unijena.cheminf.mortar.model.util.BasicDefinitions;
 import de.unijena.cheminf.mortar.model.util.ChemUtil;
@@ -699,6 +700,23 @@ public class ClusteringService {
      */
     public static final boolean CORRELATION_FILTER_DEFAULT = false;
     /**
+     * Default of whether the fragment fingerprint is part of the features.
+     */
+    public static final boolean FRAGMENT_FINGERPRINT_DEFAULT = true;
+    /**
+     * Name used instead of a fragmentation name for clusterings without fragmentation, i.e. only by the descriptors and
+     * fingerprints calculated on the molecules (e.g. started from the molecules tab); appears in titles and file names.
+     */
+    public static final String WITHOUT_FRAGMENTATION_NAME = "Descriptors only";
+    /**
+     * Default of whether the selected descriptors are part of the features of a clustering.
+     */
+    public static final boolean DESCRIPTORS_DEFAULT = true;
+    /**
+     * Default of whether the selected fingerprints are part of the features of a clustering.
+     */
+    public static final boolean FINGERPRINTS_DEFAULT = true;
+    /**
      * Default correlation threshold.
      */
     public static final double CORRELATION_THRESHOLD_DEFAULT = 0.95;
@@ -750,6 +768,15 @@ public class ClusteringService {
      * Settings of the fragment fingerprint section of the clustering tab.
      */
     private final List<Property<?>> fragmentFingerprintSettings;
+    /**
+     * Setting whether the fragment fingerprint is used, in its own list, so that the other fragment fingerprint settings
+     * can be hidden while it is switched off.
+     */
+    private final List<Property<?>> fragmentFingerprintSwitchSettings;
+    /**
+     * Setting whether the fragment fingerprint is part of the features.
+     */
+    private final SimpleBooleanProperty fragmentFingerprintSetting;
     /**
      * Settings of the aromaticity section of the clustering tab.
      */
@@ -811,6 +838,24 @@ public class ClusteringService {
      * Settings of the fingerprint section of the descriptor tab.
      */
     private final List<Property<?>> fingerprintSettings;
+    /**
+     * Setting whether the selected descriptors are used for the clustering, in its own list for the settings view.
+     */
+    private final List<Property<?>> descriptorSwitchSettings;
+    /**
+     * Setting whether the selected fingerprints are used for the clustering, in its own list for the settings view.
+     */
+    private final List<Property<?>> fingerprintSwitchSettings;
+    /**
+     * Setting whether the selected descriptors are part of the features of a clustering; the selection is kept while it
+     * is switched off.
+     */
+    private final SimpleBooleanProperty descriptorsSetting;
+    /**
+     * Setting whether the selected fingerprints are part of the features of a clustering; the selection is kept while it
+     * is switched off.
+     */
+    private final SimpleBooleanProperty fingerprintsSetting;
     /**
      * Advanced settings of the fingerprint section of the descriptor tab (hidden by default).
      */
@@ -973,6 +1018,7 @@ public class ClusteringService {
                 : aSettingsDirectoryPath + File.separator;
         this.settings = new ArrayList<>(24);
         this.fragmentFingerprintSettings = new ArrayList<>(3);
+        this.fragmentFingerprintSwitchSettings = new ArrayList<>(1);
         this.aromaticitySettings = new ArrayList<>(2);
         this.transformationSettings = new ArrayList<>(2);
         this.filterSettings = new ArrayList<>(2);
@@ -983,6 +1029,8 @@ public class ClusteringService {
         this.settingNameToDisplayNameMap = new HashMap<>(64);
         this.settingNameToTooltipTextMap = new HashMap<>(64);
         //fragment fingerprint
+        this.fragmentFingerprintSetting = this.createBooleanSetting(this.fragmentFingerprintSwitchSettings, "Fragment fingerprint setting",
+                ClusteringService.FRAGMENT_FINGERPRINT_DEFAULT, "fragmentFingerprintSetting");
         this.fragmentFingerprintTypeSetting = this.createEnumSetting(this.fragmentFingerprintSettings, "Fragment fingerprint type setting",
                 ClusteringService.FRAGMENT_FINGERPRINT_TYPE_OPTION_DEFAULT, FragmentFingerprintTypeOption.class,
                 "fragmentFingerprintTypeSetting");
@@ -1040,6 +1088,7 @@ public class ClusteringService {
                 Integer.MAX_VALUE, "numberOfSimilarMoleculesSetting");
         //all general settings in persistence order; the algorithm comes before the convergence threshold, so that a
         // reload sets the persisted threshold after the algorithm listener has set the default of the kernel
+        this.settings.addAll(this.fragmentFingerprintSwitchSettings);
         this.settings.addAll(this.fragmentFingerprintSettings);
         this.settings.addAll(this.aromaticitySettings);
         this.settings.addAll(this.transformationSettings);
@@ -1063,6 +1112,12 @@ public class ClusteringService {
         this.descriptorPresetKeyList = FXCollections.observableArrayList();
         this.updateDescriptorPresetKeyList();
         this.fingerprintSettings = new ArrayList<>(4);
+        this.descriptorSwitchSettings = new ArrayList<>(1);
+        this.fingerprintSwitchSettings = new ArrayList<>(1);
+        this.descriptorsSetting = this.createBooleanSetting(this.descriptorSwitchSettings, "Descriptors setting",
+                ClusteringService.DESCRIPTORS_DEFAULT, "descriptorsSetting");
+        this.fingerprintsSetting = this.createBooleanSetting(this.fingerprintSwitchSettings, "Fingerprints setting",
+                ClusteringService.FINGERPRINTS_DEFAULT, "fingerprintsSetting");
         this.advancedFingerprintSettings = new ArrayList<>(2);
         this.descriptorSelectionSettings = new ArrayList<>(Descriptor.getAllDescriptors().length);
         //the preset is a string setting (key of a built-in or user-defined preset) and has its own control in the view
@@ -1109,6 +1164,8 @@ public class ClusteringService {
             });
         }
         //all settings of the descriptor tab in persistence order: the preset first, so that a reload applies it first
+        this.descriptorSettings.addAll(this.descriptorSwitchSettings);
+        this.descriptorSettings.addAll(this.fingerprintSwitchSettings);
         this.descriptorSettings.addAll(this.fingerprintSettings);
         this.descriptorSettings.addAll(this.advancedFingerprintSettings);
         this.descriptorSettings.addAll(this.descriptorSelectionSettings);
@@ -1163,17 +1220,19 @@ public class ClusteringService {
     }
     //
     /**
-     * Returns the currently selected descriptors in enum order, followed by the selected fingerprints (circular, MACCS,
-     * PubChem).
+     * Returns the descriptors used for a clustering: the selected descriptors in enum order (only if the descriptors are
+     * switched on), followed by the selected fingerprints (circular, MACCS, PubChem; only if the fingerprints are
+     * switched on).
      *
-     * @return selected descriptors and fingerprints, may be empty
+     * @return descriptors and fingerprints of a clustering, may be empty
      */
     public Descriptor[] getSelectedDescriptors() {
         List<Descriptor> tmpSelected = new ArrayList<>();
-        for (Map.Entry<Descriptor, SimpleBooleanProperty> tmpEntry : this.descriptorToSettingMap.entrySet()) {
-            if (tmpEntry.getValue().get()) {
-                tmpSelected.add(tmpEntry.getKey());
-            }
+        if (this.descriptorsSetting.get()) {
+            tmpSelected.addAll(Arrays.asList(this.getSelectedNonFingerprintDescriptors()));
+        }
+        if (!this.fingerprintsSetting.get()) {
+            return tmpSelected.toArray(new Descriptor[0]);
         }
         if (this.circularFingerprintSetting.get()) {
             tmpSelected.add(ClusteringService.getCircularFingerprintDescriptor(
@@ -1196,7 +1255,14 @@ public class ClusteringService {
      * @return selected descriptors that are no fingerprints, in enum order, may be empty
      */
     public Descriptor[] getSelectedNonFingerprintDescriptors() {
-        return Arrays.stream(this.getSelectedDescriptors()).filter(aDescriptor -> !aDescriptor.isFingerprint()).toArray(Descriptor[]::new);
+        //independent of the descriptor switch, which only concerns the clustering
+        List<Descriptor> tmpSelected = new ArrayList<>();
+        for (Map.Entry<Descriptor, SimpleBooleanProperty> tmpEntry : this.descriptorToSettingMap.entrySet()) {
+            if (tmpEntry.getValue().get()) {
+                tmpSelected.add(tmpEntry.getKey());
+            }
+        }
+        return tmpSelected.toArray(new Descriptor[0]);
     }
     //
     /**
@@ -1236,12 +1302,21 @@ public class ClusteringService {
     }
     //
     /**
-     * Restores the default values of the general clustering settings.
+     * Restores the default values of the fragment fingerprint settings (switch, type, minimum frequency, maximum number of
+     * features), which are shown in the descriptor tab of the settings view.
      */
-    public void restoreDefaultSettings() {
+    public void restoreDefaultFragmentFingerprintSettings() {
+        this.fragmentFingerprintSetting.set(ClusteringService.FRAGMENT_FINGERPRINT_DEFAULT);
         this.fragmentFingerprintTypeSetting.set(ClusteringService.FRAGMENT_FINGERPRINT_TYPE_OPTION_DEFAULT);
         this.minimumFragmentMoleculeFrequencySetting.set(ClusteringService.MINIMUM_FRAGMENT_MOLECULE_FREQUENCY_DEFAULT);
         this.maximumNumberOfFragmentFeaturesSetting.set(ClusteringService.MAXIMUM_NUMBER_OF_FRAGMENT_FEATURES_DEFAULT);
+    }
+    //
+    /**
+     * Restores the default values of the general clustering settings of the clustering tab of the settings view; the
+     * fragment fingerprint settings (descriptor tab) are restored by {@link #restoreDefaultFragmentFingerprintSettings()}.
+     */
+    public void restoreDefaultSettings() {
         this.restoreDefaultAromaticitySettings();
         this.countTransformationSetting.set(ClusteringService.COUNT_TRANSFORMATION_OPTION_DEFAULT);
         this.continuousTransformationSetting.set(ClusteringService.CONTINUOUS_TRANSFORMATION_OPTION_DEFAULT);
@@ -1265,6 +1340,8 @@ public class ClusteringService {
      * User-defined presets are kept.
      */
     public void restoreDefaultDescriptorSelection() {
+        this.descriptorsSetting.set(ClusteringService.DESCRIPTORS_DEFAULT);
+        this.fingerprintsSetting.set(ClusteringService.FINGERPRINTS_DEFAULT);
         this.selectDescriptorPreset(ClusteringService.DESCRIPTOR_PRESET_OPTION_DEFAULT.name());
         this.circularFingerprintSetting.set(ClusteringService.CIRCULAR_FINGERPRINT_DEFAULT);
         this.circularFingerprintTypeSetting.set(ClusteringService.CIRCULAR_FINGERPRINT_TYPE_OPTION_DEFAULT);
@@ -1565,6 +1642,66 @@ public class ClusteringService {
     }
     //
     /**
+     * Returns the setting whether the selected descriptors are used for the clustering, in its own list for the settings
+     * view.
+     *
+     * @return unmodifiable list with the descriptor switch
+     */
+    public List<Property<?>> descriptorSwitchSettingsProperties() {
+        return Collections.unmodifiableList(this.descriptorSwitchSettings);
+    }
+    //
+    /**
+     * Returns the setting whether the selected fingerprints are used for the clustering, in its own list for the settings
+     * view.
+     *
+     * @return unmodifiable list with the fingerprint switch
+     */
+    public List<Property<?>> fingerprintSwitchSettingsProperties() {
+        return Collections.unmodifiableList(this.fingerprintSwitchSettings);
+    }
+    //
+    /**
+     * Returns the setting whether the selected descriptors are used for the clustering, e.g. to show the preset and the
+     * descriptor list only while it is switched on.
+     *
+     * @return descriptor switch setting
+     */
+    public SimpleBooleanProperty descriptorsProperty() {
+        return this.descriptorsSetting;
+    }
+    //
+    /**
+     * Returns the setting whether the selected fingerprints are used for the clustering, e.g. to show the fingerprint
+     * settings only while it is switched on.
+     *
+     * @return fingerprint switch setting
+     */
+    public SimpleBooleanProperty fingerprintsProperty() {
+        return this.fingerprintsSetting;
+    }
+    //
+    /**
+     * Returns the setting whether the fragment fingerprint is used, in its own list, e.g. for a grid of the settings view
+     * above the other fragment fingerprint settings.
+     *
+     * @return unmodifiable list with the fragment fingerprint switch
+     */
+    public List<Property<?>> fragmentFingerprintSwitchSettingsProperties() {
+        return Collections.unmodifiableList(this.fragmentFingerprintSwitchSettings);
+    }
+    //
+    /**
+     * Returns the setting whether the fragment fingerprint is part of the features, e.g. to show the other fragment
+     * fingerprint settings only while it is switched on.
+     *
+     * @return fragment fingerprint setting
+     */
+    public SimpleBooleanProperty fragmentFingerprintProperty() {
+        return this.fragmentFingerprintSetting;
+    }
+    //
+    /**
      * Returns the setting whether the correlation filter is applied.
      *
      * @return correlation filter setting
@@ -1655,7 +1792,8 @@ public class ClusteringService {
                 (float) this.offsetForContrastEnhancementSetting.get(),
                 this.randomSeedSetting.get(),
                 this.circularFingerprintSizeSetting.get(),
-                anIsParallelCalculation);
+                anIsParallelCalculation,
+                this.fragmentFingerprintSetting.get());
     }
     //
     /**
@@ -1689,32 +1827,53 @@ public class ClusteringService {
     }
     //
     /**
-     * Creates the clustering parameters of the current settings, but with the given descriptors instead of the selected
-     * ones (e.g. the descriptors of a descriptor tab); the selected fingerprints are added.
+     * Creates the clustering parameters of the current settings, but with exactly the given descriptors and fingerprints
+     * instead of the selected ones (e.g. the features calculated in a descriptor tab, which are then taken from the
+     * descriptor cache).
      *
      * @param aFragmentationName name of the fragmentation whose fragments form the fragment fingerprint
-     * @param aNonFingerprintDescriptors descriptors to use instead of the selected ones, fingerprints are ignored
+     * @param aDescriptors descriptors and fingerprints to use instead of the selected ones, in this order
      * @param anIsParallelCalculation true: descriptor calculation and winner search are parallelized
      * @return clustering parameters
      * @throws NullPointerException if a parameter is null
      */
-    public ClusteringParameters createClusteringParameters(String aFragmentationName, Descriptor[] aNonFingerprintDescriptors,
+    public ClusteringParameters createClusteringParameters(String aFragmentationName, Descriptor[] aDescriptors,
                                                            boolean anIsParallelCalculation) throws NullPointerException {
-        Objects.requireNonNull(aNonFingerprintDescriptors, "Given descriptor array is null.");
+        Objects.requireNonNull(aDescriptors, "Given descriptor array is null.");
         ClusteringParameters tmpParameters = this.createClusteringParameters(aFragmentationName, anIsParallelCalculation);
-        //the given descriptors in enum order, as in the selection, followed by the selected fingerprints
-        List<Descriptor> tmpDescriptors = new ArrayList<>(Arrays.stream(aNonFingerprintDescriptors)
-                .filter(aDescriptor -> !aDescriptor.isFingerprint()).distinct().sorted().toList());
-        Arrays.stream(tmpParameters.descriptors()).filter(Descriptor::isFingerprint).forEach(tmpDescriptors::add);
         return new ClusteringParameters(tmpParameters.fragmentationName(), tmpParameters.isCountFingerprint(),
                 tmpParameters.minimumFragmentMoleculeFrequency(), tmpParameters.maximumNumberOfFragmentFeatures(),
-                tmpDescriptors.toArray(new Descriptor[0]), tmpParameters.electronDonationModelOption(), tmpParameters.cycleFinderOption(),
+                Arrays.stream(aDescriptors).distinct().toArray(Descriptor[]::new), tmpParameters.electronDonationModelOption(), tmpParameters.cycleFinderOption(),
                 tmpParameters.countTransformation(), tmpParameters.continuousTransformation(), tmpParameters.maximumNaNFraction(),
                 tmpParameters.isCorrelationFilterEnabled(), tmpParameters.correlationThreshold(), tmpParameters.correlationMethod(),
                 tmpParameters.algorithm(), tmpParameters.vigilance(), tmpParameters.maximumNumberOfClusters(),
                 tmpParameters.maximumNumberOfEpochs(), tmpParameters.convergenceThreshold(), tmpParameters.learningParameter(),
                 tmpParameters.offsetForContrastEnhancement(), tmpParameters.randomSeed(), tmpParameters.circularFingerprintSize(),
-                tmpParameters.isParallelCalculation());
+                tmpParameters.isParallelCalculation(), tmpParameters.isFragmentFingerprintUsed());
+    }
+    //
+    /**
+     * Creates the clustering parameters of the current settings for a clustering without fragmentation: the fragment
+     * fingerprint is switched off, the fragmentation name is {@link #WITHOUT_FRAGMENTATION_NAME}, and exactly the given
+     * descriptors and fingerprints (or the selected ones) are the features.
+     *
+     * @param aDescriptors descriptors and fingerprints to use instead of the selected ones; null for the selected ones
+     * @param anIsParallelCalculation true: descriptor calculation and winner search are parallelized
+     * @return clustering parameters without fragment fingerprint
+     */
+    public ClusteringParameters createClusteringParametersWithoutFragmentation(Descriptor[] aDescriptors, boolean anIsParallelCalculation) {
+        ClusteringParameters tmpParameters = aDescriptors == null
+                ? this.createClusteringParameters(ClusteringService.WITHOUT_FRAGMENTATION_NAME, anIsParallelCalculation)
+                : this.createClusteringParameters(ClusteringService.WITHOUT_FRAGMENTATION_NAME, aDescriptors, anIsParallelCalculation);
+        return new ClusteringParameters(tmpParameters.fragmentationName(), tmpParameters.isCountFingerprint(),
+                tmpParameters.minimumFragmentMoleculeFrequency(), tmpParameters.maximumNumberOfFragmentFeatures(),
+                tmpParameters.descriptors(), tmpParameters.electronDonationModelOption(), tmpParameters.cycleFinderOption(),
+                tmpParameters.countTransformation(), tmpParameters.continuousTransformation(), tmpParameters.maximumNaNFraction(),
+                tmpParameters.isCorrelationFilterEnabled(), tmpParameters.correlationThreshold(), tmpParameters.correlationMethod(),
+                tmpParameters.algorithm(), tmpParameters.vigilance(), tmpParameters.maximumNumberOfClusters(),
+                tmpParameters.maximumNumberOfEpochs(), tmpParameters.convergenceThreshold(), tmpParameters.learningParameter(),
+                tmpParameters.offsetForContrastEnhancement(), tmpParameters.randomSeed(), tmpParameters.circularFingerprintSize(),
+                tmpParameters.isParallelCalculation(), false);
     }
     //
     /**
@@ -1723,7 +1882,7 @@ public class ClusteringService {
      * these descriptors does not calculate them again.
      *
      * @param aMoleculeList molecules (rows of the matrix)
-     * @param aDescriptorArray descriptors to calculate, without fingerprints
+     * @param aDescriptorArray descriptors and fingerprints to calculate
      * @param anIsParallelCalculation true: molecules are processed in parallel
      * @return descriptor matrix with the columns in the order of the given descriptors
      * @throws NullPointerException if a parameter is null
@@ -1731,6 +1890,10 @@ public class ClusteringService {
      */
     public FeatureMatrix calculateDescriptorMatrix(List<MoleculeDataModel> aMoleculeList, Descriptor[] aDescriptorArray,
                                                    boolean anIsParallelCalculation) throws NullPointerException, InterruptedException {
+        //the length of the circular fingerprint is a global setting of the descriptor engine
+        if (DescriptorCalculator.getCircularFingerprintSize() != this.circularFingerprintSizeSetting.get()) {
+            DescriptorCalculator.setCircularFingerprintSize(this.circularFingerprintSizeSetting.get());
+        }
         return this.descriptorMatrixCache.getDescriptorMatrix(aMoleculeList, aDescriptorArray,
                 (IMoleculeFragmenter.ElectronDonationModelOption) this.electronDonationModelSetting.get(),
                 (IMoleculeFragmenter.CycleFinderOption) this.cycleFinderSetting.get(),

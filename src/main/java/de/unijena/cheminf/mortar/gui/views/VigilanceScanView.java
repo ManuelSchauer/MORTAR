@@ -41,6 +41,7 @@ import javafx.scene.chart.XYChart;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.SplitPane;
+import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
@@ -150,7 +151,7 @@ public class VigilanceScanView extends BorderPane {
         this.scanTableView = new TableView<>(FXCollections.observableArrayList(anEntryList));
         this.scanTableView.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         this.scanTableView.getColumns().addAll(List.of(
-                VigilanceScanView.createColumn("VigilanceScan.vigilanceColumn.header", anEntry -> String.format(Locale.getDefault(), "%.4f", anEntry.vigilance())),
+                VigilanceScanView.createVigilanceColumn(),
                 VigilanceScanView.createIntegerColumn("VigilanceScan.clustersColumn.header", VigilanceScan.ScanEntry::numberOfClusters),
                 VigilanceScanView.createIntegerColumn("VigilanceScan.singletonsColumn.header", VigilanceScan.ScanEntry::numberOfSingletons),
                 VigilanceScanView.createIntegerColumn("VigilanceScan.largestColumn.header", VigilanceScan.ScanEntry::largestClusterSize),
@@ -263,7 +264,7 @@ public class VigilanceScanView extends BorderPane {
         this.scanTableView.refresh();
         this.scanTableView.getSelectionModel().select(tmpBest);
         this.scanTableView.scrollTo(tmpBest);
-        String tmpVigilance = String.format(Locale.getDefault(), "%.2f", tmpBest.vigilance());
+        String tmpVigilance = VigilanceScan.formatVigilance(tmpBest.vigilance());
         this.hintLabel.setText(String.format(Message.get(aSearchResult.isExact()
                         ? "VigilanceScan.targetSearch.exact.text" : "VigilanceScan.targetSearch.closest.text"),
                 aSearchResult.targetNumberOfClusters(), tmpVigilance, tmpBest.numberOfClusters(), aSearchResult.entries().size()));
@@ -306,6 +307,24 @@ public class VigilanceScanView extends BorderPane {
                                                                               Function<VigilanceScan.ScanEntry, String> aValueFunction) {
         TableColumn<VigilanceScan.ScanEntry, String> tmpColumn = new TableColumn<>(Message.get(aHeaderKey));
         tmpColumn.setCellValueFactory(aCellData -> new ReadOnlyStringWrapper(aValueFunction.apply(aCellData.getValue())));
+        return tmpColumn;
+    }
+    //
+    /**
+     * Creates the vigilance column: sorted by value, shown with as many decimals as the vigilance has (at most four).
+     *
+     * @return vigilance column
+     */
+    private static TableColumn<VigilanceScan.ScanEntry, Float> createVigilanceColumn() {
+        TableColumn<VigilanceScan.ScanEntry, Float> tmpColumn = new TableColumn<>(Message.get("VigilanceScan.vigilanceColumn.header"));
+        tmpColumn.setCellValueFactory(aCellData -> new ReadOnlyObjectWrapper<>(aCellData.getValue().vigilance()));
+        tmpColumn.setCellFactory(aColumn -> new TableCell<>() {
+            @Override
+            protected void updateItem(Float aVigilance, boolean anIsEmpty) {
+                super.updateItem(aVigilance, anIsEmpty);
+                this.setText(anIsEmpty || aVigilance == null ? null : VigilanceScan.formatVigilance(aVigilance));
+            }
+        });
         return tmpColumn;
     }
     //

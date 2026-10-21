@@ -26,6 +26,8 @@
 package de.unijena.cheminf.mortar.model.io;
 
 import de.unijena.cheminf.mortar.model.clustering.ClusterProfiler;
+import de.unijena.cheminf.mortar.model.clustering.ClusterQuality;
+import de.unijena.cheminf.mortar.model.clustering.ClusterStability;
 import de.unijena.cheminf.mortar.model.clustering.ClusteringRunResult;
 import de.unijena.cheminf.mortar.model.clustering.DiverseSubsetSelector;
 import de.unijena.cheminf.mortar.model.clustering.FeatureMatrix;
@@ -39,6 +41,7 @@ import java.io.Writer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Writes the data of the clustering pipeline as CSV: a feature matrix of any stage (raw, transformed, filtered =
@@ -58,6 +61,10 @@ public final class ClusteringDataCsvWriter {
      * Header of the cluster label column.
      */
     public static final String CLUSTER_COLUMN_HEADER = "Cluster";
+    /**
+     * Header of the SMILES column.
+     */
+    public static final String SMILES_COLUMN_HEADER = "SMILES";
     //</editor-fold>
     //
     //<editor-fold desc="Private constructor" defaultstate="collapsed">
@@ -111,13 +118,46 @@ public final class ClusteringDataCsvWriter {
             int[] aRowIndices,
             String aSeparator)
             throws NullPointerException, IllegalArgumentException, IOException {
+        ClusteringDataCsvWriter.writeFeatureMatrix(aWriter, aFeatureMatrix, aClusterLabelArray, aRowIndices, null, aSeparator);
+    }
+    //
+    /**
+     * Writes the given rows of the given feature matrix with one line per molecule, see
+     * {@link #writeFeatureMatrix(Writer, FeatureMatrix, int[], String)}; if molecules are given, their SMILES code is
+     * written in the second column, after the name.
+     *
+     * @param aWriter writer to write to (is not closed)
+     * @param aFeatureMatrix feature matrix to write
+     * @param aClusterLabelArray cluster label of every row of the matrix, may be null
+     * @param aRowIndices indices of the rows to write in the given order; null for all rows
+     * @param aMoleculeList molecules in the order of the matrix rows, whose SMILES codes are written; null for none
+     * @param aSeparator column separator, e.g. "," or ";"
+     * @throws NullPointerException if the writer, matrix or separator is null
+     * @throws IllegalArgumentException if the length of the label array or of the molecule list does not match the
+     *                                  number of rows
+     * @throws IOException if writing fails
+     */
+    public static void writeFeatureMatrix(
+            Writer aWriter,
+            FeatureMatrix aFeatureMatrix,
+            int[] aClusterLabelArray,
+            int[] aRowIndices,
+            List<MoleculeDataModel> aMoleculeList,
+            String aSeparator)
+            throws NullPointerException, IllegalArgumentException, IOException {
         Objects.requireNonNull(aWriter, "Given writer is null.");
         Objects.requireNonNull(aFeatureMatrix, "Given feature matrix is null.");
         Objects.requireNonNull(aSeparator, "Given separator is null.");
         if (aClusterLabelArray != null && aClusterLabelArray.length != aFeatureMatrix.getRowCount()) {
             throw new IllegalArgumentException("Number of cluster labels does not match the number of rows.");
         }
+        if (aMoleculeList != null && aMoleculeList.size() != aFeatureMatrix.getRowCount()) {
+            throw new IllegalArgumentException("Number of molecules does not match the number of rows.");
+        }
         StringBuilder tmpLine = new StringBuilder(ClusteringDataCsvWriter.NAME_COLUMN_HEADER);
+        if (aMoleculeList != null) {
+            tmpLine.append(aSeparator).append(ClusteringDataCsvWriter.SMILES_COLUMN_HEADER);
+        }
         if (aClusterLabelArray != null) {
             tmpLine.append(aSeparator).append(ClusteringDataCsvWriter.CLUSTER_COLUMN_HEADER);
         }
@@ -130,6 +170,9 @@ public final class ClusteringDataCsvWriter {
             int i = aRowIndices == null ? r : aRowIndices[r];
             tmpLine.setLength(0);
             tmpLine.append(ClusteringDataCsvWriter.escape(aFeatureMatrix.getRowName(i), aSeparator));
+            if (aMoleculeList != null) {
+                tmpLine.append(aSeparator).append(ClusteringDataCsvWriter.escape(aMoleculeList.get(i).getUniqueSmiles(), aSeparator));
+            }
             if (aClusterLabelArray != null) {
                 tmpLine.append(aSeparator).append(aClusterLabelArray[i]);
             }
@@ -137,6 +180,51 @@ public final class ClusteringDataCsvWriter {
                 tmpLine.append(aSeparator).append(aFeatureMatrix.getValue(i, j));
             }
             aWriter.write(tmpLine.append(System.lineSeparator()).toString());
+        }
+        aWriter.flush();
+    }
+    //
+    /**
+     * Writes the quality of the clusters with one line per cluster (see {@link ClusterQuality}): size, mean similarity to
+     * the own cluster vector, mean distance within the cluster, silhouette, number of molecules with negative
+     * silhouette, number k of nearest neighbours (min(10, size - 1)), neighbour purity, nearest cluster with the mean
+     * distance to it, cluster with the most neighbour
+     * contacts and their share, and, if given, the stability (mean Jaccard index) of the stability check.
+     *
+     * @param aWriter writer to write to (is not closed)
+     * @param aQuality cluster quality
+     * @param aStabilityResult result of the stability check, null if it was not run (the column is left out)
+     * @param aClusterIndices clusters to write; null or empty for all
+     * @param aSeparator column separator, e.g. "," or ";"
+     * @throws NullPointerException if the writer, quality or separator is null
+     * @throws IOException if writing fails
+     */
+    public static void writeClusterQuality(Writer aWriter, ClusterQuality aQuality, ClusterStability.StabilityResult aStabilityResult,
+                                           Set<Integer> aClusterIndices, String aSeparator) throws NullPointerException, IOException {
+        Objects.requireNonNull(aWriter, "Given writer is null.");
+        Objects.requireNonNull(aQuality, "Given cluster quality is null.");
+        Objects.requireNonNull(aSeparator, "Given separator is null.");
+        List<String> tmpHeader = new ArrayList<>(List.of(ClusteringDataCsvWriter.CLUSTER_COLUMN_HEADER, "Size", "MeanSimilarityToOwnCentre",
+                "MeanDistanceWithinCluster", "Silhouette", "NegativeSilhouettes", "NumberOfNeighbours", "NeighbourPurity", "NearestCluster",
+                "MeanDistanceToNearestCluster", "MostContactsCluster", "ContactShareWithMostContacts"));
+        if (aStabilityResult != null) {
+            tmpHeader.add("StabilityJaccard");
+        }
+        aWriter.write(String.join(aSeparator, tmpHeader) + System.lineSeparator());
+        for (ClusterQuality.ClusterQualityEntry tmpEntry : aQuality.getEntries()) {
+            if (aClusterIndices != null && !aClusterIndices.isEmpty() && !aClusterIndices.contains(tmpEntry.clusterIndex())) {
+                continue;
+            }
+            List<String> tmpValues = new ArrayList<>(List.of(Integer.toString(tmpEntry.clusterIndex()), Integer.toString(tmpEntry.size()),
+                    Double.toString(tmpEntry.meanSimilarityToOwnCentre()), Double.toString(tmpEntry.meanDistanceWithinCluster()),
+                    Double.toString(tmpEntry.silhouette()), Integer.toString(tmpEntry.numberOfNegativeSilhouettes()),
+                    Integer.toString(tmpEntry.numberOfNeighbours()), Double.toString(tmpEntry.neighbourPurity()), Integer.toString(tmpEntry.nearestClusterIndex()),
+                    Double.toString(tmpEntry.meanDistanceToNearestCluster()), Integer.toString(tmpEntry.mostContactsClusterIndex()),
+                    Double.toString(tmpEntry.contactShareWithMostContacts())));
+            if (aStabilityResult != null) {
+                tmpValues.add(Double.toString(aStabilityResult.getClusterJaccardIndex(tmpEntry.clusterIndex())));
+            }
+            aWriter.write(String.join(aSeparator, tmpValues) + System.lineSeparator());
         }
         aWriter.flush();
     }
@@ -162,7 +250,7 @@ public final class ClusteringDataCsvWriter {
         if (aMoleculeList.size() != aDescriptorMatrix.getRowCount()) {
             throw new IllegalArgumentException("Number of molecules does not match the number of rows.");
         }
-        StringBuilder tmpLine = new StringBuilder(ClusteringDataCsvWriter.NAME_COLUMN_HEADER).append(aSeparator).append("SMILES");
+        StringBuilder tmpLine = new StringBuilder(ClusteringDataCsvWriter.NAME_COLUMN_HEADER).append(aSeparator).append(ClusteringDataCsvWriter.SMILES_COLUMN_HEADER);
         for (int j = 0; j < aDescriptorMatrix.getColumnCount(); j++) {
             tmpLine.append(aSeparator).append(ClusteringDataCsvWriter.escape(aDescriptorMatrix.getFeatureName(j), aSeparator));
         }
@@ -265,7 +353,7 @@ public final class ClusteringDataCsvWriter {
         aWriter.write(String.join(aSeparator, "Vigilance", "NumberOfClusters", "NumberOfSingletons", "LargestClusterSize",
                 "NumberOfUnclusteredMolecules", "MeanSimilarityToClusterVector", "IsOverflow", "IsConverged") + System.lineSeparator());
         for (VigilanceScan.ScanEntry tmpEntry : anEntryList) {
-            aWriter.write(String.join(aSeparator, Float.toString(tmpEntry.vigilance()), Integer.toString(tmpEntry.numberOfClusters()),
+            aWriter.write(String.join(aSeparator, VigilanceScan.formatVigilance(tmpEntry.vigilance()), Integer.toString(tmpEntry.numberOfClusters()),
                     Integer.toString(tmpEntry.numberOfSingletons()), Integer.toString(tmpEntry.largestClusterSize()),
                     Integer.toString(tmpEntry.numberOfUnclusteredMolecules()), Double.toString(tmpEntry.meanSimilarityToClusterVector()),
                     Boolean.toString(tmpEntry.isOverflow()), Boolean.toString(tmpEntry.isConverged())) + System.lineSeparator());
@@ -291,7 +379,7 @@ public final class ClusteringDataCsvWriter {
         Objects.requireNonNull(aRunResult, "Given clustering run result is null.");
         Objects.requireNonNull(aSelection, "Given selection is null.");
         Objects.requireNonNull(aSeparator, "Given separator is null.");
-        aWriter.write(String.join(aSeparator, ClusteringDataCsvWriter.NAME_COLUMN_HEADER, "SMILES",
+        aWriter.write(String.join(aSeparator, ClusteringDataCsvWriter.NAME_COLUMN_HEADER, ClusteringDataCsvWriter.SMILES_COLUMN_HEADER,
                 ClusteringDataCsvWriter.CLUSTER_COLUMN_HEADER, "RankInCluster", "SimilarityToClusterVector") + System.lineSeparator());
         for (DiverseSubsetSelector.SelectedMolecule tmpSelected : aSelection) {
             MoleculeDataModel tmpMolecule = aRunResult.molecules().get(tmpSelected.rowIndex());
@@ -322,7 +410,7 @@ public final class ClusteringDataCsvWriter {
         Objects.requireNonNull(aSplit, "Given split is null.");
         Objects.requireNonNull(aRowIndices, "Given row indices are null.");
         Objects.requireNonNull(aSeparator, "Given separator is null.");
-        aWriter.write(String.join(aSeparator, ClusteringDataCsvWriter.NAME_COLUMN_HEADER, "SMILES",
+        aWriter.write(String.join(aSeparator, ClusteringDataCsvWriter.NAME_COLUMN_HEADER, ClusteringDataCsvWriter.SMILES_COLUMN_HEADER,
                 ClusteringDataCsvWriter.CLUSTER_COLUMN_HEADER, "Set") + System.lineSeparator());
         for (int tmpRow : aRowIndices) {
             MoleculeDataModel tmpMolecule = aRunResult.molecules().get(tmpRow);
@@ -339,13 +427,14 @@ public final class ClusteringDataCsvWriter {
     //<editor-fold desc="private static methods" defaultstate="collapsed">
     /**
      * Encloses the given text in double quotes if it contains the separator, a double quote or a line break; contained
-     * double quotes are doubled (RFC 4180). SMILES may contain characters like "," that need escaping.
+     * double quotes are doubled (RFC 4180). SMILES may contain characters like "," that need escaping. Package-private,
+     * also used by the {@link Exporter}.
      *
      * @param aText text to escape, may be null
      * @param aSeparator column separator
      * @return escaped text, empty string for null
      */
-    private static String escape(String aText, String aSeparator) {
+    static String escape(String aText, String aSeparator) {
         if (aText == null) {
             return "";
         }

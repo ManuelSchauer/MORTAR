@@ -143,7 +143,7 @@ class DescriptorMatrixCacheTest {
     //
     /**
      * Tests that a descriptor calculation of the service fills the cache used by its clustering tasks and that the
-     * clustering parameters with given descriptors contain them in enum order plus the selected fingerprints.
+     * clustering parameters with given descriptors contain exactly these descriptors and fingerprints.
      *
      * @throws Exception if the calculation fails
      */
@@ -158,8 +158,8 @@ class DescriptorMatrixCacheTest {
         tmpService.setDescriptorSelected(Descriptor.MOLECULAR_WEIGHT, true);
         ClusteringParameters tmpParameters = tmpService.createClusteringParameters("Frag",
                 new Descriptor[] {Descriptor.X_LOG_P, Descriptor.TPSA, Descriptor.MACCS_FINGERPRINTER}, false);
-        List<Descriptor> tmpExpected = Arrays.stream(new Descriptor[] {Descriptor.X_LOG_P, Descriptor.TPSA}).sorted().toList();
-        Assertions.assertEquals(tmpExpected, Arrays.asList(tmpParameters.descriptors()));
+        //exactly the given descriptors and fingerprints, e.g. the features calculated in a descriptor tab
+        Assertions.assertEquals(List.of(Descriptor.X_LOG_P, Descriptor.TPSA, Descriptor.MACCS_FINGERPRINTER), Arrays.asList(tmpParameters.descriptors()));
         tmpService.clearDescriptorMatrixCache();
         Assertions.assertFalse(tmpService.getDescriptorMatrixCache().isCached(tmpMolecules, Descriptor.TPSA,
                 ClusteringService.ELECTRON_DONATION_MODEL_OPTION_DEFAULT, ClusteringService.CYCLE_FINDER_OPTION_DEFAULT));
