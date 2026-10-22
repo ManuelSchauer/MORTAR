@@ -22,11 +22,11 @@
 
 package de.unijena.cheminf.mortar.model.descriptor;
 import org.openscience.cdk.exception.CDKException;
-import org.openscience.cdk.qsar.IMolecularDescriptor;
 import org.openscience.cdk.fingerprint.CircularFingerprinter;
 import org.openscience.cdk.fingerprint.IFingerprinter;
 import org.openscience.cdk.fingerprint.MACCSFingerprinter;
 import org.openscience.cdk.fingerprint.PubchemFingerprinter;
+import org.openscience.cdk.qsar.IMolecularDescriptor;
 import org.openscience.cdk.qsar.descriptors.molecular.ALOGPDescriptor;
 import org.openscience.cdk.qsar.descriptors.molecular.APolDescriptor;
 import org.openscience.cdk.qsar.descriptors.molecular.AcidicGroupCountDescriptor;
@@ -85,7 +85,7 @@ import org.openscience.cdk.silent.SilentChemObjectBuilder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.IntFunction;
+import java.util.function.Supplier;
 
 /**
  * Catalog of the CDK descriptors and fingerprints that can be calculated with the {@link DescriptorCalculator}.
@@ -107,7 +107,9 @@ import java.util.function.IntFunction;
  *             fingerprint bit vector rather than a set of numerical descriptor values. Fingerprint
  *             descriptors (e.g., {@link #PUBCHEM_FINGERPRINTER}, {@link #MACCS_FINGERPRINTER},
  *             all {@code CIRCULAR_FINGERPRINTER_*} variants) are handled via a thread-safe pool of
- *             {@link IFingerprinter} instances internally.
+ *             {@link IFingerprinter} instances internally. By default, fingerprints are calculated as bit
+ *             fingerprints (components 0 or 1); circular fingerprints can be calculated as folded count fingerprints
+ *             instead, see {@link DescriptorCalculator#DescriptorCalculator(int, int, boolean)}.
  *             Use {@link #isFingerprint()} to query this field.</li>
  *         <li><b>needsExplicitHydrogens</b> ({@code boolean}) – whether this descriptor requires
  *             explicit hydrogen atoms to be present in the molecule before calculation.
@@ -124,6 +126,12 @@ import java.util.function.IntFunction;
  *             {@link #CHI_PATH} returns 16, {@link #KIER_HALL_SMARTS} returns 79,
  *             {@link #PUBCHEM_FINGERPRINTER} returns 881).
  *             Use {@link #getDescriptorComponentNumber()} to query this field.</li>
+ *         <li><b>componentType</b> ({@link DescriptorComponentType}) – the type of the values of all components:
+ *             {@code BINARY} for fingerprint bits, {@code COUNT} for non-negative integer counts (e.g.
+ *             {@link #ATOM_COUNT_C}, {@link #SMALL_RING}) and {@code CONTINUOUS} for real values (e.g.
+ *             {@link #MOLECULAR_WEIGHT}, {@link #TPSA}). Circular fingerprints are {@code BINARY} by default and
+ *             {@code COUNT} if the calculator calculates them as count fingerprints.
+ *             Use {@link #getComponentType()} to query this field.</li>
  *         <li><b>name</b> ({@code String}) – a human-readable display name for this descriptor,
  *             intended for labeling output columns or user-facing representations (e.g.,
  *             {@code "Molecular Weight"}, {@code "TPSA"}, {@code "ALogP"}).
@@ -137,13 +145,14 @@ import java.util.function.IntFunction;
  * @author Manuel Schauer
  * @author Jonas Schaub
  * @author Achim Zielesny
- * @version 1.0.0
  */
 public enum Descriptor {
     /*
      * Note for developers: for adding a new descriptor,
-     * 1. add the enum constant here, at "Add new descriptor information here!", including the recipe for its
-     *    calculation, i.e. molecular(...) for a CDK molecular descriptor or fingerprint(...) for a CDK fingerprinter,
+     * 1. add the enum constant here, at "Add new descriptor information here!", including the type of its component
+     *    values (DescriptorComponentType) and the recipe for its calculation, i.e. molecular(...) for a CDK
+     *    molecular descriptor, fingerprint(...) for a CDK fingerprinter or circular(...) for a CDK circular
+     *    fingerprint,
      * 2. add tests in the test class DescriptorCalculatorTest, at "Add new descriptor tests here!" and
      *    "Add new descriptor information here!".
      */
@@ -154,7 +163,7 @@ public enum Descriptor {
      *
      * @see WeightDescriptor
      */
-    MOLECULAR_WEIGHT(true, true, false, false, false, 1, "Molecular Weight",
+    MOLECULAR_WEIGHT(true, true, false, false, false, 1, DescriptorComponentType.CONTINUOUS, "Molecular Weight",
             molecular(WeightDescriptor::new)),
     /**
      * Wiener number, returns Wiener path number and Wiener polarity number.
@@ -164,91 +173,91 @@ public enum Descriptor {
      *
      * @see WienerNumbersDescriptor
      */
-    WIENER_NUMBER(true, true, false, false, false, 2, "Wiener Number",
+    WIENER_NUMBER(true, true, false, false, false, 2, DescriptorComponentType.CONTINUOUS, "Wiener Number",
             molecular(WienerNumbersDescriptor::new)),
     /**
      * Atom count, counts the number of all atoms in the given molecule.
      *
      * @see AtomCountDescriptor
      */
-    ATOM_COUNT(true, true, false, false, false, 1, "Atom Count",
+    ATOM_COUNT(true, true, false, false, false, 1, DescriptorComponentType.COUNT, "Atom Count",
             molecular(AtomCountDescriptor::new)),
     /**
      * Atom count heavy, counts the number of all heavy atoms in the given molecule.
      *
      * @see AtomCountDescriptor
      */
-    ATOM_COUNT_HEAVY(true, true, false, false, false, 1, "Atom Count Heavy",
+    ATOM_COUNT_HEAVY(true, true, false, false, false, 1, DescriptorComponentType.COUNT, "Atom Count Heavy",
             molecular(() -> configured(new AtomCountDescriptor(), "#"))),
     /**
      * Atom count C, counts the number of all carbon atoms separately in the given molecule.
      *
      * @see AtomCountDescriptor
      */
-    ATOM_COUNT_C(true, true, false, false, false, 1, "Atom Count C",
+    ATOM_COUNT_C(true, true, false, false, false, 1, DescriptorComponentType.COUNT, "Atom Count C",
             molecular(() -> configured(new AtomCountDescriptor(), "C"))),
     /**
      * Atom count H, counts the number of all hydrogen atoms separately in the given molecule.
      *
      * @see AtomCountDescriptor
      */
-    ATOM_COUNT_H(true, true, false, false, false, 1, "Atom Count H",
+    ATOM_COUNT_H(true, true, false, false, false, 1, DescriptorComponentType.COUNT, "Atom Count H",
             molecular(() -> configured(new AtomCountDescriptor(), "H"))),
     /**
      * Atom count N counts the number of all nitrogen atoms separately in the given molecule.
      *
      * @see AtomCountDescriptor
      */
-    ATOM_COUNT_N(true, true, false, false, false, 1, "Atom Count N",
+    ATOM_COUNT_N(true, true, false, false, false, 1, DescriptorComponentType.COUNT, "Atom Count N",
             molecular(() -> configured(new AtomCountDescriptor(), "N"))),
     /**
      * Atom count O, counts the number of all oxygen atoms separately in the given molecule.
      *
      * @see AtomCountDescriptor
      */
-    ATOM_COUNT_O(true, true, false, false, false, 1, "Atom Count O",
+    ATOM_COUNT_O(true, true, false, false, false, 1, DescriptorComponentType.COUNT, "Atom Count O",
             molecular(() -> configured(new AtomCountDescriptor(), "O"))),
     /**
      * Atom count S, counts the number of all sulfur atoms separately in the given molecule.
      *
      * @see AtomCountDescriptor
      */
-    ATOM_COUNT_S(true, true, false, false, false, 1, "Atom Count S",
+    ATOM_COUNT_S(true, true, false, false, false, 1, DescriptorComponentType.COUNT, "Atom Count S",
             molecular(() -> configured(new AtomCountDescriptor(), "S"))),
     /**
      * Atom count P, counts the number of all phosphorus atoms separately in the given molecule.
      *
      * @see AtomCountDescriptor
      */
-    ATOM_COUNT_P(true, true, false, false, false, 1, "Atom Count P",
+    ATOM_COUNT_P(true, true, false, false, false, 1, DescriptorComponentType.COUNT, "Atom Count P",
             molecular(() -> configured(new AtomCountDescriptor(), "P"))),
     /**
      * Atom count F, counts the number of all fluorine atoms separately in the given molecule.
      *
      * @see AtomCountDescriptor
      */
-    ATOM_COUNT_F(true, true, false, false, false, 1, "Atom Count F",
+    ATOM_COUNT_F(true, true, false, false, false, 1, DescriptorComponentType.COUNT, "Atom Count F",
             molecular(() -> configured(new AtomCountDescriptor(), "F"))),
     /**
      * Atom count Br, counts the number of all bromine atoms separately in the given molecule.
      *
      * @see AtomCountDescriptor
      */
-    ATOM_COUNT_BR(true, true, false, false, false, 1, "Atom Count Br",
+    ATOM_COUNT_BR(true, true, false, false, false, 1, DescriptorComponentType.COUNT, "Atom Count Br",
             molecular(() -> configured(new AtomCountDescriptor(), "Br"))),
     /**
      * Atom count Cl, counts the number of all chlorine atoms separately in the given molecule.
      *
      * @see AtomCountDescriptor
      */
-    ATOM_COUNT_CL(true, true, false, false, false, 1, "Atom Count Cl",
+    ATOM_COUNT_CL(true, true, false, false, false, 1, DescriptorComponentType.COUNT, "Atom Count Cl",
             molecular(() -> configured(new AtomCountDescriptor(), "Cl"))),
     /**
      * Atom count I, counts the number of all iodine atoms separately in the given molecule.
      *
      * @see AtomCountDescriptor
      */
-    ATOM_COUNT_I(true, true, false, false, false, 1, "Atom Count I",
+    ATOM_COUNT_I(true, true, false, false, false, 1, DescriptorComponentType.COUNT, "Atom Count I",
             molecular(() -> configured(new AtomCountDescriptor(), "I"))),
     /**
      * Total bond count, counts the number of all bonds in a molecule, neglecting the order.
@@ -257,7 +266,7 @@ public enum Descriptor {
      *
      * @see BondCountDescriptor
      */
-    BOND_COUNT_ALL(true, true, false, false, false, 1, "Bond Count All",
+    BOND_COUNT_ALL(true, true, false, false, false, 1, DescriptorComponentType.COUNT, "Bond Count All",
             molecular(BondCountDescriptor::new)),
     /**
      * Bond count single, counts the number of single bonds in a molecule.
@@ -265,7 +274,7 @@ public enum Descriptor {
      *
      * @see BondCountDescriptor
      */
-    BOND_COUNT_SINGLE(true, true, false, false, false, 1, "Bond Count Single",
+    BOND_COUNT_SINGLE(true, true, false, false, false, 1, DescriptorComponentType.COUNT, "Bond Count Single",
             molecular(() -> configured(new BondCountDescriptor(), "s"))),
     /**
      * Bond count double, counts the number of double bonds in a molecule.
@@ -273,14 +282,14 @@ public enum Descriptor {
      *
      * @see BondCountDescriptor
      */
-    BOND_COUNT_DOUBLE(true, true, false, false, false, 1, "Bond Count Double",
+    BOND_COUNT_DOUBLE(true, true, false, false, false, 1, DescriptorComponentType.COUNT, "Bond Count Double",
             molecular(() -> configured(new BondCountDescriptor(), "d"))),
     /**
      * Bond count triple, counts the number of triple bonds in a molecule.
      *
      * @see BondCountDescriptor
      */
-    BOND_COUNT_TRIPLE(true, true, false, false, false, 1, "Bond Count Triple",
+    BOND_COUNT_TRIPLE(true, true, false, false, false, 1, DescriptorComponentType.COUNT, "Bond Count Triple",
             molecular(() -> configured(new BondCountDescriptor(), "t"))),
     /**
      * H bond acceptor count, counts hydrogen bond acceptors based on a simplified PHACIR scheme.
@@ -289,7 +298,7 @@ public enum Descriptor {
      *
      * @see HBondAcceptorCountDescriptor
      */
-    H_BOND_ACCEPTOR_COUNT(true, true, false, false, false, 1, "H-Bond Acceptor Count",
+    H_BOND_ACCEPTOR_COUNT(true, true, false, false, false, 1, DescriptorComponentType.COUNT, "H-Bond Acceptor Count",
             molecular(HBondAcceptorCountDescriptor::new)),
     /**
      * H bond donor count, counts hydrogen bond donors based on a simplified PHACIR classification.
@@ -297,7 +306,7 @@ public enum Descriptor {
      *
      * @see HBondDonorCountDescriptor
      */
-    H_BOND_DONOR_COUNT(true, true, false, false, false, 1, "H-Bond Donor Count",
+    H_BOND_DONOR_COUNT(true, true, false, false, false, 1, DescriptorComponentType.COUNT, "H-Bond Donor Count",
             molecular(HBondDonorCountDescriptor::new)),
     /**
      * Aromatic atoms count, counts the number of aromatic atoms in a molecule.
@@ -305,7 +314,7 @@ public enum Descriptor {
      *
      * @see AromaticAtomsCountDescriptor
      */
-    AROMATIC_ATOMS_COUNT(true, true, false, false, false, 1, "Aromatic Atoms Count",
+    AROMATIC_ATOMS_COUNT(true, true, false, false, false, 1, DescriptorComponentType.COUNT, "Aromatic Atoms Count",
             molecular(AromaticAtomsCountDescriptor::new)),
     /**
      * Aromatic bonds count, counts the number of aromatic bonds in a molecule.
@@ -313,7 +322,7 @@ public enum Descriptor {
      *
      * @see AromaticBondsCountDescriptor
      */
-    AROMATIC_BONDS_COUNT(true, true, false, false, false, 1, "Aromatic Bonds Count",
+    AROMATIC_BONDS_COUNT(true, true, false, false, false, 1, DescriptorComponentType.COUNT, "Aromatic Bonds Count",
             molecular(AromaticBondsCountDescriptor::new)),
     /**
      * Rotatable bonds count, counts the number of rotatable bonds in a molecule.
@@ -322,21 +331,21 @@ public enum Descriptor {
      *
      * @see RotatableBondsCountDescriptor
      */
-    ROTATABLE_BONDS_COUNT(true, true, false, false, false, 1, "Rotatable Bonds Count",
+    ROTATABLE_BONDS_COUNT(true, true, false, false, false, 1, DescriptorComponentType.COUNT, "Rotatable Bonds Count",
             molecular(RotatableBondsCountDescriptor::new)),
     /**
      * Basic group count, returns the number of basic groups in a molecule.
      *
      * @see BasicGroupCountDescriptor
      */
-    BASIC_GROUP_COUNT(true, true, false, false, false, 1, "Basic Group Count",
+    BASIC_GROUP_COUNT(true, true, false, false, false, 1, DescriptorComponentType.COUNT, "Basic Group Count",
             molecular(() -> initialised(new BasicGroupCountDescriptor()))),
     /**
      * Acidic group count, returns the number of acidic groups in a molecule.
      *
      * @see AcidicGroupCountDescriptor
      */
-    ACIDIC_GROUP_COUNT(true, true, false, false, false, 1, "Acidic Group Count",
+    ACIDIC_GROUP_COUNT(true, true, false, false, false, 1, DescriptorComponentType.COUNT, "Acidic Group Count",
             molecular(() -> initialised(new AcidicGroupCountDescriptor()))),
     /**
      * TPSA descriptor, calculates the topological polar surface area (TPSA) of a molecule.
@@ -345,7 +354,7 @@ public enum Descriptor {
      *
      * @see TPSADescriptor
      */
-    TPSA(true, true, false, false, false, 1, "TPSA",
+    TPSA(true, true, false, false, false, 1, DescriptorComponentType.CONTINUOUS, "TPSA",
             molecular(TPSADescriptor::new)),
     /**
      * Largest chain descriptor, calculates the number of atoms in the longest chain in the molecule.
@@ -353,7 +362,7 @@ public enum Descriptor {
      *
      * @see LargestChainDescriptor
      */
-    LARGEST_CHAIN(true, true, false, false, false, 1, "Largest Chain",
+    LARGEST_CHAIN(true, true, false, false, false, 1, DescriptorComponentType.COUNT, "Largest Chain",
             molecular(LargestChainDescriptor::new)),
     /**
      * Longest aliphatic chain descriptor, calculates the number of atoms in the longest aliphatic chain.
@@ -362,7 +371,7 @@ public enum Descriptor {
      *
      * @see LongestAliphaticChainDescriptor
      */
-    LONGEST_ALIPHATIC_CHAIN(true, true, false, false, false, 1, "Longest Aliphatic Chain",
+    LONGEST_ALIPHATIC_CHAIN(true, true, false, false, false, 1, DescriptorComponentType.COUNT, "Longest Aliphatic Chain",
             molecular(LongestAliphaticChainDescriptor::new)),
     /**
      * BCUT descriptor, calculates Burden matrix modified eigenvalues with different weighting schemes. Returns 6 values:<br>
@@ -376,7 +385,7 @@ public enum Descriptor {
      *
      * @see BCUTDescriptor
      */
-    BCUT(false, false, false, false, false, 6, "BCUT",
+    BCUT(false, false, false, false, false, 6, DescriptorComponentType.CONTINUOUS, "BCUT",
             molecular(() -> configured(new BCUTDescriptor(), 1, 1, false))),
     /**
      * Bond polarizability descriptor.
@@ -387,7 +396,7 @@ public enum Descriptor {
      *
      * @see BPolDescriptor
      */
-    B_POL(true, true, false, false, false, 1, "BPol",
+    B_POL(true, true, false, false, false, 1, DescriptorComponentType.CONTINUOUS, "BPol",
             molecular(BPolDescriptor::new)),
     /**
      * Rule of five descriptor, calculates the number of failures of Lipinski's Rule of Five.
@@ -395,7 +404,7 @@ public enum Descriptor {
      *
      * @see RuleOfFiveDescriptor
      */
-    RULE_OF_FIVE(true, true, false, false, false, 1, "Rule of Five",
+    RULE_OF_FIVE(true, true, false, false, false, 1, DescriptorComponentType.COUNT, "Rule of Five",
             molecular(RuleOfFiveDescriptor::new)),
     /**
      * FMF (Framework Match Fraction) descriptor, calculates the ratio of heavy atoms in
@@ -405,7 +414,7 @@ public enum Descriptor {
      *
      * @see FMFDescriptor
      */
-    FMF(true, true, false, false, false, 1, "FMF",
+    FMF(true, true, false, false, false, 1, DescriptorComponentType.CONTINUOUS, "FMF",
             molecular(FMFDescriptor::new)),
     /**
      * Fractional C SP3 descriptor, characterizes the non-flatness of a molecule by calculating
@@ -415,7 +424,7 @@ public enum Descriptor {
      *
      * @see FractionalCSP3Descriptor
      */
-    FRACTIONAL_CSP3(true, true, false, false, false, 1, "Fractional CSP3",
+    FRACTIONAL_CSP3(true, true, false, false, false, 1, DescriptorComponentType.CONTINUOUS, "Fractional CSP3",
             molecular(FractionalCSP3Descriptor::new)),
     /**
      * Hybridization ratio descriptor, calculates the ratio of sp3 carbons to sp2 carbons.
@@ -425,7 +434,7 @@ public enum Descriptor {
      *
      * @see HybridizationRatioDescriptor
      */
-    HYBRIDIZATION_RATIO(true, true, false, true, false, 1, "Hybridization Ratio",
+    HYBRIDIZATION_RATIO(true, true, false, true, false, 1, DescriptorComponentType.CONTINUOUS, "Hybridization Ratio",
             molecular(HybridizationRatioDescriptor::new)),
     /**
      * Kappa shape indices descriptor, calculates Kier and Hall kappa molecular shape indices.
@@ -437,7 +446,7 @@ public enum Descriptor {
      *
      * @see KappaShapeIndicesDescriptor
      */
-    KAPPA_SHAPE_INDICES(false, true, false, true, false, 3, "Kappa Shape Indices",
+    KAPPA_SHAPE_INDICES(false, true, false, true, false, 3, DescriptorComponentType.CONTINUOUS, "Kappa Shape Indices",
             molecular(KappaShapeIndicesDescriptor::new)),
     /**
      * Petitjean number descriptor, calculates an index characterizing molecular graph topology.
@@ -446,14 +455,14 @@ public enum Descriptor {
      *
      * @see PetitjeanNumberDescriptor
      */
-    PETITJEAN_NUMBER(true, true, false, false, false, 1, "Petitjean Number",
+    PETITJEAN_NUMBER(true, true, false, false, false, 1, DescriptorComponentType.CONTINUOUS, "Petitjean Number",
             molecular(PetitjeanNumberDescriptor::new)),
     /**
      * Spiro atom count descriptor, calculates the number of spiro atoms in a molecule.
      *
      * @see SpiroAtomCountDescriptor
      */
-    SPIRO_ATOM_COUNT(true, true, false, false, false, 1, "Spiro Atom Count",
+    SPIRO_ATOM_COUNT(true, true, false, false, false, 1, DescriptorComponentType.COUNT, "Spiro Atom Count",
             molecular(SpiroAtomCountDescriptor::new)),
     /**
      * VAdjMa descriptor, calculates the Vertex adjacency information (magnitude).
@@ -463,7 +472,7 @@ public enum Descriptor {
      *
      * @see VAdjMaDescriptor
      */
-    V_ADJ_MAT(true, true, false, false, false, 1, "VAdjMa",
+    V_ADJ_MAT(true, true, false, false, false, 1, DescriptorComponentType.CONTINUOUS, "VAdjMa",
             molecular(VAdjMaDescriptor::new)),
     /**
      * Weighted path descriptor, evaluates the weighted path descriptors for a molecule.
@@ -477,7 +486,7 @@ public enum Descriptor {
      * Note: This descriptor computes all paths which is an NP-hard problem, do not use it for complex molecules.
      * @see WeightedPathDescriptor
      */
-    WEIGHTED_PATH(false, true, false, false, false, 5, "Weighted Path",
+    WEIGHTED_PATH(false, true, false, false, false, 5, DescriptorComponentType.CONTINUOUS, "Weighted Path",
             molecular(WeightedPathDescriptor::new)),
     /**
      * Zagreb index descriptor, calculates the Zagreb index of a molecule.
@@ -486,7 +495,7 @@ public enum Descriptor {
      *
      * @see ZagrebIndexDescriptor
      */
-    ZAGREB_INDEX(true, true, false, false, false, 1, "Zagreb Index",
+    ZAGREB_INDEX(true, true, false, false, false, 1, DescriptorComponentType.CONTINUOUS, "Zagreb Index",
             molecular(ZagrebIndexDescriptor::new)),
     /**
      * CarbonTypes descriptor, calculates the frequency of occurrence of 9 different types of carbon atoms. Returns 9 values:<br>
@@ -502,7 +511,7 @@ public enum Descriptor {
      *
      * @see CarbonTypesDescriptor
      */
-    CARBON_TYPES(true, true, false, false, false, 9, "Carbon Types",
+    CARBON_TYPES(true, true, false, false, false, 9, DescriptorComponentType.COUNT, "Carbon Types",
             molecular(CarbonTypesDescriptor::new)),
     /**
      * ALogP descriptor, calculates Ghose-Crippen LogP values, molar refractivity values
@@ -513,7 +522,7 @@ public enum Descriptor {
      *
      * @see ALOGPDescriptor
      */
-    A_LOG_P(true, true, false, true, false, 3, "ALogP",
+    A_LOG_P(true, true, false, true, false, 3, DescriptorComponentType.CONTINUOUS, "ALogP",
             molecular(ALOGPDescriptor::new)),
     /**
      * XLogP descriptor, calculates logP based on the atom-type method called XLogP.
@@ -521,14 +530,14 @@ public enum Descriptor {
      *
      * @see XLogPDescriptor
      */
-    X_LOG_P(true, true, false, true, false, 1, "XLogP",
+    X_LOG_P(true, true, false, true, false, 1, DescriptorComponentType.CONTINUOUS, "XLogP",
             molecular(XLogPDescriptor::new)),
     /**
      * JPlogP descriptor, calculates the octanol-water partition coefficient based on an atom contribution model.
      *
      * @see JPlogPDescriptor
      */
-    JP_LOG_P(true, false, false, false, false, 1, "JPlogP",
+    JP_LOG_P(true, false, false, false, false, 1, DescriptorComponentType.CONTINUOUS, "JPlogP",
             molecular(JPlogPDescriptor::new)),
     /**
      * Mannhold LogP descriptor, calculates the octanol-water partition coefficient (logP) using the Mannhold method.
@@ -537,14 +546,14 @@ public enum Descriptor {
      *
      * @see MannholdLogPDescriptor
      */
-    MANNHOLD_LOGP(true, true, false, false, false, 1, "Mannhold LogP",
+    MANNHOLD_LOGP(true, true, false, false, false, 1, DescriptorComponentType.CONTINUOUS, "Mannhold LogP",
             molecular(MannholdLogPDescriptor::new)),
     /**
      * APol descriptor, calculates the sum of the atomic polarizabilities (including implicit hydrogens).
      *
      * @see APolDescriptor
      */
-    A_POL(true, true, false, false, false, 1, "APol",
+    A_POL(true, true, false, false, false, 1, DescriptorComponentType.CONTINUOUS, "APol",
             molecular(APolDescriptor::new)),
     /**
      * Autocorrelation charge descriptor, calculates topological autocorrelation vectors
@@ -555,7 +564,7 @@ public enum Descriptor {
      *
      * @see AutocorrelationDescriptorCharge
      */
-    AUTOCORRELATION_CHARGE(true, false, false, false, false, 5, "Autocorrelation Charge",
+    AUTOCORRELATION_CHARGE(true, false, false, false, false, 5, DescriptorComponentType.CONTINUOUS, "Autocorrelation Charge",
             molecular(AutocorrelationDescriptorCharge::new)),
     /**
      * Autocorrelation mass descriptor, calculates topological autocorrelation vectors
@@ -566,7 +575,7 @@ public enum Descriptor {
      *
      * @see AutocorrelationDescriptorMass
      */
-    AUTOCORRELATION_MASS(true, true, false, false, false, 5, "Autocorrelation Mass",
+    AUTOCORRELATION_MASS(true, true, false, false, false, 5, DescriptorComponentType.CONTINUOUS, "Autocorrelation Mass",
             molecular(AutocorrelationDescriptorMass::new)),
     /**
      * Autocorrelation polarizability descriptor, calculates topological autocorrelation vectors
@@ -578,7 +587,7 @@ public enum Descriptor {
      *
      * @see AutocorrelationDescriptorPolarizability
      */
-    AUTOCORRELATION_POLARIZABILITY(true, true, false, false, false, 5, "Autocorrelation Polarizability",
+    AUTOCORRELATION_POLARIZABILITY(true, true, false, false, false, 5, DescriptorComponentType.CONTINUOUS, "Autocorrelation Polarizability",
             molecular(AutocorrelationDescriptorPolarizability::new)),
     /**
      * Fragment complexity descriptor, calculates the complexity of a molecular system.
@@ -593,7 +602,7 @@ public enum Descriptor {
      *
      * @see FragmentComplexityDescriptor
      */
-    FRAGMENT_COMPLEXITY(true, true, false, false, false, 1, "Fragment Complexity",
+    FRAGMENT_COMPLEXITY(true, true, false, false, false, 1, DescriptorComponentType.CONTINUOUS, "Fragment Complexity",
             molecular(FragmentComplexityDescriptor::new)),
     /**
      * Chi chain descriptor, calculates the Kier + Hall chi chain indices of orders 3 through 7.
@@ -612,7 +621,7 @@ public enum Descriptor {
      *
      * @see ChiChainDescriptor
      */
-    CHI_CHAIN(false, true, false, false, false, 10, "Chi Chain",
+    CHI_CHAIN(false, true, false, false, false, 10, DescriptorComponentType.CONTINUOUS, "Chi Chain",
             molecular(ChiChainDescriptor::new)),
     /**
      * Chi cluster descriptor, calculates Kier + Hall chi cluster indices of orders 3 through 6.
@@ -629,7 +638,7 @@ public enum Descriptor {
      *
      * @see ChiClusterDescriptor
      */
-    CHI_CLUSTER(false, true, false, false, false, 8, "Chi Cluster",
+    CHI_CLUSTER(false, true, false, false, false, 8, DescriptorComponentType.CONTINUOUS, "Chi Cluster",
             molecular(ChiClusterDescriptor::new)),
     /**
      * Chi path cluster descriptor, calculates Kier + Hall chi path cluster indices of orders 4 through 6.
@@ -644,7 +653,7 @@ public enum Descriptor {
      *
      * @see ChiPathClusterDescriptor
      */
-    CHI_PATH_CLUSTER(false, true, false, false, false, 6, "Chi Path Cluster",
+    CHI_PATH_CLUSTER(false, true, false, false, false, 6, DescriptorComponentType.CONTINUOUS, "Chi Path Cluster",
             molecular(ChiPathClusterDescriptor::new)),
     /**
      * Chi path descriptor, calculates Kier + Hall chi path indices of orders 0 through 7.
@@ -669,7 +678,7 @@ public enum Descriptor {
      *
      * @see ChiPathDescriptor
      */
-    CHI_PATH(false, true, false, false, false, 16, "Chi Path",
+    CHI_PATH(false, true, false, false, false, 16, DescriptorComponentType.CONTINUOUS, "Chi Path",
             molecular(ChiPathDescriptor::new)),
     /**
      * Fractional PSA descriptor, calculates the ratio of polar surface area to molecular weight.
@@ -678,7 +687,7 @@ public enum Descriptor {
      *
      * @see FractionalPSADescriptor
      */
-    FRACTIONAL_PSA(true, true, false, false, false, 1, "Fractional PSA",
+    FRACTIONAL_PSA(true, true, false, false, false, 1, DescriptorComponentType.CONTINUOUS, "Fractional PSA",
             molecular(FractionalPSADescriptor::new)),
     /**
      * Largest pi system descriptor, calculates the number of atoms in the largest pi system.
@@ -687,7 +696,7 @@ public enum Descriptor {
      *
      * @see LargestPiSystemDescriptor
      */
-    LARGEST_PI_SYSTEM(true, true, false, false, false, 1, "Largest Pi System",
+    LARGEST_PI_SYSTEM(true, true, false, false, false, 1, DescriptorComponentType.COUNT, "Largest Pi System",
             molecular(() -> configured(new LargestPiSystemDescriptor(), false))),
     /**
      * Descriptor that calculates small ring information.
@@ -706,7 +715,7 @@ public enum Descriptor {
      *
      * @see SmallRingDescriptor
      */
-    SMALL_RING(true, true, false, false, false, 11, "Small Ring",
+    SMALL_RING(true, true, false, false, false, 11, DescriptorComponentType.COUNT, "Small Ring",
             molecular(SmallRingDescriptor::new)),
     /**
      * Amino acid count descriptor, calculates the number of each amino acid in a molecule.
@@ -718,8 +727,8 @@ public enum Descriptor {
      *
      * @see AminoAcidCountDescriptor
      */
-    AMINO_ACID_COUNT(false, true, false, false, false, 20, "Amino Acid Count",
-            molecular(AminoAcidCountDescriptor::new)),
+    AMINO_ACID_COUNT(false, true, false, false, false, 20, DescriptorComponentType.COUNT, "Amino Acid Count",
+            molecular("AA.", AminoAcidCountDescriptor::new)),
     /**
      * Kier-Hall SMARTS descriptor that calculates counts of functional groups and substructures
      * based on the Kier and Hall SMARTS patterns, used for QSAR modeling and molecular characterization.
@@ -727,7 +736,7 @@ public enum Descriptor {
      *
      * @see KierHallSmartsDescriptor
      */
-    KIER_HALL_SMARTS(true, true, false, false, false, 79, "Kier Hall SMARTS",
+    KIER_HALL_SMARTS(true, true, false, false, false, 79, DescriptorComponentType.COUNT, "Kier Hall SMARTS",
             molecular(KierHallSmartsDescriptor::new)),
     /**
      * Eccentric connectivity index descriptor, calculates a topological descriptor that combines
@@ -738,7 +747,7 @@ public enum Descriptor {
      *
      * @see EccentricConnectivityIndexDescriptor
      */
-    ECCENTRIC_CONNECTIVITY_INDEX(true, true, false, false, false, 1, "Eccentric Connectivity Index",
+    ECCENTRIC_CONNECTIVITY_INDEX(true, true, false, false, false, 1, DescriptorComponentType.CONTINUOUS, "Eccentric Connectivity Index",
             molecular(EccentricConnectivityIndexDescriptor::new)),
     /**
      * MDE descriptor, calculates molecular distance edge descriptors for carbon, oxygen and nitrogen atoms.
@@ -767,7 +776,7 @@ public enum Descriptor {
      *
      * @see MDEDescriptor
      */
-    MDE(true, true, false, false, false, 19, "MDE",
+    MDE(true, true, false, false, false, 19, DescriptorComponentType.CONTINUOUS, "MDE",
             molecular(MDEDescriptor::new)),
     /**
      * VABC descriptor, calculates the volume descriptor using the van der Waals volume calculation approach.
@@ -776,7 +785,7 @@ public enum Descriptor {
      *
      * @see VABCDescriptor
      */
-    VABC(true, true, false, false, false, 1, "VABC",
+    VABC(true, true, false, false, false, 1, DescriptorComponentType.CONTINUOUS, "VABC",
             molecular(VABCDescriptor::new)),
     /**
      * PubChem fingerprinter, generates a 881-bit binary fingerprint based on PubChem's substructure keys.
@@ -785,112 +794,120 @@ public enum Descriptor {
      *
      * @see PubchemFingerprinter
      */
-    PUBCHEM_FINGERPRINTER(false, true, true, false, false, 881, "PubChem Fingerprinter",
-            fingerprint(size -> new PubchemFingerprinter(SilentChemObjectBuilder.getInstance()))),
+    PUBCHEM_FINGERPRINTER(false, true, true, false, false, 881, DescriptorComponentType.BINARY, "PubChem Fingerprinter",
+            fingerprint("PubChem", () -> new PubchemFingerprinter(SilentChemObjectBuilder.getInstance()))),
     /**
      * Circular fingerprinter, generates an extended-connectivity fingerprint with a path diameter of 0.
      *
      * @see CircularFingerprinter
      */
-    CIRCULAR_FINGERPRINTER_ECFP_0(true, true, true, false, false, Descriptor.CIRCULAR_FINGERPRINT_DEFAULT_SIZE, "Circular Fingerprinter ECFP-0",
-            fingerprint(size -> new CircularFingerprinter(CircularFingerprinter.CLASS_ECFP0, size))),
+    CIRCULAR_FINGERPRINTER_ECFP_0(true, true, true, false, false, Descriptor.CIRCULAR_FINGERPRINT_DEFAULT_SIZE,
+            DescriptorComponentType.BINARY, "Circular Fingerprinter ECFP-0",
+            circular(CircularFingerprinter.CLASS_ECFP0)),
     /**
      * Circular fingerprinter, generates a functional class version of an extended-connectivity fingerprint with a path diameter of 0.
      *
      * @see CircularFingerprinter
      */
-    CIRCULAR_FINGERPRINTER_FCFP_0(true, true, true, false, false, Descriptor.CIRCULAR_FINGERPRINT_DEFAULT_SIZE, "Circular Fingerprinter FCFP-0",
-            fingerprint(size -> new CircularFingerprinter(CircularFingerprinter.CLASS_FCFP0, size))),
+    CIRCULAR_FINGERPRINTER_FCFP_0(true, true, true, false, false, Descriptor.CIRCULAR_FINGERPRINT_DEFAULT_SIZE,
+            DescriptorComponentType.BINARY, "Circular Fingerprinter FCFP-0",
+            circular(CircularFingerprinter.CLASS_FCFP0)),
     /**
      * Circular fingerprinter, generates an extended-connectivity fingerprint with a path diameter of 2.
      *
      * @see CircularFingerprinter
      */
-    CIRCULAR_FINGERPRINTER_ECFP_2(true, true, true, false, false, Descriptor.CIRCULAR_FINGERPRINT_DEFAULT_SIZE, "Circular Fingerprinter ECFP-2",
-            fingerprint(size -> new CircularFingerprinter(CircularFingerprinter.CLASS_ECFP2, size))),
+    CIRCULAR_FINGERPRINTER_ECFP_2(true, true, true, false, false, Descriptor.CIRCULAR_FINGERPRINT_DEFAULT_SIZE,
+            DescriptorComponentType.BINARY, "Circular Fingerprinter ECFP-2",
+            circular(CircularFingerprinter.CLASS_ECFP2)),
     /**
      * Circular fingerprinter, generates a functional class version of an extended-connectivity fingerprint with a path diameter of 2.
      *
      * @see CircularFingerprinter
      */
-    CIRCULAR_FINGERPRINTER_FCFP_2(true, true, true, false, false, Descriptor.CIRCULAR_FINGERPRINT_DEFAULT_SIZE, "Circular Fingerprinter FCFP-2",
-            fingerprint(size -> new CircularFingerprinter(CircularFingerprinter.CLASS_FCFP2, size))),
+    CIRCULAR_FINGERPRINTER_FCFP_2(true, true, true, false, false, Descriptor.CIRCULAR_FINGERPRINT_DEFAULT_SIZE,
+            DescriptorComponentType.BINARY, "Circular Fingerprinter FCFP-2",
+            circular(CircularFingerprinter.CLASS_FCFP2)),
     /**
      * Circular fingerprinter, generates an extended-connectivity fingerprint with a path diameter of 4.
      *
      * @see CircularFingerprinter
      */
-    CIRCULAR_FINGERPRINTER_ECFP_4(true, true, true, false, false, Descriptor.CIRCULAR_FINGERPRINT_DEFAULT_SIZE, "Circular Fingerprinter ECFP-4",
-            fingerprint(size -> new CircularFingerprinter(CircularFingerprinter.CLASS_ECFP4, size))),
+    CIRCULAR_FINGERPRINTER_ECFP_4(true, true, true, false, false, Descriptor.CIRCULAR_FINGERPRINT_DEFAULT_SIZE,
+            DescriptorComponentType.BINARY, "Circular Fingerprinter ECFP-4",
+            circular(CircularFingerprinter.CLASS_ECFP4)),
     /**
      * Circular fingerprinter, generates a functional class version of an extended-connectivity fingerprint with a path diameter of 4.
      *
      * @see CircularFingerprinter
      */
-    CIRCULAR_FINGERPRINTER_FCFP_4(true, true, true, false, false, Descriptor.CIRCULAR_FINGERPRINT_DEFAULT_SIZE, "Circular Fingerprinter FCFP-4",
-            fingerprint(size -> new CircularFingerprinter(CircularFingerprinter.CLASS_FCFP4, size))),
+    CIRCULAR_FINGERPRINTER_FCFP_4(true, true, true, false, false, Descriptor.CIRCULAR_FINGERPRINT_DEFAULT_SIZE,
+            DescriptorComponentType.BINARY, "Circular Fingerprinter FCFP-4",
+            circular(CircularFingerprinter.CLASS_FCFP4)),
     /**
      * Circular fingerprinter, generates an extended-connectivity fingerprint with a path diameter of 6.
      *
      * @see CircularFingerprinter
      */
-    CIRCULAR_FINGERPRINTER_ECFP_6(true, true, true, false, false, Descriptor.CIRCULAR_FINGERPRINT_DEFAULT_SIZE, "Circular Fingerprinter ECFP-6",
-            fingerprint(size -> new CircularFingerprinter(CircularFingerprinter.CLASS_ECFP6, size))),
+    CIRCULAR_FINGERPRINTER_ECFP_6(true, true, true, false, false, Descriptor.CIRCULAR_FINGERPRINT_DEFAULT_SIZE,
+            DescriptorComponentType.BINARY, "Circular Fingerprinter ECFP-6",
+            circular(CircularFingerprinter.CLASS_ECFP6)),
     /**
      * Circular fingerprinter, generates a functional class version of an extended-connectivity fingerprint with a path diameter of 6.
      *
      * @see CircularFingerprinter
      */
-    CIRCULAR_FINGERPRINTER_FCFP_6(true, true, true, false, false, Descriptor.CIRCULAR_FINGERPRINT_DEFAULT_SIZE, "Circular Fingerprinter FCFP-6",
-            fingerprint(size -> new CircularFingerprinter(CircularFingerprinter.CLASS_FCFP6, size))),
+    CIRCULAR_FINGERPRINTER_FCFP_6(true, true, true, false, false, Descriptor.CIRCULAR_FINGERPRINT_DEFAULT_SIZE,
+            DescriptorComponentType.BINARY, "Circular Fingerprinter FCFP-6",
+            circular(CircularFingerprinter.CLASS_FCFP6)),
     /**
      * MACCS fingerprinter, generates a 166-bit binary fingerprint based on the MACCS structural keys.
      *
      * @see MACCSFingerprinter
      */
-    MACCS_FINGERPRINTER(true, true, true, false, false, 166, "MACCS Fingerprinter",
-            fingerprint(size -> new MACCSFingerprinter(SilentChemObjectBuilder.getInstance()))),
+    MACCS_FINGERPRINTER(true, true, true, false, false, 166, DescriptorComponentType.BINARY, "MACCS Fingerprinter",
+            fingerprint("MACCS", () -> new MACCSFingerprinter(SilentChemObjectBuilder.getInstance()))),
     /**
      * Charged Partial Surface Area (CPSA) descriptor, calculates 29 surface and charge descriptors.
      *
      * @see CPSADescriptor
      */
-    CPSA(false, true, false, false, true, 29, "CPSA",
+    CPSA(false, true, false, false, true, 29, DescriptorComponentType.CONTINUOUS, "CPSA",
             molecular(CPSADescriptor::new)),
     /**
      * Gravitational Index descriptor, calculates 9 indices based on mass and 3D distances.
      *
      * @see GravitationalIndexDescriptor
      */
-    GRAVITATIONAL_INDEX(true, true, false, false, true, 9, "Gravitational Index",
+    GRAVITATIONAL_INDEX(true, true, false, false, true, 9, DescriptorComponentType.CONTINUOUS, "Gravitational Index",
             molecular(GravitationalIndexDescriptor::new)),
     /**
      * Moment of Inertia descriptor, calculates 7 components from the principal moments of inertia.
      *
      * @see MomentOfInertiaDescriptor
      */
-    MOMENT_OF_INERTIA(true, true, false, false, true, 7, "Moment of Inertia",
+    MOMENT_OF_INERTIA(true, true, false, false, true, 7, DescriptorComponentType.CONTINUOUS, "Moment of Inertia",
             molecular(MomentOfInertiaDescriptor::new)),
     /**
      * WHIM (Weighted Holistic Invariant Molecular) descriptor, calculates 17 directional descriptors.
      *
      * @see WHIMDescriptor
      */
-    WHIM(true, false, false, false, true, 17, "WHIM",
+    WHIM(true, false, false, false, true, 17, DescriptorComponentType.CONTINUOUS, "WHIM",
             molecular(WHIMDescriptor::new)),
     /**
      * Length Over Breadth descriptor, calculates maximum and minimum length-to-breadth ratios (LOBMAX, LOBMIN).
      *
      * @see LengthOverBreadthDescriptor
      */
-    LENGTH_OVER_BREADTH(true, true, false, false, true, 2, "Length Over Breadth",
+    LENGTH_OVER_BREADTH(true, true, false, false, true, 2, DescriptorComponentType.CONTINUOUS, "Length Over Breadth",
             molecular(LengthOverBreadthDescriptor::new)),
     /**
      * Petitjean Shape Index descriptor, calculates topological and geometric shape indices (topoShape, geomShape).
      *
      * @see PetitjeanShapeIndexDescriptor
      */
-    PETITJEAN_SHAPE_INDEX(true, true, false, false, true, 2, "Petitjean Shape Index",
+    PETITJEAN_SHAPE_INDEX(true, true, false, false, true, 2, DescriptorComponentType.CONTINUOUS, "Petitjean Shape Index",
             molecular(PetitjeanShapeIndexDescriptor::new));
 
     // Add new descriptor information here!
@@ -925,9 +942,14 @@ public enum Descriptor {
     private final boolean requires3DCoordinates;
 
     /**
-     * The number of components calculated by this descriptor.
+     * The number of components calculated by this descriptor (for circular fingerprints the default size).
      */
-    private int descriptorComponentNumber;
+    private final int descriptorComponentNumber;
+
+    /**
+     * The type of the values of all components of this descriptor (for circular fingerprints the default type).
+     */
+    private final DescriptorComponentType componentType;
 
     /**
      * The human-readable name of this descriptor for output purposes.
@@ -951,16 +973,18 @@ public enum Descriptor {
      * @param needsExplicitHydrogens true if the descriptor requires explicit hydrogens, false otherwise
      * @param requires3DCoordinates true if the descriptor requires 3D coordinates, false otherwise
      * @param descriptorComponentNumber the number of components calculated by this descriptor
+     * @param componentType the type of the values of all components of this descriptor
      * @param name the human-readable name of this descriptor for output purposes
      * @param calculationFactory the recipe for the calculation of this descriptor
      */
-    Descriptor(boolean isFast, boolean isSafe, boolean isFingerprint, boolean needsExplicitHydrogens, boolean requires3DCoordinates, int descriptorComponentNumber, String name, DescriptorCalculationFactory calculationFactory) {
+    Descriptor(boolean isFast, boolean isSafe, boolean isFingerprint, boolean needsExplicitHydrogens, boolean requires3DCoordinates, int descriptorComponentNumber, DescriptorComponentType componentType, String name, DescriptorCalculationFactory calculationFactory) {
         this.isFast = isFast;
         this.isSafe = isSafe;
         this.isFingerprint = isFingerprint;
         this.needsExplicitHydrogens = needsExplicitHydrogens;
         this.requires3DCoordinates = requires3DCoordinates;
         this.descriptorComponentNumber = descriptorComponentNumber;
+        this.componentType = componentType;
         this.name = name;
         this.calculationFactory = calculationFactory;
     }
@@ -1015,11 +1039,27 @@ public enum Descriptor {
 
     /**
      * Returns the number of components calculated by this descriptor.
+     * Note: For circular fingerprints (CIRCULAR_FINGERPRINTER_*), this is the default size
+     * (1024); the actual number of components depends on the configuration of
+     * the {@link DescriptorCalculator}, see {@link DescriptorCalculator#getNumberOfComponents(Descriptor)}.
      *
      * @return the number of components calculated by this descriptor
      */
     public int getDescriptorComponentNumber() {
         return this.descriptorComponentNumber;
+    }
+
+    /**
+     * Returns the type of the values of all components of this descriptor, e.g. for choosing a suitable preprocessing
+     * before machine learning.
+     * Note: For circular fingerprints (CIRCULAR_FINGERPRINTER_*), this is the default type
+     * ({@link DescriptorComponentType#BINARY}); the actual type depends on the configuration of the
+     * {@link DescriptorCalculator}, see {@link DescriptorCalculator#getComponentType(Descriptor)}.
+     *
+     * @return the type of the values of all components of this descriptor
+     */
+    public DescriptorComponentType getComponentType() {
+        return this.componentType;
     }
 
     /**
@@ -1063,9 +1103,22 @@ public enum Descriptor {
      * @return the calculation factory
      */
     private static DescriptorCalculationFactory molecular(CdkDescriptorSupplier cdkDescriptorSupplier) {
-        return (fingerprintPoolSize, circularFingerprintSize) -> {
+        return Descriptor.molecular("", cdkDescriptorSupplier);
+    }
+
+    /**
+     * Returns the recipe for a CDK molecular descriptor whose component names get a prefix, because its CDK
+     * descriptor names are not unique among all descriptors (e.g. "AA." for the amino acid counts, whose CDK names
+     * like "nC" for cysteine collide with the atom counts like "nC" for carbon).
+     *
+     * @param namePrefix prefix of the component names
+     * @param cdkDescriptorSupplier creates the (configured) CDK descriptor instance
+     * @return the calculation factory
+     */
+    private static DescriptorCalculationFactory molecular(String namePrefix, CdkDescriptorSupplier cdkDescriptorSupplier) {
+        return settings -> {
             try {
-                return new MolecularCalculation(cdkDescriptorSupplier.get());
+                return new MolecularCalculation(cdkDescriptorSupplier.get(), namePrefix);
             } catch (CDKException exception) {
                 throw new IllegalStateException("Failed to create the CDK descriptor, this should never happen.", exception);
             }
@@ -1073,16 +1126,52 @@ public enum Descriptor {
     }
 
     /**
-     * Returns the recipe for a CDK fingerprinter: a pool of fingerprinter instances, because fingerprinters are not
-     * thread-safe.
+     * Returns the recipe for a CDK fingerprinter (bit fingerprint): a pool of fingerprinter instances, because
+     * fingerprinters are not thread-safe.
      *
-     * @param fingerprinterFactory creates a fingerprinter instance; the argument is the circular fingerprint size,
-     *                             which is ignored by all fingerprinters except the circular ones
+     * @param namePrefix prefix of the component names, e.g. "PubChem" for "PubChem_0" ... "PubChem_880"
+     * @param fingerprinterFactory creates a fingerprinter instance
      * @return the calculation factory
      */
-    private static DescriptorCalculationFactory fingerprint(IntFunction<IFingerprinter> fingerprinterFactory) {
-        return (fingerprintPoolSize, circularFingerprintSize) ->
-                new FingerprintCalculation(fingerprinterFactory, fingerprintPoolSize, circularFingerprintSize);
+    private static DescriptorCalculationFactory fingerprint(String namePrefix, Supplier<IFingerprinter> fingerprinterFactory) {
+        return settings -> new FingerprintCalculation(fingerprinterFactory, settings.getFingerprintPoolSize(), false, namePrefix);
+    }
+
+    /**
+     * Returns the recipe for a CDK circular fingerprint: a pool of CircularFingerprinter instances with the
+     * configured circular fingerprint size, calculated as bit or folded count fingerprint depending on the
+     * configuration (see {@link DescriptorCalculator#DescriptorCalculator(int, int, boolean)}).
+     *
+     * @param circularFingerprinterClass the class of the circular fingerprint, e.g. CircularFingerprinter.CLASS_ECFP4
+     * @return the calculation factory
+     */
+    private static DescriptorCalculationFactory circular(int circularFingerprinterClass) {
+        return settings -> new FingerprintCalculation(
+                () -> new CircularFingerprinter(circularFingerprinterClass, settings.getCircularFingerprintSize()),
+                settings.getFingerprintPoolSize(),
+                settings.isCircularFingerprintCounts(),
+                Descriptor.circularFingerprintName(circularFingerprinterClass));
+    }
+
+    /**
+     * Returns the name of a circular fingerprint class, used as prefix of its component names, e.g. "ECFP4".
+     *
+     * @param circularFingerprinterClass the class of the circular fingerprint, e.g. CircularFingerprinter.CLASS_ECFP4
+     * @return the name of the class
+     * @throws IllegalArgumentException if the class is unknown
+     */
+    private static String circularFingerprintName(int circularFingerprinterClass) {
+        switch (circularFingerprinterClass) {
+            case CircularFingerprinter.CLASS_ECFP0: return "ECFP0";
+            case CircularFingerprinter.CLASS_ECFP2: return "ECFP2";
+            case CircularFingerprinter.CLASS_ECFP4: return "ECFP4";
+            case CircularFingerprinter.CLASS_ECFP6: return "ECFP6";
+            case CircularFingerprinter.CLASS_FCFP0: return "FCFP0";
+            case CircularFingerprinter.CLASS_FCFP2: return "FCFP2";
+            case CircularFingerprinter.CLASS_FCFP4: return "FCFP4";
+            case CircularFingerprinter.CLASS_FCFP6: return "FCFP6";
+            default: throw new IllegalArgumentException("Unknown circular fingerprint class: " + circularFingerprinterClass);
+        }
     }
 
     /**
@@ -1117,26 +1206,6 @@ public enum Descriptor {
      * variable would result in a default value of 0.
      */
     static final int CIRCULAR_FINGERPRINT_DEFAULT_SIZE = 1024;
-
-    /**
-     * Sets the number of components of all circular fingerprint "descriptors" (all {@code CIRCULAR_FINGERPRINTER_*}
-     * constants) to the given size.
-     * Note: This method must only be called by {@link DescriptorCalculator#setCircularFingerprintSize(int)}, which
-     * validates the size and reinitializes the fingerprint pools accordingly, so that the component numbers and
-     * the fingerprinter instances stay consistent.
-     *
-     * @param aSize the new size of the circular fingerprints (validated by the caller)
-     */
-    static void setCircularFingerprintComponentNumber(int aSize) {
-        Descriptor.CIRCULAR_FINGERPRINTER_ECFP_0.descriptorComponentNumber = aSize;
-        Descriptor.CIRCULAR_FINGERPRINTER_FCFP_0.descriptorComponentNumber = aSize;
-        Descriptor.CIRCULAR_FINGERPRINTER_ECFP_2.descriptorComponentNumber = aSize;
-        Descriptor.CIRCULAR_FINGERPRINTER_FCFP_2.descriptorComponentNumber = aSize;
-        Descriptor.CIRCULAR_FINGERPRINTER_ECFP_4.descriptorComponentNumber = aSize;
-        Descriptor.CIRCULAR_FINGERPRINTER_FCFP_4.descriptorComponentNumber = aSize;
-        Descriptor.CIRCULAR_FINGERPRINTER_ECFP_6.descriptorComponentNumber = aSize;
-        Descriptor.CIRCULAR_FINGERPRINTER_FCFP_6.descriptorComponentNumber = aSize;
-    }
 
     /**
      * Returns all available descriptors.
@@ -1213,6 +1282,9 @@ public enum Descriptor {
 
     /**
      * Returns sum of number of calculated components of an array of defined descriptors.
+     * Note: The default size is used for circular fingerprints; for the number of matrix columns of a
+     * {@link DescriptorCalculator} with another circular fingerprint size, use
+     * {@link DescriptorCalculator#getNumberOfComponents(Descriptor[])}.
      *
      * @param descriptors Array of descriptors (IS NOT CHANGED); if it is empty, 0 is returned;
      *                     may not be null (the array or one of its elements)
@@ -1244,6 +1316,8 @@ public enum Descriptor {
 
     /**
      * Returns the descriptor and component index for a given position in a descriptor array.
+     * Note: The default size is used for circular fingerprints; for a {@link DescriptorCalculator} with another
+     * circular fingerprint size, use {@link DescriptorCalculator#getDescriptorAndComponentIndex(Descriptor[], int)}.
      * <p>
      * Example: Given descriptors [MOLECULAR_WEIGHT (1 component), BCUT (6 components), WIENER_NUMBER (2 components)]:
      * <ul>
@@ -1313,6 +1387,9 @@ public enum Descriptor {
 
     /**
      * Returns the descriptor and its component name for a given position in a descriptor array.
+     * Note: The default size is used for circular fingerprints; for a {@link DescriptorCalculator} with another
+     * circular fingerprint size, use {@link DescriptorCalculator#getDescriptorAndComponentInfo(Descriptor[], int)},
+     * which additionally returns the column name of the component.
      * <p>
      * This is a convenience method that extends {@link #getDescriptorAndComponentIndex} by also
      * providing human-readable names for the descriptor and component.

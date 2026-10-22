@@ -84,21 +84,22 @@ class DescriptorMatrixCacheTest {
         List<MoleculeDataModel> tmpMolecules = DescriptorMatrixCacheTest.createMolecules();
         Descriptor[] tmpDescriptors = {Descriptor.TPSA, Descriptor.ATOM_COUNT_HEAVY};
         FeatureMatrix tmpDirect = FeatureMatrixBuilder.buildDescriptorMatrix(tmpMolecules, tmpDescriptors,
-                ChemUtil.createAromaticityModel(DescriptorMatrixCacheTest.ELECTRON_DONATION, DescriptorMatrixCacheTest.CYCLE_FINDER), false);
+                ChemUtil.createAromaticityModel(DescriptorMatrixCacheTest.ELECTRON_DONATION, DescriptorMatrixCacheTest.CYCLE_FINDER),
+                FeatureMatrixBuilder.getDescriptorCalculator(1024), false);
         DescriptorMatrixCache tmpCache = new DescriptorMatrixCache();
         FeatureMatrix tmpCached = tmpCache.getDescriptorMatrix(tmpMolecules, tmpDescriptors, DescriptorMatrixCacheTest.ELECTRON_DONATION,
-                DescriptorMatrixCacheTest.CYCLE_FINDER, 1024, false);
+                DescriptorMatrixCacheTest.CYCLE_FINDER, FeatureMatrixBuilder.getDescriptorCalculator(1024), false);
         Assertions.assertArrayEquals(tmpDirect.getDataCopy(), tmpCached.getDataCopy());
         Assertions.assertTrue(tmpCache.isCached(tmpMolecules, Descriptor.TPSA, DescriptorMatrixCacheTest.ELECTRON_DONATION,
                 DescriptorMatrixCacheTest.CYCLE_FINDER));
         //another order of descriptors and a subset of the molecules in another order come from the cache
         FeatureMatrix tmpSubset = tmpCache.getDescriptorMatrix(List.of(tmpMolecules.get(2), tmpMolecules.get(0)),
                 new Descriptor[] {Descriptor.ATOM_COUNT_HEAVY, Descriptor.TPSA}, DescriptorMatrixCacheTest.ELECTRON_DONATION,
-                DescriptorMatrixCacheTest.CYCLE_FINDER, 1024, false);
+                DescriptorMatrixCacheTest.CYCLE_FINDER, FeatureMatrixBuilder.getDescriptorCalculator(1024), false);
         Assertions.assertEquals("acetic acid", tmpSubset.getRowName(0));
         Assertions.assertEquals(tmpDirect.getValue(2, 1), tmpSubset.getValue(0, 0));
         Assertions.assertEquals(tmpDirect.getValue(0, 0), tmpSubset.getValue(1, 1));
-        Assertions.assertEquals("TPSA", tmpSubset.getFeatureName(1));
+        Assertions.assertEquals("TopoPSA", tmpSubset.getFeatureName(1));
         //the cache still holds all molecules
         Assertions.assertTrue(tmpCache.isCached(tmpMolecules, Descriptor.TPSA, DescriptorMatrixCacheTest.ELECTRON_DONATION,
                 DescriptorMatrixCacheTest.CYCLE_FINDER));
@@ -115,9 +116,9 @@ class DescriptorMatrixCacheTest {
         List<MoleculeDataModel> tmpMolecules = DescriptorMatrixCacheTest.createMolecules();
         DescriptorMatrixCache tmpCache = new DescriptorMatrixCache();
         tmpCache.getDescriptorMatrix(tmpMolecules, new Descriptor[] {Descriptor.TPSA}, DescriptorMatrixCacheTest.ELECTRON_DONATION,
-                DescriptorMatrixCacheTest.CYCLE_FINDER, 1024, false);
+                DescriptorMatrixCacheTest.CYCLE_FINDER, FeatureMatrixBuilder.getDescriptorCalculator(1024), false);
         FeatureMatrix tmpExtended = tmpCache.getDescriptorMatrix(tmpMolecules, new Descriptor[] {Descriptor.TPSA, Descriptor.ATOM_COUNT_HEAVY},
-                DescriptorMatrixCacheTest.ELECTRON_DONATION, DescriptorMatrixCacheTest.CYCLE_FINDER, 1024, false);
+                DescriptorMatrixCacheTest.ELECTRON_DONATION, DescriptorMatrixCacheTest.CYCLE_FINDER, FeatureMatrixBuilder.getDescriptorCalculator(1024), false);
         Assertions.assertEquals(2, tmpExtended.getColumnCount());
         Assertions.assertTrue(tmpCache.isCached(tmpMolecules, Descriptor.TPSA, DescriptorMatrixCacheTest.ELECTRON_DONATION,
                 DescriptorMatrixCacheTest.CYCLE_FINDER));
@@ -128,7 +129,7 @@ class DescriptorMatrixCacheTest {
         //a new descriptor for a subset resets the cache to the subset
         List<MoleculeDataModel> tmpSubset = tmpMolecules.subList(0, 2);
         tmpCache.getDescriptorMatrix(tmpSubset, new Descriptor[] {Descriptor.X_LOG_P}, DescriptorMatrixCacheTest.ELECTRON_DONATION,
-                DescriptorMatrixCacheTest.CYCLE_FINDER, 1024, false);
+                DescriptorMatrixCacheTest.CYCLE_FINDER, FeatureMatrixBuilder.getDescriptorCalculator(1024), false);
         Assertions.assertTrue(tmpCache.isCached(tmpSubset, Descriptor.X_LOG_P, DescriptorMatrixCacheTest.ELECTRON_DONATION,
                 DescriptorMatrixCacheTest.CYCLE_FINDER));
         Assertions.assertFalse(tmpCache.isCached(tmpMolecules, Descriptor.TPSA, DescriptorMatrixCacheTest.ELECTRON_DONATION,
@@ -138,7 +139,7 @@ class DescriptorMatrixCacheTest {
                 DescriptorMatrixCacheTest.CYCLE_FINDER));
         //no descriptors: an empty matrix with one row per molecule
         Assertions.assertEquals(3, tmpCache.getDescriptorMatrix(tmpMolecules, new Descriptor[0], DescriptorMatrixCacheTest.ELECTRON_DONATION,
-                DescriptorMatrixCacheTest.CYCLE_FINDER, 1024, false).getRowCount());
+                DescriptorMatrixCacheTest.CYCLE_FINDER, FeatureMatrixBuilder.getDescriptorCalculator(1024), false).getRowCount());
     }
     //
     /**

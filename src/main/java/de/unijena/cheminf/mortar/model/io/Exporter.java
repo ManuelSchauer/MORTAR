@@ -408,8 +408,10 @@ public class Exporter {
      * Exports the data of a clustering run as CSV files into the given directory. The files are named
      * "Clustering_[fragmentation name]_[content]" and contain: the raw, transformed (only if a transformation was
      * applied) and processed (clustering input) feature matrices, the cluster assignment of the molecules, the cluster
-     * profiles (see {@link ClusterProfiler}), the cluster quality (see {@link ClusterQuality}), the
-     * features removed by the filter and the parameters of the run. The cluster label is also given in the processed matrix; -1 means not clusterable.
+     * profiles (see {@link ClusterProfiler}), the cluster quality (see {@link ClusterQuality}), the description of the
+     * feature columns (group, type, transformation and whether the column was used for the clustering, see
+     * {@link ClusteringDataCsvWriter#writeFeatureDescription}), the features removed by the filter and the parameters of
+     * the run. The cluster label is also given in the processed matrix; -1 means not clusterable.
      *
      * @param aDirectory directory to export to; method returns null if it is null or not a directory
      * @param aRunResult result of the clustering run
@@ -488,6 +490,10 @@ public class Exporter {
         ClusterQuality tmpQuality = new ClusterQuality(aRunResult);
         this.writeClusteringFile(tmpPrefix + "cluster_quality" + FileExtension.CSV, tmpFailedFiles, aWriter ->
                 ClusteringDataCsvWriter.writeClusterQuality(aWriter, tmpQuality, null, aClusterIndices, tmpSeparator));
+        //type of every raw column, which determines its transformation, and whether the filter kept it
+        this.writeClusteringFile(tmpPrefix + "features" + FileExtension.CSV, tmpFailedFiles, aWriter ->
+                ClusteringDataCsvWriter.writeFeatureDescription(aWriter, aRunResult.rawMatrix(), aRunResult.parameters().countTransformation(),
+                        aRunResult.parameters().continuousTransformation(), aRunResult.processedMatrix(), tmpSeparator));
         //filter report and parameters for reproducibility
         this.writeClusteringFile(tmpPrefix + "removed_features" + FileExtension.CSV, tmpFailedFiles, aWriter ->
                 ClusteringDataCsvWriter.writeRemovedFeatures(aWriter, aRunResult.removedFeatures(), tmpSeparator));
@@ -1563,7 +1569,9 @@ public class Exporter {
     //
     /**
      * Exports a table of calculated descriptor values: one line per molecule with name, SMILES and one column per
-     * descriptor component (untransformed values, NaN if the calculation failed).
+     * descriptor component with its CDK component name (untransformed values, NaN if the calculation failed). The group
+     * and type of every column are written to a second file next to it, named like the file with the suffix "_features"
+     * (see {@link ClusteringDataCsvWriter#writeFeatureDescription}).
      *
      * @param aFile file to export to; method returns null if it is null
      * @param aMoleculeList molecules in the order of the matrix rows
@@ -1579,9 +1587,16 @@ public class Exporter {
         if (aFile == null) {
             return null;
         }
-        List<String> tmpFailedFiles = new ArrayList<>(1);
+        List<String> tmpFailedFiles = new ArrayList<>(2);
         this.writeClusteringFile(aFile.getAbsolutePath(), tmpFailedFiles, aWriter ->
                 ClusteringDataCsvWriter.writeDescriptorTable(aWriter, aMoleculeList, aDescriptorMatrix, String.valueOf(aSeparator)));
+        //the type of every column (BIT, COUNT or CONTINUOUS) in a second file next to it, e.g. "Descriptors_1_features.csv"
+        String tmpPath = aFile.getAbsolutePath();
+        String tmpExtension = FileExtension.CSV.toString();
+        String tmpBasePath = tmpPath.toLowerCase(Locale.ROOT).endsWith(tmpExtension)
+                ? tmpPath.substring(0, tmpPath.length() - tmpExtension.length()) : tmpPath;
+        this.writeClusteringFile(tmpBasePath + "_features" + FileExtension.CSV, tmpFailedFiles, aWriter ->
+                ClusteringDataCsvWriter.writeFeatureDescription(aWriter, aDescriptorMatrix, null, null, null, String.valueOf(aSeparator)));
         return tmpFailedFiles;
     }
     //

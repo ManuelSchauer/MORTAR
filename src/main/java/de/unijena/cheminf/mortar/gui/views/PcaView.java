@@ -97,7 +97,7 @@ import java.util.logging.Logger;
  * grey for missing values), to see what the components mean chemically. The tick marks of both axes lie on round
  * values (see {@link AlignedNumberAxis}). What the components stand for is shown below the plot and at the axes: the
  * features with the largest weight (loading) in every component, with the direction in the raw values (sign of the
- * correlation r of the raw feature values with the component scores), e.g. "PC1: Heavy Atom Count +, Molecular Weight +". With "3D", the molecules are shown on the first three components in a rotatable
+ * correlation r of the raw feature values with the component scores), e.g. "PC1: nHeavyAtom +, MW +". With "3D", the molecules are shown on the first three components in a rotatable
  * three-dimensional view ({@link Pca3dView}) with the same colours, visibility, highlighting and mouse actions; there,
  * dimmed clusters are drawn in a pale colour instead of transparent.
  *

@@ -28,7 +28,7 @@ package de.unijena.cheminf.mortar.gui.views;
 import de.unijena.cheminf.mortar.gui.util.GuiDefinitions;
 import de.unijena.cheminf.mortar.message.Message;
 import de.unijena.cheminf.mortar.model.clustering.FeatureMatrix;
-import de.unijena.cheminf.mortar.model.clustering.FeatureType;
+import de.unijena.cheminf.mortar.model.clustering.FeatureMatrixBuilder;
 import de.unijena.cheminf.mortar.model.data.MoleculeDataModel;
 
 import javafx.beans.property.ReadOnlyObjectWrapper;
@@ -102,10 +102,10 @@ public class DescriptorTableView extends BorderPane {
         if (this.moleculeList.size() != aDescriptorMatrix.getRowCount()) {
             throw new IllegalArgumentException("Number of molecules does not match the number of rows.");
         }
-        //fingerprint bits (BIT columns) are calculated and exported, but not shown as hundreds of columns
+        //fingerprint components are calculated and exported, but not shown as hundreds of columns
         int tmpBitCount = 0;
         for (int j = 0; j < aDescriptorMatrix.getColumnCount(); j++) {
-            if (aDescriptorMatrix.getFeatureType(j) == FeatureType.BIT) {
+            if (!FeatureMatrixBuilder.isMolecularDescriptorColumn(aDescriptorMatrix, j)) {
                 tmpBitCount++;
             }
         }
@@ -131,7 +131,7 @@ public class DescriptorTableView extends BorderPane {
         this.tableView.getColumns().add(tmpNameColumn);
         this.tableView.getColumns().add(tmpStructureColumn);
         for (int j = 0; j < aDescriptorMatrix.getColumnCount(); j++) {
-            if (aDescriptorMatrix.getFeatureType(j) != FeatureType.BIT) {
+            if (FeatureMatrixBuilder.isMolecularDescriptorColumn(aDescriptorMatrix, j)) {
                 this.tableView.getColumns().add(this.createDescriptorColumn(j));
             }
         }

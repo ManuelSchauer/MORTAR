@@ -82,7 +82,8 @@ class ClusteringDataCsvWriterTest {
     }
     //
     /**
-     * Tests the descriptor table: name, SMILES and one column per descriptor, also written by the Exporter to a file.
+     * Tests the descriptor table: name, SMILES and one column per descriptor component with its CDK name, also written by
+     * the Exporter to a file together with the description of the columns (group and type).
      *
      * @param aTempDirectory temporary directory provided by JUnit
      * @throws Exception if writing fails
@@ -91,14 +92,14 @@ class ClusteringDataCsvWriterTest {
     void testWriteDescriptorTable(@TempDir Path aTempDirectory) throws Exception {
         Locale.setDefault(Locale.of("en", "GB"));
         FeatureMatrix tmpMatrix = new FeatureMatrix(new float[][] {{1.5f, Float.NaN}, {2.0f, 3.0f}},
-                new String[] {"m1", "m2"}, new String[] {"TPSA", "BCUT [1]"},
-                new FeatureType[] {FeatureType.CONTINUOUS, FeatureType.CONTINUOUS}, new String[] {"TPSA", "BCUT"});
+                new String[] {"m1", "m2"}, new String[] {"TopoPSA", "nC"},
+                new FeatureType[] {FeatureType.CONTINUOUS, FeatureType.COUNT}, new String[] {"TPSA", "ATOM_COUNT_C"});
         List<MoleculeDataModel> tmpMolecules = List.of(new MoleculeDataModel("CO", "m1", new HashMap<>()),
                 new MoleculeDataModel("CCO", "m2", new HashMap<>()));
         StringWriter tmpWriter = new StringWriter();
         ClusteringDataCsvWriter.writeDescriptorTable(tmpWriter, tmpMolecules, tmpMatrix, ";");
         String[] tmpLines = tmpWriter.toString().split(System.lineSeparator());
-        Assertions.assertEquals("Name;SMILES;TPSA;BCUT [1]", tmpLines[0]);
+        Assertions.assertEquals("Name;SMILES;TopoPSA;nC", tmpLines[0]);
         Assertions.assertTrue(tmpLines[1].startsWith("m1;") && tmpLines[1].endsWith(";1.5;NaN"), tmpLines[1]);
         Assertions.assertEquals(3, tmpLines.length);
         Assertions.assertThrows(IllegalArgumentException.class, () ->
@@ -106,7 +107,10 @@ class ClusteringDataCsvWriterTest {
         File tmpFile = aTempDirectory.resolve("Descriptors_1.csv").toFile();
         List<String> tmpFailed = new Exporter(new SettingsContainer()).exportDescriptorCsvFile(tmpFile, tmpMolecules, tmpMatrix, ',');
         Assertions.assertTrue(tmpFailed.isEmpty());
-        Assertions.assertEquals("Name,SMILES,TPSA,BCUT [1]", Files.readAllLines(tmpFile.toPath()).getFirst());
+        Assertions.assertEquals("Name,SMILES,TopoPSA,nC", Files.readAllLines(tmpFile.toPath()).getFirst());
+        //the type of every column in a second file, without transformation and use for the clustering
+        Assertions.assertEquals(List.of("Feature,Group,Type", "TopoPSA,TPSA,CONTINUOUS", "nC,ATOM_COUNT_C,COUNT"),
+                Files.readAllLines(aTempDirectory.resolve("Descriptors_1_features.csv")));
     }
     //
     /**
@@ -152,9 +156,13 @@ class ClusteringDataCsvWriterTest {
         File[] tmpFiles = aTempDirectory.toFile().listFiles();
         Assertions.assertNotNull(tmpFiles);
         //without transformation (transformed matrix = raw matrix), no transformed file is written
-        Assertions.assertEquals(7, tmpFiles.length);
+        Assertions.assertEquals(8, tmpFiles.length);
         Assertions.assertTrue(Files.exists(aTempDirectory.resolve("Clustering_Frag_1_cluster_quality.csv")));
         Assertions.assertFalse(Files.exists(aTempDirectory.resolve("Clustering_Frag_1_transformed.csv")));
+        //group, type, transformation according to the type and use for the clustering of every raw column
+        Assertions.assertEquals(List.of("Feature,Group,Type,Transformation,UsedForClustering", "C,F,BIT,NONE,true",
+                        "ALOGP,A_LOG_P,CONTINUOUS,NONE,true"),
+                Files.readAllLines(aTempDirectory.resolve("Clustering_Frag_1_features.csv")));
         List<String> tmpClusterLines = Files.readAllLines(aTempDirectory.resolve("Clustering_Frag_1_clusters.csv"));
         Assertions.assertEquals("m1,C,0,true", tmpClusterLines.get(1));
         Assertions.assertEquals("m2,CC,-1,false", tmpClusterLines.get(2));

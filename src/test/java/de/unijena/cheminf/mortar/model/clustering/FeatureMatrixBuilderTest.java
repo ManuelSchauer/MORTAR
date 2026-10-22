@@ -135,11 +135,23 @@ class FeatureMatrixBuilderTest {
         Aromaticity tmpAromaticity = ChemUtil.createAromaticityModel(
                 IMoleculeFragmenter.ElectronDonationModelOption.DAYLIGHT, IMoleculeFragmenter.CycleFinderOption.CDK_AROMATIC_SET);
         FeatureMatrix tmpMatrix = FeatureMatrixBuilder.buildDescriptorMatrix(List.of(tmpBenzene),
-                new Descriptor[] {Descriptor.AROMATIC_ATOMS_COUNT, Descriptor.ATOM_COUNT_C}, tmpAromaticity, false);
+                new Descriptor[] {Descriptor.AROMATIC_ATOMS_COUNT, Descriptor.ATOM_COUNT_C}, tmpAromaticity,
+                FeatureMatrixBuilder.getDescriptorCalculator(1024), false);
         Assertions.assertEquals(2, tmpMatrix.getColumnCount());
         Assertions.assertEquals(6.0f, tmpMatrix.getValue(0, 0));
         Assertions.assertEquals(6.0f, tmpMatrix.getValue(0, 1));
-        Assertions.assertEquals(FeatureType.CONTINUOUS, tmpMatrix.getFeatureType(0));
+        //counts are COUNT columns with the CDK component names
+        Assertions.assertEquals(FeatureType.COUNT, tmpMatrix.getFeatureType(0));
+        Assertions.assertEquals("naAromAtom", tmpMatrix.getFeatureName(0));
+        Assertions.assertEquals("nC", tmpMatrix.getFeatureName(1));
+        //exception: the Wiener polarity number is a count, the Wiener path number continuous
+        FeatureMatrix tmpWienerMatrix = FeatureMatrixBuilder.buildDescriptorMatrix(List.of(tmpBenzene),
+                new Descriptor[] {Descriptor.ATOM_COUNT_C, Descriptor.WIENER_NUMBER}, tmpAromaticity,
+                FeatureMatrixBuilder.getDescriptorCalculator(1024), false);
+        Assertions.assertEquals("WPATH", tmpWienerMatrix.getFeatureName(1));
+        Assertions.assertEquals(FeatureType.CONTINUOUS, tmpWienerMatrix.getFeatureType(1));
+        Assertions.assertEquals("WPOL", tmpWienerMatrix.getFeatureName(2));
+        Assertions.assertEquals(FeatureType.COUNT, tmpWienerMatrix.getFeatureType(2));
         Assertions.assertEquals(Descriptor.AROMATIC_ATOMS_COUNT.name(), tmpMatrix.getFeatureGroupName(0));
         //the cached atom container of the data model must not have been aromatised
         for (IAtom tmpAtom : tmpOriginal.atoms()) {
@@ -162,11 +174,13 @@ class FeatureMatrixBuilderTest {
         FeatureMatrix tmpDescriptors = FeatureMatrixBuilder.buildDescriptorMatrix(tmpMolecules,
                 new Descriptor[] {Descriptor.ATOM_COUNT_C},
                 ChemUtil.createAromaticityModel(IMoleculeFragmenter.ElectronDonationModelOption.DAYLIGHT,
-                        IMoleculeFragmenter.CycleFinderOption.CDK_AROMATIC_SET), true);
+                        IMoleculeFragmenter.CycleFinderOption.CDK_AROMATIC_SET), FeatureMatrixBuilder.getDescriptorCalculator(1024), true);
         FeatureMatrix tmpCombined = FeatureMatrix.concatenate(tmpFragments, tmpDescriptors);
         Assertions.assertEquals(3, tmpCombined.getColumnCount());
         Assertions.assertEquals(FeatureType.BIT, tmpCombined.getFeatureType(1));
-        Assertions.assertEquals(FeatureType.CONTINUOUS, tmpCombined.getFeatureType(2));
+        Assertions.assertEquals(FeatureType.COUNT, tmpCombined.getFeatureType(2));
+        Assertions.assertFalse(FeatureMatrixBuilder.isMolecularDescriptorColumn(tmpCombined, 1));
+        Assertions.assertTrue(FeatureMatrixBuilder.isMolecularDescriptorColumn(tmpCombined, 2));
         Assertions.assertEquals(2.0f, tmpCombined.getValue(1, 2));
     }
 }

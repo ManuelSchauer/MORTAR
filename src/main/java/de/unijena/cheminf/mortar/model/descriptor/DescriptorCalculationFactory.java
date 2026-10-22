@@ -35,10 +35,9 @@ interface DescriptorCalculationFactory {
     /**
      * Creates the calculation of the descriptor.
      *
-     * @param fingerprintPoolSize     number of fingerprinter instances in the pool of a fingerprint calculation
-     *                                (ignored for molecular descriptors)
-     * @param circularFingerprintSize size of circular fingerprints (ignored for all other descriptors)
+     * @param settings the configuration of the calculator; molecular descriptors ignore it, fingerprints use the pool
+     *                 size, circular fingerprints additionally the circular fingerprint size and the count setting
      * @return a new calculation
      */
-    DescriptorCalculation create(int fingerprintPoolSize, int circularFingerprintSize);
+    DescriptorCalculation create(CalculationSettings settings);
 }

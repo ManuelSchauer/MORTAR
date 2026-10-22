@@ -31,6 +31,7 @@ import de.unijena.cheminf.mortar.model.clustering.ClusterStability;
 import de.unijena.cheminf.mortar.model.clustering.ClusteringRunResult;
 import de.unijena.cheminf.mortar.model.clustering.DiverseSubsetSelector;
 import de.unijena.cheminf.mortar.model.clustering.FeatureMatrix;
+import de.unijena.cheminf.mortar.model.clustering.FeatureTransformation;
 import de.unijena.cheminf.mortar.model.clustering.RemovedFeature;
 import de.unijena.cheminf.mortar.model.clustering.TrainTestSplitter;
 import de.unijena.cheminf.mortar.model.clustering.VigilanceScan;
@@ -39,13 +40,15 @@ import de.unijena.cheminf.mortar.model.data.MoleculeDataModel;
 import java.io.IOException;
 import java.io.Writer;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
 /**
  * Writes the data of the clustering pipeline as CSV: a feature matrix of any stage (raw, transformed, filtered =
- * clustering input), optionally with the cluster label of every molecule, and the report of the removed features.
+ * clustering input), optionally with the cluster label of every molecule, the description of the feature columns
+ * (group, type and transformation) and the report of the removed features.
  * Values are written with "." as decimal separator, NaN as "NaN".
  *
  * @author Manuel Schauer
@@ -262,6 +265,77 @@ public final class ClusteringDataCsvWriter {
                     .append(ClusteringDataCsvWriter.escape(tmpMolecule.getUniqueSmiles(), aSeparator));
             for (int j = 0; j < aDescriptorMatrix.getColumnCount(); j++) {
                 tmpLine.append(aSeparator).append(aDescriptorMatrix.getValue(i, j));
+            }
+            aWriter.write(tmpLine.append(System.lineSeparator()).toString());
+        }
+        aWriter.flush();
+    }
+    //
+    /**
+     * Writes the description of the columns of the given feature matrix, one line per column in column order: the
+     * feature name (the column header in the matrix files, e.g. the CDK component name "MW" or a fragment SMILES), the
+     * group (descriptor enum constant name, e.g. "MOLECULAR_WEIGHT", or fragmentation name) and the type (BIT, COUNT or
+     * CONTINUOUS), which determines the transformation of the column. If transformations are given, the column
+     * "Transformation" gives the transformation applied to the column according to its type (BIT columns are never
+     * transformed); if a processed matrix is given, the column "UsedForClustering" gives whether the column is part of
+     * it, i.e. was not removed by the filter.
+     *
+     * @param aWriter writer to write to (is not closed)
+     * @param aFeatureMatrix feature matrix whose columns are described, e.g. the raw matrix
+     * @param aCountTransformation transformation of the COUNT columns; null (together with the continuous
+     *                             transformation) to omit the transformation column
+     * @param aContinuousTransformation transformation of the CONTINUOUS columns; null (together with the count
+     *                                  transformation) to omit the transformation column
+     * @param aProcessedMatrix matrix the clustering was performed on; null to omit the column "UsedForClustering"
+     * @param aSeparator column separator, e.g. "," or ";"
+     * @throws NullPointerException if the writer, the feature matrix, the separator or only one of the transformations
+     *                              is null
+     * @throws IOException if writing fails
+     */
+    public static void writeFeatureDescription(Writer aWriter, FeatureMatrix aFeatureMatrix, FeatureTransformation aCountTransformation,
+                                               FeatureTransformation aContinuousTransformation, FeatureMatrix aProcessedMatrix,
+                                               String aSeparator) throws NullPointerException, IOException {
+        Objects.requireNonNull(aWriter, "Given writer is null.");
+        Objects.requireNonNull(aFeatureMatrix, "Given feature matrix is null.");
+        Objects.requireNonNull(aSeparator, "Given separator is null.");
+        boolean tmpIsTransformationWritten = aCountTransformation != null || aContinuousTransformation != null;
+        if (tmpIsTransformationWritten) {
+            Objects.requireNonNull(aCountTransformation, "Given count transformation is null.");
+            Objects.requireNonNull(aContinuousTransformation, "Given continuous transformation is null.");
+        }
+        //columns of the processed matrix by group and name, since a name is only unique within its group
+        Set<String> tmpProcessedKeys = null;
+        if (aProcessedMatrix != null) {
+            tmpProcessedKeys = new HashSet<>(aProcessedMatrix.getColumnCount() * 2);
+            for (int j = 0; j < aProcessedMatrix.getColumnCount(); j++) {
+                tmpProcessedKeys.add(aProcessedMatrix.getFeatureGroupName(j) + "\n" + aProcessedMatrix.getFeatureName(j));
+            }
+        }
+        List<String> tmpHeader = new ArrayList<>(List.of("Feature", "Group", "Type"));
+        if (tmpIsTransformationWritten) {
+            tmpHeader.add("Transformation");
+        }
+        if (tmpProcessedKeys != null) {
+            tmpHeader.add("UsedForClustering");
+        }
+        aWriter.write(String.join(aSeparator, tmpHeader) + System.lineSeparator());
+        StringBuilder tmpLine = new StringBuilder();
+        for (int j = 0; j < aFeatureMatrix.getColumnCount(); j++) {
+            tmpLine.setLength(0);
+            tmpLine.append(ClusteringDataCsvWriter.escape(aFeatureMatrix.getFeatureName(j), aSeparator)).append(aSeparator)
+                    .append(ClusteringDataCsvWriter.escape(aFeatureMatrix.getFeatureGroupName(j), aSeparator)).append(aSeparator)
+                    .append(aFeatureMatrix.getFeatureType(j).name());
+            if (tmpIsTransformationWritten) {
+                FeatureTransformation tmpTransformation = switch (aFeatureMatrix.getFeatureType(j)) {
+                    case BIT -> FeatureTransformation.NONE;
+                    case COUNT -> aCountTransformation;
+                    case CONTINUOUS -> aContinuousTransformation;
+                };
+                tmpLine.append(aSeparator).append(tmpTransformation.name());
+            }
+            if (tmpProcessedKeys != null) {
+                tmpLine.append(aSeparator).append(tmpProcessedKeys.contains(
+                        aFeatureMatrix.getFeatureGroupName(j) + "\n" + aFeatureMatrix.getFeatureName(j)));
             }
             aWriter.write(tmpLine.append(System.lineSeparator()).toString());
         }

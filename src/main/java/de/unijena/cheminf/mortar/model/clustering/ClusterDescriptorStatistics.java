@@ -39,7 +39,9 @@ import java.util.Set;
  * Statistics of the descriptor values of the clusters of a clustering result: per descriptor column the median in every
  * cluster and the median of the whole data set. The values are taken from the raw feature matrix,
  * i.e. untransformed and in the original units of the descriptors; NaN values (descriptor could not be calculated) are
- * ignored. Descriptor columns are the CONTINUOUS columns of the raw matrix, including the ones removed by the filter.
+ * ignored. Descriptor columns are the columns of the molecular descriptors (no fragments and no fingerprints, see
+ * {@link FeatureMatrixBuilder#isMolecularDescriptorColumn}) of the raw matrix, COUNT as well as CONTINUOUS, including the
+ * ones removed by the filter.
  * The statistics of a column are calculated on first use and cached.
  * <p>
  * The range filter marks the clusters whose medians lie within given bounds for all given descriptors.
@@ -116,7 +118,7 @@ public class ClusterDescriptorStatistics {
         FeatureMatrix tmpRaw = aRunResult.rawMatrix();
         this.columnIndexOfNameMap = new HashMap<>();
         for (int j = 0; j < tmpRaw.getColumnCount(); j++) {
-            if (tmpRaw.getFeatureType(j) == FeatureType.CONTINUOUS) {
+            if (FeatureMatrixBuilder.isMolecularDescriptorColumn(tmpRaw, j)) {
                 this.columnIndexOfNameMap.putIfAbsent(tmpRaw.getFeatureName(j), j);
             }
         }
@@ -156,7 +158,7 @@ public class ClusterDescriptorStatistics {
     public boolean isUsedForClustering(String aColumnName) {
         FeatureMatrix tmpProcessed = this.runResult.processedMatrix();
         for (int j = 0; j < tmpProcessed.getColumnCount(); j++) {
-            if (tmpProcessed.getFeatureType(j) == FeatureType.CONTINUOUS && tmpProcessed.getFeatureName(j).equals(aColumnName)) {
+            if (FeatureMatrixBuilder.isMolecularDescriptorColumn(tmpProcessed, j) && tmpProcessed.getFeatureName(j).equals(aColumnName)) {
                 return true;
             }
         }

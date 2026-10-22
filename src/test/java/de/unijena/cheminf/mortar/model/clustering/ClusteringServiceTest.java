@@ -303,8 +303,10 @@ class ClusteringServiceTest {
                 () -> false, (aStep, aMessage) -> { });
         FeatureMatrix tmpRaw = tmpRunResult.rawMatrix();
         Assertions.assertEquals(2, tmpRaw.getColumnCount());
+        //both descriptors are counts with their CDK component names
+        Assertions.assertArrayEquals(new String[] {"nO", "naAromAtom"}, new String[] {tmpRaw.getFeatureName(0), tmpRaw.getFeatureName(1)});
         for (int j = 0; j < tmpRaw.getColumnCount(); j++) {
-            Assertions.assertEquals(FeatureType.CONTINUOUS, tmpRaw.getFeatureType(j));
+            Assertions.assertEquals(FeatureType.COUNT, tmpRaw.getFeatureType(j));
         }
         //clustering without fragmentation: fragment fingerprint off, given descriptors plus the selected fingerprints
         tmpService.fragmentFingerprintProperty().set(true);

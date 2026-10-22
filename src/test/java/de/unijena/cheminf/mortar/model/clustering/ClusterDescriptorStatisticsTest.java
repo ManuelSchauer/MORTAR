@@ -71,7 +71,7 @@ class ClusterDescriptorStatisticsTest {
                 {1.0f, 1.0f, 10.0f}, {1.0f, 3.0f, 20.0f}, {0.0f, Float.NaN, 30.0f},
                 {0.0f, 5.0f, 40.0f}, {1.0f, 7.0f, 50.0f}, {0.0f, 100.0f, 60.0f}},
                 tmpRowNames, new String[] {"C", "LogP", "TPSA"},
-                new FeatureType[] {FeatureType.BIT, FeatureType.CONTINUOUS, FeatureType.CONTINUOUS}, new String[] {"Frag", "LOGP", "TPSA"});
+                new FeatureType[] {FeatureType.BIT, FeatureType.CONTINUOUS, FeatureType.CONTINUOUS}, new String[] {"Frag", "X_LOG_P", "TPSA"});
         FeatureMatrix tmpProcessed = tmpRaw.selectColumns(new int[] {0, 1});
         ClusteringParameters tmpParameters = new ClusteringParameters("Frag", false, 1, 0, new Descriptor[0],
                 IMoleculeFragmenter.ElectronDonationModelOption.DAYLIGHT, IMoleculeFragmenter.CycleFinderOption.CDK_AROMATIC_SET,

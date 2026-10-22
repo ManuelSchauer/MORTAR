@@ -203,7 +203,8 @@ spotless {
     java {
         toggleOffOn() // all code in between spotless:off / spotless:on will be ignored
         // temporary copy of the descriptor engine from the CDK (LGPL header must be kept), removed once it is part of a CDK release
-        targetExclude("src/main/java/de/unijena/cheminf/mortar/model/descriptor/**")
+        targetExclude("src/main/java/de/unijena/cheminf/mortar/model/descriptor/**",
+                "src/test/java/de/unijena/cheminf/mortar/model/descriptor/**")
         licenseHeaderFile("License-header/License-header.txt")
         encoding("UTF-8")
         cleanthat()

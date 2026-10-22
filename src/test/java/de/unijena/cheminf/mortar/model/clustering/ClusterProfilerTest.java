@@ -63,7 +63,7 @@ class ClusterProfilerTest {
         FeatureMatrix tmpMatrix = new FeatureMatrix(tmpData, new String[] {"m0", "m1", "m2", "m3"},
                 new String[] {"F1", "MACCS [1]", "D"},
                 new FeatureType[] {FeatureType.COUNT, FeatureType.BIT, FeatureType.CONTINUOUS},
-                new String[] {"Frag", Descriptor.MACCS_FINGERPRINTER.name(), "D"});
+                new String[] {"Frag", Descriptor.MACCS_FINGERPRINTER.name(), Descriptor.TPSA.name()});
         List<MoleculeDataModel> tmpMolecules = new ArrayList<>();
         for (int i = 0; i < 4; i++) {
             tmpMolecules.add(new MoleculeDataModel("C", "m" + i, new HashMap<>()));
@@ -123,7 +123,7 @@ class ClusterProfilerTest {
                 .anyMatch(aFeature -> aFeature.featureName().equals("c1ccccc1")));
         ClusterProfiler.FeatureProfile tmpAromaticAtoms = tmpAromaticProfile.getMostDistinctFeatures(
                 ClusterProfiler.FeatureCategory.DESCRIPTOR, 5).stream()
-                .filter(aFeature -> aFeature.featureName().equals(Descriptor.AROMATIC_ATOMS_COUNT.getName())).findFirst().orElseThrow();
+                .filter(aFeature -> aFeature.featureName().equals("naAromAtom")).findFirst().orElseThrow();
         Assertions.assertTrue(tmpAromaticAtoms.score() > 0.0);
         StringWriter tmpWriter = new StringWriter();
         ClusteringDataCsvWriter.writeClusterProfiles(tmpWriter, List.of(tmpAromaticProfile, tmpAlcoholProfile), 3, ",");

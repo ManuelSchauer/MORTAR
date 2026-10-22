@@ -60,12 +60,45 @@ final class MolecularCalculation implements DescriptorCalculation {
     private final IMolecularDescriptor cdkDescriptor;
 
     /**
+     * Prefix of the component names, empty if the CDK descriptor names are used unchanged.
+     */
+    private final String namePrefix;
+
+    /**
      * Constructor.
      *
      * @param cdkDescriptor the (configured) CDK descriptor instance
      */
     MolecularCalculation(IMolecularDescriptor cdkDescriptor) {
+        this(cdkDescriptor, "");
+    }
+
+    /**
+     * Constructor with a prefix for the component names, used where the CDK descriptor names are not unique among all
+     * descriptors (e.g. "AA." for the amino acid counts, whose CDK names like "nC" collide with the atom counts).
+     *
+     * @param cdkDescriptor the (configured) CDK descriptor instance
+     * @param namePrefix    prefix of the component names (may be empty)
+     */
+    MolecularCalculation(IMolecularDescriptor cdkDescriptor, String namePrefix) {
         this.cdkDescriptor = cdkDescriptor;
+        this.namePrefix = namePrefix;
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Returns the descriptor names of the configured CDK descriptor instance (e.g. "WPATH" and "WPOL" for the Wiener
+     * numbers, or "nC" for an atom count descriptor configured to count carbon atoms), with the name prefix if one
+     * is set (e.g. "AA.nC" for the cysteine count of the amino acid count descriptor).
+     */
+    @Override
+    public String[] getComponentNames() {
+        String[] names = this.cdkDescriptor.getDescriptorNames().clone();
+        for (int i = 0; i < names.length; i++) {
+            names[i] = this.namePrefix + names[i];
+        }
+        return names;
     }
 
     /**

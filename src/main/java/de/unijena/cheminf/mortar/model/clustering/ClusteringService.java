@@ -624,10 +624,14 @@ public class ClusteringService {
      */
     public static final String USER_DESCRIPTOR_PRESETS_FILE_NAME = "DescriptorPresets.properties";
     /**
-     * Default descriptor columns shown with their cluster medians in the clustering result tabs; only the ones that were
-     * calculated are shown.
+     * Default descriptor columns shown with their cluster medians in the clustering result tabs, as CDK component names
+     * (molecular weight, XLogP and TPSA); only the ones that were calculated are shown.
      */
-    public static final List<String> DISPLAYED_DESCRIPTOR_COLUMNS_DEFAULT = List.of("Molecular Weight", "XLogP", "TPSA");
+    public static final List<String> DISPLAYED_DESCRIPTOR_COLUMNS_DEFAULT = List.of("MW", "XLogP", "TopoPSA");
+    /**
+     * Maximum number of component names listed in the tooltip of a descriptor.
+     */
+    private static final int MAXIMUM_NUMBER_OF_COMPONENT_NAMES_IN_TOOLTIP = 10;
     /**
      * Separator of the displayed descriptor column names in their setting; also terminates the list, so that the setting
      * is never empty, which a preference does not allow.
@@ -1139,7 +1143,9 @@ public class ClusteringService {
                 "circularFingerprintRadiusSetting");
         this.circularFingerprintSizeSetting = this.createIntegerSetting(this.advancedFingerprintSettings, "Circular fingerprint size setting",
                 ClusteringService.CIRCULAR_FINGERPRINT_SIZE_DEFAULT, 1, Integer.MAX_VALUE, "circularFingerprintSizeSetting");
-        //the list only contains real descriptors, the fingerprints are chosen via the settings above
+        //the list only contains real descriptors, the fingerprints are chosen via the settings above; the calculator gives
+        // the CDK names of their components for the tooltips
+        DescriptorCalculator tmpCalculator = FeatureMatrixBuilder.getDescriptorCalculator(this.circularFingerprintSizeSetting.get());
         this.descriptorToSettingMap = new EnumMap<>(Descriptor.class);
         for (Descriptor tmpDescriptor : Descriptor.getAllDescriptors()) {
             if (tmpDescriptor.isFingerprint()) {
@@ -1151,10 +1157,17 @@ public class ClusteringService {
             this.descriptorSelectionSettings.add(tmpSetting);
             this.descriptorToSettingMap.put(tmpDescriptor, tmpSetting);
             this.settingNameToDisplayNameMap.put(tmpSetting.getName(), ClusteringService.getDescriptorDisplayName(tmpDescriptor));
+            String[] tmpComponentNames = tmpCalculator.getColumnNames(new Descriptor[] {tmpDescriptor});
+            String tmpComponentNamesText = String.join(", ", Arrays.asList(tmpComponentNames).subList(0,
+                    Math.min(tmpComponentNames.length, ClusteringService.MAXIMUM_NUMBER_OF_COMPONENT_NAMES_IN_TOOLTIP)))
+                    + (tmpComponentNames.length > ClusteringService.MAXIMUM_NUMBER_OF_COMPONENT_NAMES_IN_TOOLTIP ? ", ..." : "");
             this.settingNameToTooltipTextMap.put(tmpSetting.getName(), String.format(
                     Message.get("ClusteringService.descriptorSetting.tooltip"),
-                    tmpDescriptor.getDescriptorComponentNumber(), tmpDescriptor.isFast(), tmpDescriptor.isSafe(),
-                    tmpDescriptor.requires3DCoordinates()));
+                    tmpComponentNames.length, tmpComponentNamesText,
+                    //the Wiener polarity number is used as count, see FeatureMatrixBuilder
+                    tmpDescriptor == Descriptor.WIENER_NUMBER ? tmpDescriptor.getComponentType() + " (WPOL: COUNT)"
+                            : tmpDescriptor.getComponentType().name(), tmpDescriptor.isFast(),
+                    tmpDescriptor.isSafe(), tmpDescriptor.requires3DCoordinates()));
             //a manual change of a descriptor that deviates from the selected preset switches the selection to custom
             tmpSetting.addListener((anObservable, anOldValue, aNewValue) -> {
                 DescriptorPreset tmpPreset = this.getDescriptorPreset(this.descriptorPresetSetting.get());
@@ -1890,14 +1903,10 @@ public class ClusteringService {
      */
     public FeatureMatrix calculateDescriptorMatrix(List<MoleculeDataModel> aMoleculeList, Descriptor[] aDescriptorArray,
                                                    boolean anIsParallelCalculation) throws NullPointerException, InterruptedException {
-        //the length of the circular fingerprint is a global setting of the descriptor engine
-        if (DescriptorCalculator.getCircularFingerprintSize() != this.circularFingerprintSizeSetting.get()) {
-            DescriptorCalculator.setCircularFingerprintSize(this.circularFingerprintSizeSetting.get());
-        }
         return this.descriptorMatrixCache.getDescriptorMatrix(aMoleculeList, aDescriptorArray,
                 (IMoleculeFragmenter.ElectronDonationModelOption) this.electronDonationModelSetting.get(),
                 (IMoleculeFragmenter.CycleFinderOption) this.cycleFinderSetting.get(),
-                this.circularFingerprintSizeSetting.get(), anIsParallelCalculation);
+                FeatureMatrixBuilder.getDescriptorCalculator(this.circularFingerprintSizeSetting.get()), anIsParallelCalculation);
     }
     //
     /**

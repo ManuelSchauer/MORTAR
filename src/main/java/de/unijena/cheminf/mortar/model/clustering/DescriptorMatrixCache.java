@@ -27,6 +27,7 @@ package de.unijena.cheminf.mortar.model.clustering;
 
 import de.unijena.cheminf.mortar.model.data.MoleculeDataModel;
 import de.unijena.cheminf.mortar.model.descriptor.Descriptor;
+import de.unijena.cheminf.mortar.model.descriptor.DescriptorCalculator;
 import de.unijena.cheminf.mortar.model.fragmentation.algorithm.IMoleculeFragmenter;
 import de.unijena.cheminf.mortar.model.util.ChemUtil;
 
@@ -79,9 +80,13 @@ public class DescriptorMatrixCache {
      */
     private IMoleculeFragmenter.CycleFinderOption cycleFinderOption;
     /**
-     * Length of the circular fingerprint the cached fingerprint blocks were calculated with.
+     * Size of the circular fingerprints the cached fingerprint blocks were calculated with.
      */
     private int circularFingerprintSize;
+    /**
+     * True if the cached circular fingerprint blocks were calculated as count fingerprints.
+     */
+    private boolean isCircularFingerprintCounts;
     //</editor-fold>
     //
     //<editor-fold desc="Constructor" defaultstate="collapsed">
@@ -105,8 +110,9 @@ public class DescriptorMatrixCache {
      * @param aDescriptorArray descriptors to calculate
      * @param anElectronDonationModelOption electron donation model of the aromaticity model
      * @param aCycleFinderOption cycle finder of the aromaticity model
-     * @param aCircularFingerprintSize length of the circular fingerprint, which must already be set in the descriptor
-     *                                 engine if a circular fingerprint is requested
+     * @param aDescriptorCalculator calculator for the missing descriptors; the cached fingerprint blocks are discarded
+     *                              if its circular fingerprint configuration (size, bits or counts) differs from the
+     *                              one they were calculated with
      * @param anIsParallelCalculation true: molecules are processed in parallel
      * @return feature matrix of the descriptor block
      * @throws NullPointerException if a parameter is null
@@ -115,10 +121,12 @@ public class DescriptorMatrixCache {
     public synchronized FeatureMatrix getDescriptorMatrix(List<MoleculeDataModel> aMoleculeList, Descriptor[] aDescriptorArray,
                                                           IMoleculeFragmenter.ElectronDonationModelOption anElectronDonationModelOption,
                                                           IMoleculeFragmenter.CycleFinderOption aCycleFinderOption,
-                                                          int aCircularFingerprintSize, boolean anIsParallelCalculation)
+                                                          DescriptorCalculator aDescriptorCalculator,
+                                                          boolean anIsParallelCalculation)
             throws NullPointerException, InterruptedException {
         Objects.requireNonNull(aMoleculeList, "Given molecule list is null.");
         Objects.requireNonNull(aDescriptorArray, "Given descriptor array is null.");
+        Objects.requireNonNull(aDescriptorCalculator, "Given descriptor calculator is null.");
         Objects.requireNonNull(anElectronDonationModelOption, "Given electron donation model is null.");
         Objects.requireNonNull(aCycleFinderOption, "Given cycle finder is null.");
         if (aDescriptorArray.length == 0) {
@@ -129,9 +137,11 @@ public class DescriptorMatrixCache {
                 || !this.containsAll(aMoleculeList)) {
             this.reset(aMoleculeList, anElectronDonationModelOption, aCycleFinderOption);
         }
-        if (aCircularFingerprintSize != this.circularFingerprintSize) {
+        if (aDescriptorCalculator.getCircularFingerprintSize() != this.circularFingerprintSize
+                || aDescriptorCalculator.isCircularFingerprintCounts() != this.isCircularFingerprintCounts) {
             this.blockOfDescriptorMap.keySet().removeIf(Descriptor::isFingerprint);
-            this.circularFingerprintSize = aCircularFingerprintSize;
+            this.circularFingerprintSize = aDescriptorCalculator.getCircularFingerprintSize();
+            this.isCircularFingerprintCounts = aDescriptorCalculator.isCircularFingerprintCounts();
         }
         List<Descriptor> tmpMissingDescriptors = new ArrayList<>();
         for (Descriptor tmpDescriptor : aDescriptorArray) {
@@ -153,8 +163,9 @@ public class DescriptorMatrixCache {
         if (!tmpMissingDescriptors.isEmpty()) {
             FeatureMatrix tmpCalculated = FeatureMatrixBuilder.buildDescriptorMatrix(this.moleculeList,
                     tmpMissingDescriptors.toArray(new Descriptor[0]),
-                    ChemUtil.createAromaticityModel(anElectronDonationModelOption, aCycleFinderOption), anIsParallelCalculation);
-            this.addBlocks(tmpCalculated, tmpMissingDescriptors);
+                    ChemUtil.createAromaticityModel(anElectronDonationModelOption, aCycleFinderOption), aDescriptorCalculator,
+                    anIsParallelCalculation);
+            this.addBlocks(tmpCalculated, tmpMissingDescriptors, aDescriptorCalculator);
         }
         //the requested rows of every block, in the order of the requested descriptors
         int[] tmpRowIndices = new int[aMoleculeList.size()];
@@ -240,11 +251,13 @@ public class DescriptorMatrixCache {
      *
      * @param aMatrix calculated descriptor matrix of the cached molecules
      * @param aDescriptorList descriptors of the matrix in column order
+     * @param aDescriptorCalculator calculator the matrix was calculated with, which gives the number of columns of every
+     *                              descriptor
      */
-    private void addBlocks(FeatureMatrix aMatrix, List<Descriptor> aDescriptorList) {
+    private void addBlocks(FeatureMatrix aMatrix, List<Descriptor> aDescriptorList, DescriptorCalculator aDescriptorCalculator) {
         int tmpColumn = 0;
         for (Descriptor tmpDescriptor : aDescriptorList) {
-            int tmpNumberOfComponents = tmpDescriptor.getDescriptorComponentNumber();
+            int tmpNumberOfComponents = aDescriptorCalculator.getNumberOfComponents(tmpDescriptor);
             int[] tmpColumnIndices = new int[tmpNumberOfComponents];
             for (int c = 0; c < tmpNumberOfComponents; c++) {
                 tmpColumnIndices[c] = tmpColumn++;

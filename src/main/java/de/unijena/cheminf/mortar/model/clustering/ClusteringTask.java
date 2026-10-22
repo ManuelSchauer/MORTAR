@@ -188,17 +188,15 @@ public class ClusteringTask extends Task<ClusteringRunResult> {
         ClusteringTask.checkCancellation(anIsCancelledSupplier);
         //step 2: descriptor block, calculated on the molecules
         aProgressConsumer.accept(1, "Calculating descriptors...");
-        //note: the circular fingerprint size is a global setting of the descriptor engine
-        if (DescriptorCalculator.getCircularFingerprintSize() != aParameters.circularFingerprintSize()) {
-            DescriptorCalculator.setCircularFingerprintSize(aParameters.circularFingerprintSize());
-        }
+        //the calculator defines the circular fingerprint size and the names and types of the descriptor columns
+        DescriptorCalculator tmpDescriptorCalculator = FeatureMatrixBuilder.getDescriptorCalculator(aParameters.circularFingerprintSize());
         FeatureMatrix tmpDescriptorMatrix = aDescriptorMatrixCache == null
                 ? FeatureMatrixBuilder.buildDescriptorMatrix(aMoleculeList, aParameters.descriptors(),
                         ChemUtil.createAromaticityModel(aParameters.electronDonationModelOption(), aParameters.cycleFinderOption()),
-                        aParameters.isParallelCalculation())
+                        tmpDescriptorCalculator, aParameters.isParallelCalculation())
                 : aDescriptorMatrixCache.getDescriptorMatrix(aMoleculeList, aParameters.descriptors(),
                         aParameters.electronDonationModelOption(), aParameters.cycleFinderOption(),
-                        aParameters.circularFingerprintSize(), aParameters.isParallelCalculation());
+                        tmpDescriptorCalculator, aParameters.isParallelCalculation());
         FeatureMatrix tmpRawMatrix = FeatureMatrix.concatenate(tmpFragmentMatrix, tmpDescriptorMatrix);
         ClusteringTask.checkCancellation(anIsCancelledSupplier);
         //step 3: transformation

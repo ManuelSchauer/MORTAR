@@ -169,7 +169,7 @@ public class ClusterProfiler {
             tmpAllRows[i] = i;
         }
         for (int j = 0; j < tmpColumnCount; j++) {
-            if (tmpRaw.getFeatureType(j) == FeatureType.CONTINUOUS) {
+            if (FeatureMatrixBuilder.isMolecularDescriptorColumn(tmpRaw, j)) {
                 this.categories[j] = FeatureCategory.DESCRIPTOR;
             } else if (tmpRaw.getFeatureGroupName(j).equals(aRunResult.parameters().fragmentationName())) {
                 this.categories[j] = FeatureCategory.FRAGMENT;

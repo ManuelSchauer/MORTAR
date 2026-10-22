@@ -49,4 +49,12 @@ interface DescriptorCalculation {
      */
     boolean calculate(Descriptor descriptor, IAtomContainer atomContainer, float[] vector, int startIndex)
             throws InterruptedException;
+
+    /**
+     * Returns the names of the calculated components, i.e. one name per matrix column, in the order in which the
+     * components are written into the vector.
+     *
+     * @return a new array with the component names
+     */
+    String[] getComponentNames();
 }
