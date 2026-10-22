@@ -25,18 +25,28 @@
 
 package de.unijena.cheminf.mortar.model.fragmentation.algorithm;
 
+import de.unijena.cheminf.mortar.gui.util.GuiUtil;
 import de.unijena.cheminf.mortar.message.Message;
 import de.unijena.cheminf.mortar.model.io.Importer;
 import de.unijena.cheminf.mortar.model.util.BasicDefinitions;
 import de.unijena.cheminf.mortar.model.util.CollectionUtil;
+import de.unijena.cheminf.mortar.model.util.IDisplayEnum;
+import de.unijena.cheminf.mortar.model.util.SimpleIDisplayEnumConstantProperty;
 
 import javafx.beans.property.Property;
 import javafx.beans.property.SimpleBooleanProperty;
 
+import org.openscience.cdk.aromaticity.Aromaticity;
+import org.openscience.cdk.aromaticity.ElectronDonation;
+import org.openscience.cdk.aromaticity.Kekulization;
 import org.openscience.cdk.exception.CDKException;
+import org.openscience.cdk.graph.Cycles;
 import org.openscience.cdk.graph.GraphUtil;
 import org.openscience.cdk.graph.invariant.Canon;
+import org.openscience.cdk.interfaces.IAtom;
 import org.openscience.cdk.interfaces.IAtomContainer;
+import org.openscience.cdk.interfaces.IBond;
+import org.openscience.cdk.interfaces.IChemObjectBuilder;
 import org.openscience.cdk.silent.SilentChemObjectBuilder;
 import org.openscience.cdk.smarts.SmartsPattern;
 import org.openscience.cdk.smiles.SmilesParser;
@@ -48,6 +58,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Wrapper class that makes the substructure definitions of the Biosynfoni fingerprint
@@ -60,12 +72,20 @@ import java.util.Objects;
  * <br>Many of these SMARTS patterns are promiscuous, i.e. they match structurally different substructures (e.g.
  * the ethyl pattern "[#6]~[#6]" matches every carbon-carbon bond regardless of bond order and aromaticity). Returning
  * the matched atoms as fragments would therefore scatter the matches of one Biosynfoni key over many different
- * fragments. Instead, every accepted match of a key is returned as one fixed representative structure that is
- * stored for this key (see {@link BiosynfoniKey#getRepresentativeSmiles()}). All matches of the same key thus end up
- * as one fragment in MORTAR, and the frequency of this fragment in a molecule equals the count of the respective
- * Biosynfoni count fingerprint position. The label and the SMARTS pattern of the key are attached to every returned
- * fragment as properties (see {@link #BIOSYNFONI_LABEL_PROPERTY_KEY}, {@link #BIOSYNFONI_SMARTS_PROPERTY_KEY},
- * and {@link IMoleculeFragmenter#FRAGMENT_CATEGORY_PROPERTY_KEY}).
+ * fragments. Therefore, by default, every accepted match of a key is returned as one fixed representative structure
+ * that is stored for this key (see {@link BiosynfoniKey#getRepresentativeSmiles()}). All matches of the same key thus
+ * end up as one fragment in MORTAR, and the frequency of this fragment in a molecule equals the count of the
+ * respective Biosynfoni count fingerprint position.
+ * <br>Alternatively, the actually matched substructures can be returned (see
+ * {@link BiosynfoniReturnedFragmentsOption#MATCHED_SUBSTRUCTURES}). This shows which different substructures are
+ * covered by a specific SMARTS pattern. Each matched substructure consists of the matched atoms and all bonds between
+ * them, free valences are saturated with implicit hydrogen atoms, and aromaticity is re-detected on the fragment.
+ * Bonds of aromatic systems that are only partially matched therefore appear in the Kekulé form of the input molecule.
+ * <br>The label and the SMARTS pattern of the key are attached to every returned fragment as properties (see
+ * {@link #BIOSYNFONI_LABEL_PROPERTY_KEY}, {@link #BIOSYNFONI_SMARTS_PROPERTY_KEY},
+ * {@link IMoleculeFragmenter#FRAGMENT_CATEGORY_PROPERTY_KEY}, and
+ * {@link IMoleculeFragmenter#FRAGMENT_DISPLAY_LABEL_PROPERTY_KEY}); the latter is used to display the label below
+ * the fragment structure in the GUI.
  * <br>
  * <br>As in the reference implementation, two optional overlap filters are available as settings:
  * <ul>
@@ -370,6 +390,65 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
         public String getRepresentativeSmiles() {
             return this.representativeSmiles;
         }
+        //
+        /**
+         * Returns the language-specific, readable name of the key that is displayed in the GUI.
+         *
+         * @return display name
+         */
+        public String getDisplayName() {
+            return Message.get("BiosynfoniFragmenter.BiosynfoniKey." + this.name() + ".displayName");
+        }
+    }
+    //</editor-fold>
+    //
+    //<editor-fold desc="Enum BiosynfoniReturnedFragmentsOption">
+    /**
+     * Enum for the options of which fragments are returned for the matches of the Biosynfoni SMARTS patterns.
+     */
+    public enum BiosynfoniReturnedFragmentsOption implements IDisplayEnum {
+        /**
+         * Every match of a key is returned as the stored representative structure of the key, so all matches of a key
+         * are combined into one fragment.
+         */
+        REPRESENTATIVE_STRUCTURES(
+                Message.get("BiosynfoniFragmenter.BiosynfoniReturnedFragmentsOption.RepresentativeStructures.displayName"),
+                Message.get("BiosynfoniFragmenter.BiosynfoniReturnedFragmentsOption.RepresentativeStructures.tooltip")),
+        /**
+         * Every match of a key is returned as the substructure formed by the matched atoms, so the different
+         * substructures matched by a key become visible.
+         */
+        MATCHED_SUBSTRUCTURES(
+                Message.get("BiosynfoniFragmenter.BiosynfoniReturnedFragmentsOption.MatchedSubstructures.displayName"),
+                Message.get("BiosynfoniFragmenter.BiosynfoniReturnedFragmentsOption.MatchedSubstructures.tooltip"));
+        /**
+         * Language-specific name for display in GUI.
+         */
+        private final String displayName;
+        /**
+         * Language-specific tooltip text for display in GUI.
+         */
+        private final String tooltip;
+        /**
+         * Constructor.
+         *
+         * @param aDisplayName display name
+         * @param aTooltip tooltip text
+         */
+        private BiosynfoniReturnedFragmentsOption(String aDisplayName, String aTooltip) {
+            this.displayName = aDisplayName;
+            this.tooltip = aTooltip;
+        }
+        //
+        @Override
+        public String getDisplayName() {
+            return this.displayName;
+        }
+        //
+        @Override
+        public String getTooltipText() {
+            return this.tooltip;
+        }
     }
     //</editor-fold>
     //
@@ -400,6 +479,12 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
      * Biosynfoni fingerprinter.
      */
     public static final boolean INTER_SUBSTRUCTURE_OVERLAP_FILTER_SETTING_DEFAULT = false;
+
+    /**
+     * Default option for the returned fragments setting.
+     */
+    public static final BiosynfoniReturnedFragmentsOption RETURNED_FRAGMENTS_OPTION_DEFAULT =
+            BiosynfoniReturnedFragmentsOption.REPRESENTATIVE_STRUCTURES;
     //</editor-fold>
     //
     //<editor-fold desc="Private final variables">
@@ -418,6 +503,14 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
 
     private final SimpleBooleanProperty interSubstructureOverlapFilterSetting;
 
+    private final SimpleIDisplayEnumConstantProperty returnedFragmentsSetting;
+
+    /**
+     * Aromaticity model that is applied to the matched substructure fragments, corresponding to the Daylight model
+     * used for SMARTS matching.
+     */
+    private final Aromaticity fragmentAromaticityModel;
+
     /**
      * All settings of this fragmenter, encapsulated in JavaFX properties for binding in GUI.
      */
@@ -432,6 +525,11 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
      * Map to store pairs of {@literal <setting name, display name>}.
      */
     private final HashMap<String, String> settingNameToDisplayNameMap;
+
+    /**
+     * Logger of this class.
+     */
+    private static final Logger LOGGER = Logger.getLogger(BiosynfoniFragmenter.class.getName());
     //</editor-fold>
     //
     //<editor-fold desc="Constructor">
@@ -446,7 +544,9 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
             this.smartsPatterns[i] = SmartsPattern.create(tmpKeys[i].getSmarts());
         }
         this.smilesParser = new SmilesParser(SilentChemObjectBuilder.getInstance());
-        int tmpNumberOfSettings = 2;
+        this.fragmentAromaticityModel = new Aromaticity(ElectronDonation.daylight(),
+                Cycles.or(Cycles.all(), Cycles.cdkAromaticSet()));
+        int tmpNumberOfSettings = 3;
         this.settings = new ArrayList<>(tmpNumberOfSettings);
         int tmpInitialCapacityForSettingMaps = CollectionUtil.calculateInitialHashCollectionCapacity(
                 tmpNumberOfSettings,
@@ -471,6 +571,30 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
                 Message.get("BiosynfoniFragmenter.interSubstructureOverlapFilterSetting.tooltip"));
         this.settingNameToDisplayNameMap.put(this.interSubstructureOverlapFilterSetting.getName(),
                 Message.get("BiosynfoniFragmenter.interSubstructureOverlapFilterSetting.displayName"));
+
+        this.returnedFragmentsSetting = new SimpleIDisplayEnumConstantProperty(this, "Returned fragments setting",
+                BiosynfoniFragmenter.RETURNED_FRAGMENTS_OPTION_DEFAULT, BiosynfoniReturnedFragmentsOption.class) {
+            @Override
+            public void set(IDisplayEnum newValue) throws NullPointerException, IllegalArgumentException {
+                try {
+                    //call to super.set() for parameter checks
+                    super.set(newValue);
+                } catch (NullPointerException | IllegalArgumentException anException) {
+                    BiosynfoniFragmenter.LOGGER.log(Level.WARNING, anException.toString(), anException);
+                    GuiUtil.guiExceptionAlert(Message.get("Fragmenter.IllegalSettingValue.Title"),
+                            Message.get("Fragmenter.IllegalSettingValue.Header"),
+                            anException.toString(),
+                            anException);
+                    //re-throws the exception to properly reset the binding
+                    throw anException;
+                }
+            }
+        };
+        this.settings.add(this.returnedFragmentsSetting);
+        this.settingNameToTooltipTextMap.put(this.returnedFragmentsSetting.getName(),
+                Message.get("BiosynfoniFragmenter.returnedFragmentsSetting.tooltip"));
+        this.settingNameToDisplayNameMap.put(this.returnedFragmentsSetting.getName(),
+                Message.get("BiosynfoniFragmenter.returnedFragmentsSetting.displayName"));
     }
     //</editor-fold>
     //
@@ -512,6 +636,24 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
     public SimpleBooleanProperty interSubstructureOverlapFilterSettingProperty() {
         return this.interSubstructureOverlapFilterSetting;
     }
+
+    /**
+     * Returns the currently set option of the returned fragments setting.
+     *
+     * @return enum constant of the set option
+     */
+    public BiosynfoniReturnedFragmentsOption getReturnedFragmentsSetting() {
+        return (BiosynfoniReturnedFragmentsOption) this.returnedFragmentsSetting.get();
+    }
+
+    /**
+     * Returns the property object of the returned fragments setting that can be used to configure this setting.
+     *
+     * @return property object of the returned fragments setting
+     */
+    public SimpleIDisplayEnumConstantProperty returnedFragmentsSettingProperty() {
+        return this.returnedFragmentsSetting;
+    }
     //</editor-fold>
     //
     //<editor-fold desc="Public properties set">
@@ -533,6 +675,18 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
      */
     public void setInterSubstructureOverlapFilterSetting(boolean aBoolean) {
         this.interSubstructureOverlapFilterSetting.set(aBoolean);
+    }
+
+    /**
+     * Sets the returned fragments setting, defining whether the matches of a key are returned as the stored
+     * representative structure of the key or as the actually matched substructures.
+     *
+     * @param anOption a constant from the {@link BiosynfoniReturnedFragmentsOption} enum
+     * @throws NullPointerException if the given option is null
+     */
+    public void setReturnedFragmentsSetting(BiosynfoniReturnedFragmentsOption anOption) throws NullPointerException {
+        Objects.requireNonNull(anOption, "Given option is null.");
+        this.returnedFragmentsSetting.set(anOption);
     }
     //</editor-fold>
     //
@@ -569,6 +723,7 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
         BiosynfoniFragmenter tmpCopy = new BiosynfoniFragmenter();
         tmpCopy.setIntraSubstructureOverlapFilterSetting(this.intraSubstructureOverlapFilterSetting.get());
         tmpCopy.setInterSubstructureOverlapFilterSetting(this.interSubstructureOverlapFilterSetting.get());
+        tmpCopy.setReturnedFragmentsSetting((BiosynfoniReturnedFragmentsOption) this.returnedFragmentsSetting.get());
         return tmpCopy;
     }
 
@@ -576,6 +731,7 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
     public void restoreDefaultSettings() {
         this.intraSubstructureOverlapFilterSetting.set(BiosynfoniFragmenter.INTRA_SUBSTRUCTURE_OVERLAP_FILTER_SETTING_DEFAULT);
         this.interSubstructureOverlapFilterSetting.set(BiosynfoniFragmenter.INTER_SUBSTRUCTURE_OVERLAP_FILTER_SETTING_DEFAULT);
+        this.returnedFragmentsSetting.set(BiosynfoniFragmenter.RETURNED_FRAGMENTS_OPTION_DEFAULT);
     }
 
     @Override
@@ -591,7 +747,18 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
         //SMARTS preparation alters the aromaticity and ring flags of the atom container, so work on a clone
         IAtomContainer tmpMoleculeClone = aMolecule.clone();
         List<IAtomContainer> tmpFragments = new ArrayList<>();
+        boolean tmpAreMatchedSubstructuresReturned = this.returnedFragmentsSetting.get().equals(
+                BiosynfoniReturnedFragmentsOption.MATCHED_SUBSTRUCTURES);
         try {
+            if (tmpAreMatchedSubstructuresReturned) {
+                //the matched substructures are built from the explicit bond orders of the Kekulé form
+                for (IBond tmpBond : tmpMoleculeClone.bonds()) {
+                    if (Objects.isNull(tmpBond.getOrder()) || tmpBond.getOrder() == IBond.Order.UNSET) {
+                        Kekulization.kekulize(tmpMoleculeClone);
+                        break;
+                    }
+                }
+            }
             SmartsPattern.prepare(tmpMoleculeClone);
             int[] tmpCanonicalRanks = this.intraSubstructureOverlapFilterSetting.get()
                     ? BiosynfoniFragmenter.getCanonicalRanks(tmpMoleculeClone) : null;
@@ -615,10 +782,16 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
                 if (tmpMatches.isEmpty()) {
                     continue;
                 }
-                //all matches of one key are represented by the same structure and thereby collapse into one fragment
-                IAtomContainer tmpRepresentative = this.createRepresentativeFragment(tmpKeys[i]);
-                for (int j = 0; j < tmpMatches.size(); j++) {
-                    tmpFragments.add(tmpRepresentative);
+                if (tmpAreMatchedSubstructuresReturned) {
+                    for (int[] tmpMatch : tmpMatches) {
+                        tmpFragments.add(this.createMatchedSubstructureFragment(tmpMoleculeClone, tmpMatch, tmpKeys[i]));
+                    }
+                } else {
+                    //all matches of one key are represented by the same structure and thereby collapse into one fragment
+                    IAtomContainer tmpRepresentative = this.createRepresentativeFragment(tmpKeys[i]);
+                    for (int j = 0; j < tmpMatches.size(); j++) {
+                        tmpFragments.add(tmpRepresentative);
+                    }
                 }
             }
         } catch (Exception anException) {
@@ -670,11 +843,68 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
      */
     private IAtomContainer createRepresentativeFragment(BiosynfoniKey aKey) throws CDKException {
         IAtomContainer tmpRepresentative = this.smilesParser.parseSmiles(aKey.getRepresentativeSmiles());
-        tmpRepresentative.setTitle(aKey.getLabel());
-        tmpRepresentative.setProperty(BiosynfoniFragmenter.BIOSYNFONI_LABEL_PROPERTY_KEY, aKey.getLabel());
-        tmpRepresentative.setProperty(BiosynfoniFragmenter.BIOSYNFONI_SMARTS_PROPERTY_KEY, aKey.getSmarts());
-        tmpRepresentative.setProperty(IMoleculeFragmenter.FRAGMENT_CATEGORY_PROPERTY_KEY, aKey.getLabel());
+        BiosynfoniFragmenter.annotateFragment(tmpRepresentative, aKey);
         return tmpRepresentative;
+    }
+
+    /**
+     * Creates a fragment from the given match that consists of the matched atoms and all bonds between them. Free
+     * valences resulting from bonds to non-matched atoms are saturated with implicit hydrogen atoms, and aromaticity
+     * is re-detected on the fragment. The fragment is annotated with the key label and SMARTS pattern.
+     *
+     * @param aMolecule the molecule the match was found in; must have explicit (Kekulé) bond orders
+     * @param aMatch atom indices of the match
+     * @param aKey the Biosynfoni key that produced the match
+     * @return new atom container of the matched substructure
+     * @throws CloneNotSupportedException if an atom cannot be cloned
+     * @throws CDKException if aromaticity detection on the fragment fails
+     */
+    private IAtomContainer createMatchedSubstructureFragment(IAtomContainer aMolecule, int[] aMatch, BiosynfoniKey aKey)
+            throws CloneNotSupportedException, CDKException {
+        IChemObjectBuilder tmpBuilder = aMolecule.getBuilder();
+        IAtomContainer tmpFragment = tmpBuilder.newAtomContainer();
+        IAtom[] tmpOriginalToFragmentAtom = new IAtom[aMolecule.getAtomCount()];
+        for (int tmpAtomIndex : aMatch) {
+            IAtom tmpOriginalAtom = aMolecule.getAtom(tmpAtomIndex);
+            IAtom tmpFragmentAtom = tmpOriginalAtom.clone();
+            int tmpImplicitHydrogenCount = Objects.isNull(tmpOriginalAtom.getImplicitHydrogenCount())
+                    ? 0 : tmpOriginalAtom.getImplicitHydrogenCount();
+            tmpFragmentAtom.setImplicitHydrogenCount(tmpImplicitHydrogenCount);
+            tmpFragmentAtom.setIsAromatic(false);
+            tmpFragmentAtom.setIsInRing(false);
+            tmpFragment.addAtom(tmpFragmentAtom);
+            //the container may wrap the added atom, so the stored reference has to be taken from it
+            tmpOriginalToFragmentAtom[tmpAtomIndex] = tmpFragment.getAtom(tmpFragment.getAtomCount() - 1);
+        }
+        for (IBond tmpBond : aMolecule.bonds()) {
+            IAtom tmpBegin = tmpOriginalToFragmentAtom[tmpBond.getBegin().getIndex()];
+            IAtom tmpEnd = tmpOriginalToFragmentAtom[tmpBond.getEnd().getIndex()];
+            if (!Objects.isNull(tmpBegin) && !Objects.isNull(tmpEnd)) {
+                tmpFragment.addBond(tmpBuilder.newInstance(IBond.class, tmpBegin, tmpEnd, tmpBond.getOrder()));
+            } else if (!Objects.isNull(tmpBegin) || !Objects.isNull(tmpEnd)) {
+                //bond to a non-matched atom is cut, saturate the free valence with hydrogen atoms
+                IAtom tmpMatchedAtom = Objects.isNull(tmpBegin) ? tmpEnd : tmpBegin;
+                tmpMatchedAtom.setImplicitHydrogenCount(tmpMatchedAtom.getImplicitHydrogenCount() + tmpBond.getOrder().numeric());
+            }
+        }
+        this.fragmentAromaticityModel.apply(tmpFragment);
+        BiosynfoniFragmenter.annotateFragment(tmpFragment, aKey);
+        return tmpFragment;
+    }
+
+    /**
+     * Sets the title and the label, SMARTS, category, and display label properties of the given fragment according
+     * to the given key. The display label is the readable display name of the key.
+     *
+     * @param aFragment the fragment to annotate
+     * @param aKey the Biosynfoni key that produced the fragment
+     */
+    private static void annotateFragment(IAtomContainer aFragment, BiosynfoniKey aKey) {
+        aFragment.setTitle(aKey.getLabel());
+        aFragment.setProperty(BiosynfoniFragmenter.BIOSYNFONI_LABEL_PROPERTY_KEY, aKey.getLabel());
+        aFragment.setProperty(BiosynfoniFragmenter.BIOSYNFONI_SMARTS_PROPERTY_KEY, aKey.getSmarts());
+        aFragment.setProperty(IMoleculeFragmenter.FRAGMENT_CATEGORY_PROPERTY_KEY, aKey.getLabel());
+        aFragment.setProperty(IMoleculeFragmenter.FRAGMENT_DISPLAY_LABEL_PROPERTY_KEY, aKey.getDisplayName());
     }
 
     /**

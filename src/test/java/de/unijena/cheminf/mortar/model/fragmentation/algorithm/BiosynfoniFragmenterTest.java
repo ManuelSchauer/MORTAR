@@ -25,6 +25,8 @@
 
 package de.unijena.cheminf.mortar.model.fragmentation.algorithm;
 
+import de.unijena.cheminf.mortar.model.util.ChemUtil;
+
 import javafx.beans.property.Property;
 
 import org.junit.jupiter.api.Assertions;
@@ -86,7 +88,9 @@ class BiosynfoniFragmenterTest {
                 tmpFragmenter.getInterSubstructureOverlapFilterSetting());
         tmpFragmenter.setIntraSubstructureOverlapFilterSetting(!BiosynfoniFragmenter.INTRA_SUBSTRUCTURE_OVERLAP_FILTER_SETTING_DEFAULT);
         tmpFragmenter.setInterSubstructureOverlapFilterSetting(!BiosynfoniFragmenter.INTER_SUBSTRUCTURE_OVERLAP_FILTER_SETTING_DEFAULT);
+        tmpFragmenter.setReturnedFragmentsSetting(BiosynfoniFragmenter.BiosynfoniReturnedFragmentsOption.MATCHED_SUBSTRUCTURES);
         BiosynfoniFragmenter tmpCopy = (BiosynfoniFragmenter) tmpFragmenter.copy();
+        Assertions.assertEquals(tmpFragmenter.getReturnedFragmentsSetting(), tmpCopy.getReturnedFragmentsSetting());
         Assertions.assertEquals(tmpFragmenter.getIntraSubstructureOverlapFilterSetting(), tmpCopy.getIntraSubstructureOverlapFilterSetting());
         Assertions.assertEquals(tmpFragmenter.getInterSubstructureOverlapFilterSetting(), tmpCopy.getInterSubstructureOverlapFilterSetting());
         tmpFragmenter.restoreDefaultSettings();
@@ -94,6 +98,7 @@ class BiosynfoniFragmenterTest {
                 tmpFragmenter.getIntraSubstructureOverlapFilterSetting());
         Assertions.assertEquals(BiosynfoniFragmenter.INTER_SUBSTRUCTURE_OVERLAP_FILTER_SETTING_DEFAULT,
                 tmpFragmenter.getInterSubstructureOverlapFilterSetting());
+        Assertions.assertEquals(BiosynfoniFragmenter.RETURNED_FRAGMENTS_OPTION_DEFAULT, tmpFragmenter.getReturnedFragmentsSetting());
     }
     //
     /**
@@ -107,12 +112,15 @@ class BiosynfoniFragmenterTest {
         SmilesParser tmpSmiPar = new SmilesParser(SilentChemObjectBuilder.getInstance());
         SmilesGenerator tmpSmiGen = new SmilesGenerator(SmiFlavor.Unique);
         Set<String> tmpUniqueSmilesSet = new HashSet<>();
+        Set<String> tmpDisplayNameSet = new HashSet<>();
         for (BiosynfoniFragmenter.BiosynfoniKey tmpKey : BiosynfoniFragmenter.BiosynfoniKey.values()) {
             IAtomContainer tmpRepresentative = tmpSmiPar.parseSmiles(tmpKey.getRepresentativeSmiles());
             Assertions.assertTrue(tmpUniqueSmilesSet.add(tmpSmiGen.create(tmpRepresentative)),
                     "Representative structure is not unique: " + tmpKey.getLabel());
             Assertions.assertTrue(SmartsPattern.create(tmpKey.getSmarts()).matches(tmpRepresentative),
                     "Representative structure is not matched by its own SMARTS: " + tmpKey.getLabel());
+            Assertions.assertTrue(tmpDisplayNameSet.add(tmpKey.getDisplayName()), "Display name is not unique: " + tmpKey.getLabel());
+            Assertions.assertFalse(tmpKey.getDisplayName().startsWith("Key '"), "Display name is missing: " + tmpKey.getLabel());
         }
     }
     //
@@ -184,6 +192,75 @@ class BiosynfoniFragmenterTest {
         Assertions.assertTrue(tmpBothFilteredCount <= tmpIntraFilteredCount);
     }
     //
+    /**
+     * Tests the matched substructures option: for all overlap filter combinations, the number of fragments per key
+     * equals the one of the representative structures option, every fragment has as many atoms as the SMARTS pattern
+     * of its key matches, carries the label of its key, and can be converted to a valid SMILES code that MORTAR can
+     * parse again. Additionally, the promiscuous ethyl pattern must produce different substructures.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    void matchedSubstructuresTest() throws Exception {
+        SmilesParser tmpSmiPar = new SmilesParser(SilentChemObjectBuilder.getInstance());
+        SmilesGenerator tmpSmiGen = new SmilesGenerator(SmiFlavor.Unique | SmiFlavor.UseAromaticSymbols);
+        IAtomContainer tmpMolecule = tmpSmiPar.parseSmiles(BiosynfoniFragmenterTest.TEST_MOLECULE_SMILES);
+        String tmpInputSmilesBefore = tmpSmiGen.create(tmpMolecule);
+        BiosynfoniFragmenter tmpRepresentativeFragmenter = new BiosynfoniFragmenter();
+        BiosynfoniFragmenter tmpMatchedFragmenter = new BiosynfoniFragmenter();
+        tmpMatchedFragmenter.setReturnedFragmentsSetting(BiosynfoniFragmenter.BiosynfoniReturnedFragmentsOption.MATCHED_SUBSTRUCTURES);
+        for (boolean tmpIsIntraFilterApplied : new boolean[] {false, true}) {
+            for (boolean tmpIsInterFilterApplied : new boolean[] {false, true}) {
+                tmpRepresentativeFragmenter.setIntraSubstructureOverlapFilterSetting(tmpIsIntraFilterApplied);
+                tmpRepresentativeFragmenter.setInterSubstructureOverlapFilterSetting(tmpIsInterFilterApplied);
+                tmpMatchedFragmenter.setIntraSubstructureOverlapFilterSetting(tmpIsIntraFilterApplied);
+                tmpMatchedFragmenter.setInterSubstructureOverlapFilterSetting(tmpIsInterFilterApplied);
+                List<IAtomContainer> tmpFragments = tmpMatchedFragmenter.fragmentMolecule(tmpMolecule);
+                //SMARTS matching in this test prepares the target, so a clone is used to keep the input molecule untouched
+                IAtomContainer tmpMoleculeClone = tmpMolecule.clone();
+                Assertions.assertEquals(
+                        BiosynfoniFragmenterTest.countPerLabel(tmpRepresentativeFragmenter.fragmentMolecule(tmpMolecule)),
+                        BiosynfoniFragmenterTest.countPerLabel(tmpFragments));
+                for (IAtomContainer tmpFragment : tmpFragments) {
+                    String tmpLabel = tmpFragment.getProperty(BiosynfoniFragmenter.BIOSYNFONI_LABEL_PROPERTY_KEY);
+                    Assertions.assertEquals(BiosynfoniFragmenter.BiosynfoniKey.valueOf(BiosynfoniFragmenterTest.keyNameForLabel(tmpLabel)).getDisplayName(),
+                            tmpFragment.getProperty(IMoleculeFragmenter.FRAGMENT_DISPLAY_LABEL_PROPERTY_KEY));
+                    SmartsPattern tmpPattern = SmartsPattern.create(tmpFragment.getProperty(BiosynfoniFragmenter.BIOSYNFONI_SMARTS_PROPERTY_KEY));
+                    int[] tmpAnyMatch = tmpPattern.match(tmpMoleculeClone);
+                    Assertions.assertEquals(tmpAnyMatch.length, tmpFragment.getAtomCount(), tmpLabel);
+                    String tmpSmiles = ChemUtil.createUniqueSmiles(tmpFragment, false);
+                    Assertions.assertNotNull(tmpSmiles, tmpLabel);
+                    Assertions.assertDoesNotThrow(() -> ChemUtil.parseSmilesToAtomContainer(tmpSmiles), tmpSmiles);
+                }
+            }
+        }
+        tmpMatchedFragmenter.setIntraSubstructureOverlapFilterSetting(false);
+        tmpMatchedFragmenter.setInterSubstructureOverlapFilterSetting(false);
+        Set<String> tmpEthylSmilesSet = new HashSet<>();
+        for (IAtomContainer tmpFragment : tmpMatchedFragmenter.fragmentMolecule(tmpMolecule)) {
+            if (BiosynfoniFragmenter.BiosynfoniKey.D_ETHYL.getLabel().equals(tmpFragment.getProperty(BiosynfoniFragmenter.BIOSYNFONI_LABEL_PROPERTY_KEY))) {
+                tmpEthylSmilesSet.add(ChemUtil.createUniqueSmiles(tmpFragment, false));
+            }
+        }
+        Assertions.assertTrue(tmpEthylSmilesSet.contains("CC"), tmpEthylSmilesSet.toString());
+        Assertions.assertTrue(tmpEthylSmilesSet.contains("C=C"), tmpEthylSmilesSet.toString());
+        Assertions.assertEquals(tmpInputSmilesBefore, tmpSmiGen.create(tmpMolecule));
+    }
+    //
+    /**
+     * Returns the name of the key enum constant with the given label.
+     *
+     * @param aLabel Biosynfoni label
+     * @return enum constant name
+     */
+    private static String keyNameForLabel(String aLabel) {
+        for (BiosynfoniFragmenter.BiosynfoniKey tmpKey : BiosynfoniFragmenter.BiosynfoniKey.values()) {
+            if (tmpKey.getLabel().equals(aLabel)) {
+                return tmpKey.name();
+            }
+        }
+        throw new IllegalArgumentException("Unknown label: " + aLabel);
+    }    //
     /**
      * Counts the returned fragments per Biosynfoni label.
      *
