@@ -185,6 +185,11 @@ public class FragmentationTask implements Callable<FragmentationTaskResult> {
                     if (tmpFragmentDataModel == null) {
                         tmpFragmentDataModel = tmpNewFragmentDataModel;
                     }
+                    // collect the display labels of all fragmenter outputs that resulted in this fragment
+                    Object tmpDisplayLabel = tmpFragment.getProperty(IMoleculeFragmenter.FRAGMENT_DISPLAY_LABEL_PROPERTY_KEY);
+                    if (tmpDisplayLabel != null) {
+                        tmpFragmentDataModel.addDisplayLabel(tmpDisplayLabel.toString());
+                    }
                     // increment the absolute frequency of this fragment - operation is atomic!
                     tmpFragmentDataModel.incrementAbsoluteFrequency();
                     // add the initial molecule as a parent molecule
