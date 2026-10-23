@@ -5,6 +5,8 @@ cdk-version = "2.13"
 cdkScaffold-version = "2.13"
 javafx-version = "21.0.1"
 openpdf-version = "2.0.3"
+art2aClustering-version = "2.0.0"
+fragmentFingerprints-version = "1.2.0"
 
 # plugins
 javafxplugin-version = "0.1.0"
@@ -25,7 +27,14 @@ cdkInchi = { group = "org.openscience.cdk", name = "cdk-inchi", version.ref = "c
 cdkStandard = { group = "org.openscience.cdk", name = "cdk-standard", version.ref = "cdk-version" }
 cdkValencycheck = { group = "org.openscience.cdk", name = "cdk-valencycheck", version.ref = "cdk-version" }
 cdkFragment = { group = "org.openscience.cdk", name = "cdk-fragment", version.ref = "cdk-version" }
+cdkQsar = { group = "org.openscience.cdk", name = "cdk-qsar", version.ref = "cdk-version" }
+cdkQsarmolecular = { group = "org.openscience.cdk", name = "cdk-qsarmolecular", version.ref = "cdk-version" }
+cdkQsarprotein = { group = "org.openscience.cdk", name = "cdk-qsarprotein", version.ref = "cdk-version" }
+cdkFingerprint = { group = "org.openscience.cdk", name = "cdk-fingerprint", version.ref = "cdk-version" }
 cdkScaffold = { group = "org.openscience.cdk", name = "cdk-scaffold", version.ref = "cdkScaffold-version" }
+
+art2aClustering = { group = "io.github.jonasschaub", name = "ART2a-Clustering-for-Java", version.ref = "art2aClustering-version" }
+fragmentFingerprints = { group = "io.github.jonasschaub", name = "FragmentFingerprints", version.ref = "fragmentFingerprints-version" }
 
 molWURCS = { group = "org.glycoinfo", name = "MolWURCS", version = "0.12.1" }
 

@@ -40,6 +40,14 @@ import com.lowagie.text.pdf.PdfWriter;
 
 import de.unijena.cheminf.mortar.controller.TabNames;
 import de.unijena.cheminf.mortar.message.Message;
+import de.unijena.cheminf.mortar.model.clustering.ClusterProfiler;
+import de.unijena.cheminf.mortar.model.clustering.ClusterQuality;
+import de.unijena.cheminf.mortar.model.clustering.ClusterStability;
+import de.unijena.cheminf.mortar.model.clustering.ClusteringRunResult;
+import de.unijena.cheminf.mortar.model.clustering.DiverseSubsetSelector;
+import de.unijena.cheminf.mortar.model.clustering.FeatureMatrix;
+import de.unijena.cheminf.mortar.model.clustering.TrainTestSplitter;
+import de.unijena.cheminf.mortar.model.clustering.VigilanceScan;
 import de.unijena.cheminf.mortar.model.data.FragmentDataModel;
 import de.unijena.cheminf.mortar.model.data.MoleculeDataModel;
 import de.unijena.cheminf.mortar.model.depict.DepictionUtil;
@@ -73,16 +81,21 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * Exporter.
@@ -126,7 +139,31 @@ public class Exporter {
         /**
          * enum value for pdb file.
          */
-        FRAGMENT_PDB_FILE;
+        FRAGMENT_PDB_FILE,
+        /**
+         * enum value for the CSV files of a clustering run (feature matrices, clusters, removed features, parameters)
+         */
+        CLUSTERING_CSV_FILES,
+        /**
+         * enum value for the CSV files of a training/test partitioning based on a clustering run
+         */
+        TRAIN_TEST_SPLIT_CSV_FILES,
+        /**
+         * enum value for the CSV file of a vigilance scan of a clustering run
+         */
+        VIGILANCE_SCAN_CSV_FILE,
+        /**
+         * enum value for the CSV file of a diverse subset selected from a clustering run
+         */
+        DIVERSE_SUBSET_CSV_FILE,
+        /**
+         * enum value for the CSV file of a table of calculated descriptor values of molecules
+         */
+        DESCRIPTOR_CSV_FILE,
+        /**
+         * enum value for the CSV file of the quality of the clusters of a clustering run
+         */
+        CLUSTER_QUALITY_CSV_FILE;
     }
     //</editor-fold>
     //
@@ -154,6 +191,10 @@ public class Exporter {
          * Enum for png extension.
          */
         PNG(".png"),
+        /**
+         * Enum for txt extension.
+         */
+        TXT(".txt"),
         ;
         //
         /**
@@ -252,6 +293,10 @@ public class Exporter {
      * Logger of this class.
      */
     private static final Logger LOGGER = Logger.getLogger(Exporter.class.getName());
+    /**
+     * Number of most enriched and of most depleted fragments and fingerprint bits per cluster in the cluster profile export.
+     */
+    private static final int NUMBER_OF_PROFILE_FEATURES_IN_EXPORT = 20;
     //
     /**
      * Name of directory generated for exporting a stream of fragment files.
@@ -309,7 +354,9 @@ public class Exporter {
                 }
                 yield tmpFile;
             }
-            case ExportTypes.FRAGMENT_PDB_FILE, ExportTypes.FRAGMENT_MULTIPLE_SD_FILES ->
+            case ExportTypes.FRAGMENT_PDB_FILE, ExportTypes.FRAGMENT_MULTIPLE_SD_FILES, ExportTypes.CLUSTERING_CSV_FILES,
+                 ExportTypes.TRAIN_TEST_SPLIT_CSV_FILES, ExportTypes.VIGILANCE_SCAN_CSV_FILE,
+                 ExportTypes.DIVERSE_SUBSET_CSV_FILE, ExportTypes.CLUSTER_QUALITY_CSV_FILE ->
                     this.chooseDirectory(aParentStage);
             case ExportTypes.FRAGMENT_PDF_FILE -> {
                 tmpFileName = "Fragments_" + tmpFragmentationName;
@@ -335,6 +382,14 @@ public class Exporter {
                 }
                 yield tmpFile;
             }
+            case ExportTypes.DESCRIPTOR_CSV_FILE -> {
+                tmpFileName = "Descriptors_" + tmpFragmentationName;
+                tmpFile = this.chooseFile(aParentStage, "CSV", FileExtension.CSV.toString(), tmpFileName);
+                if (tmpFile != null && !tmpFile.getName().toLowerCase(Locale.ROOT).endsWith(FileExtension.CSV.extension.toLowerCase(Locale.ROOT))) {
+                    tmpFile = new File(tmpFile.getAbsolutePath() + FileExtension.CSV);
+                }
+                yield tmpFile;
+            }
             case ExportTypes.ITEM_PDF_FILE -> {
                 tmpFileName = "Items_" + tmpFragmentationName;
                 tmpFile = this.chooseFile(aParentStage, "PDF", FileExtension.PDF.toString(), tmpFileName);
@@ -347,6 +402,119 @@ public class Exporter {
                     throw new UnsupportedOperationException(String.format("Unsupported export type: %s", anExportType));
         };
         return tmpFile;
+    }
+    //
+    /**
+     * Exports the data of a clustering run as CSV files into the given directory. The files are named
+     * "Clustering_[fragmentation name]_[content]" and contain: the raw, transformed (only if a transformation was
+     * applied) and processed (clustering input) feature matrices, the cluster assignment of the molecules, the cluster
+     * profiles (see {@link ClusterProfiler}), the cluster quality (see {@link ClusterQuality}), the description of the
+     * feature columns (group, type, transformation and whether the column was used for the clustering, see
+     * {@link ClusteringDataCsvWriter#writeFeatureDescription}), the features removed by the filter and the parameters of
+     * the run. The cluster label is also given in the processed matrix; -1 means not clusterable.
+     *
+     * @param aDirectory directory to export to; method returns null if it is null or not a directory
+     * @param aRunResult result of the clustering run
+     * @param aSeparator separator char for the CSV files
+     * @return list of the files that could not be written (empty if all were written) or null if the directory is invalid
+     * @throws NullPointerException if the run result is null
+     */
+    public List<String> exportClusteringCsvFiles(File aDirectory, ClusteringRunResult aRunResult, char aSeparator)
+            throws NullPointerException {
+        return this.exportClusteringCsvFiles(aDirectory, aRunResult, null, aSeparator);
+    }
+    //
+    /**
+     * Exports the data of the given clusters of a clustering run as CSV files into the given directory, see
+     * {@link #exportClusteringCsvFiles(File, ClusteringRunResult, char)}. The feature matrices and the cluster assignment
+     * contain only the molecules of the given clusters, the cluster profiles only these clusters; the parameters list
+     * the exported clusters. The removed features are written completely, since the filter worked on all molecules.
+     *
+     * @param aDirectory directory to export to; method returns null if it is null or not a directory
+     * @param aRunResult result of the clustering run
+     * @param aClusterIndices indices of the clusters to export; null or empty for all molecules
+     * @param aSeparator separator char for the CSV files
+     * @return list of the files that could not be written (empty if all were written) or null if the directory is invalid
+     * @throws NullPointerException if the run result is null
+     */
+    public List<String> exportClusteringCsvFiles(File aDirectory, ClusteringRunResult aRunResult, Set<Integer> aClusterIndices,
+                                                 char aSeparator) throws NullPointerException {
+        Objects.requireNonNull(aRunResult, "Given clustering run result is null.");
+        if (aDirectory == null || !aDirectory.isDirectory()) {
+            return null;
+        }
+        String tmpSeparator = String.valueOf(aSeparator);
+        String tmpPrefix = aDirectory.getAbsolutePath() + File.separator + "Clustering_"
+                + aRunResult.parameters().fragmentationName().replaceAll("\\s+", "_").trim() + "_";
+        int[] tmpLabels = aRunResult.clusteringResult().clusterLabels();
+        //rows of the exported clusters; all rows if no cluster is given
+        int[] tmpRows = aRunResult.getRowIndicesOfClusters(aClusterIndices);
+        boolean tmpIsRestricted = aClusterIndices != null && !aClusterIndices.isEmpty();
+        List<String> tmpFailedFiles = new ArrayList<>(6);
+        //feature matrices of all stages of the pipeline
+        this.writeClusteringFile(tmpPrefix + "raw" + FileExtension.CSV, tmpFailedFiles, aWriter ->
+                ClusteringDataCsvWriter.writeFeatureMatrix(aWriter, aRunResult.rawMatrix(), null, tmpRows, aRunResult.molecules(), tmpSeparator));
+        //without transformation, the transformed matrix equals the raw matrix and is not written
+        if (aRunResult.isTransformed()) {
+            this.writeClusteringFile(tmpPrefix + "transformed" + FileExtension.CSV, tmpFailedFiles, aWriter ->
+                    ClusteringDataCsvWriter.writeFeatureMatrix(aWriter, aRunResult.transformedMatrix(), null, tmpRows, aRunResult.molecules(), tmpSeparator));
+        }
+        this.writeClusteringFile(tmpPrefix + "processed" + FileExtension.CSV, tmpFailedFiles, aWriter ->
+                ClusteringDataCsvWriter.writeFeatureMatrix(aWriter, aRunResult.processedMatrix(), tmpLabels, tmpRows, aRunResult.molecules(), tmpSeparator));
+        //cluster assignment with SMILES and representatives
+        this.writeClusteringFile(tmpPrefix + "clusters" + FileExtension.CSV, tmpFailedFiles, aWriter -> {
+            aWriter.write(String.join(tmpSeparator, ClusteringDataCsvWriter.NAME_COLUMN_HEADER, ClusteringDataCsvWriter.SMILES_COLUMN_HEADER,
+                    ClusteringDataCsvWriter.CLUSTER_COLUMN_HEADER, "IsRepresentative") + System.lineSeparator());
+            int[] tmpRepresentatives = aRunResult.clusteringResult().representativeIndices();
+            for (int i : tmpRows) {
+                MoleculeDataModel tmpMolecule = aRunResult.molecules().get(i);
+                boolean tmpIsRepresentative = tmpLabels[i] >= 0 && tmpRepresentatives[tmpLabels[i]] == i;
+                //names and SMILES may contain the separator
+                aWriter.write(String.join(tmpSeparator, ClusteringDataCsvWriter.escape(tmpMolecule.getName(), tmpSeparator),
+                        ClusteringDataCsvWriter.escape(tmpMolecule.getUniqueSmiles(), tmpSeparator),
+                        Integer.toString(tmpLabels[i]), Boolean.toString(tmpIsRepresentative)) + System.lineSeparator());
+            }
+        });
+        //cluster profiles: characteristic fragments, fingerprint bits and descriptors of every cluster
+        this.writeClusteringFile(tmpPrefix + "cluster_profiles" + FileExtension.CSV, tmpFailedFiles, aWriter -> {
+            ClusterProfiler tmpProfiler = new ClusterProfiler(aRunResult);
+            List<ClusterProfiler.ClusterProfile> tmpProfiles = new ArrayList<>(aRunResult.clusteringResult().numberOfClusters());
+            for (int k = 0; k < aRunResult.clusteringResult().numberOfClusters(); k++) {
+                if (!tmpIsRestricted || aClusterIndices.contains(k)) {
+                    tmpProfiles.add(tmpProfiler.getProfile(k));
+                }
+            }
+            ClusteringDataCsvWriter.writeClusterProfiles(aWriter, tmpProfiles, Exporter.NUMBER_OF_PROFILE_FEATURES_IN_EXPORT, tmpSeparator);
+        });
+        //quality of the clusters and distance to the nearest other cluster; the overall silhouette is in the parameters
+        ClusterQuality tmpQuality = new ClusterQuality(aRunResult);
+        this.writeClusteringFile(tmpPrefix + "cluster_quality" + FileExtension.CSV, tmpFailedFiles, aWriter ->
+                ClusteringDataCsvWriter.writeClusterQuality(aWriter, tmpQuality, null, aClusterIndices, tmpSeparator));
+        //type of every raw column, which determines its transformation, and whether the filter kept it
+        this.writeClusteringFile(tmpPrefix + "features" + FileExtension.CSV, tmpFailedFiles, aWriter ->
+                ClusteringDataCsvWriter.writeFeatureDescription(aWriter, aRunResult.rawMatrix(), aRunResult.parameters().countTransformation(),
+                        aRunResult.parameters().continuousTransformation(), aRunResult.processedMatrix(), tmpSeparator));
+        //filter report and parameters for reproducibility
+        this.writeClusteringFile(tmpPrefix + "removed_features" + FileExtension.CSV, tmpFailedFiles, aWriter ->
+                ClusteringDataCsvWriter.writeRemovedFeatures(aWriter, aRunResult.removedFeatures(), tmpSeparator));
+        this.writeClusteringFile(tmpPrefix + "parameters" + FileExtension.TXT, tmpFailedFiles, aWriter -> {
+            for (String tmpLine : aRunResult.parameters().getParameterLines()) {
+                aWriter.write(tmpLine + System.lineSeparator());
+            }
+            aWriter.write("numberOfClusters=" + aRunResult.clusteringResult().numberOfClusters() + System.lineSeparator());
+            aWriter.write("isOverflow=" + aRunResult.clusteringResult().isOverflow() + System.lineSeparator());
+            aWriter.write("isConverged=" + aRunResult.clusteringResult().isConverged() + System.lineSeparator());
+            aWriter.write("numberOfEpochs=" + aRunResult.clusteringResult().numberOfEpochs() + System.lineSeparator());
+            aWriter.write("overallSilhouette=" + tmpQuality.getOverallSilhouette() + System.lineSeparator());
+            aWriter.write("overallNeighbourPurity=" + tmpQuality.getOverallNeighbourPurity() + System.lineSeparator());
+            aWriter.write("numberOfNeighbours=" + ClusterQuality.NUMBER_OF_NEIGHBOURS + System.lineSeparator());
+            aWriter.write("isQualitySampled=" + tmpQuality.isSampled() + System.lineSeparator());
+            if (tmpIsRestricted) {
+                aWriter.write("exportedClusters=" + aClusterIndices.stream().sorted().map(String::valueOf)
+                        .collect(Collectors.joining(",")) + System.lineSeparator());
+            }
+        });
+        return tmpFailedFiles;
     }
     //
     /**
@@ -1276,4 +1444,204 @@ public class Exporter {
         return tmpFragmentClone;
     }
     //</editor-fold>
+    //
+    /**
+     * Exports a training/test partitioning based on a clustering run as files into the given directory, named
+     * "Clustering_[fragmentation name]_split_[content]": all molecules with their set, the training molecules, the test
+     * molecules (CSV; columns name, SMILES, cluster, set) and the parameters of the partitioning (text file).
+     *
+     * @param aDirectory directory to export to; method returns null if it is null or not a directory
+     * @param aRunResult clustering result the partitioning is based on
+     * @param aSplit training/test partitioning
+     * @param aSeparator separator char for the CSV files
+     * @return list of the files that could not be written (empty if all were written) or null if the directory is invalid
+     * @throws NullPointerException if the run result or split is null
+     */
+    public List<String> exportTrainTestSplitCsvFiles(File aDirectory, ClusteringRunResult aRunResult,
+                                                     TrainTestSplitter.TrainTestSplit aSplit, char aSeparator)
+            throws NullPointerException {
+        Objects.requireNonNull(aRunResult, "Given clustering run result is null.");
+        Objects.requireNonNull(aSplit, "Given split is null.");
+        if (aDirectory == null || !aDirectory.isDirectory()) {
+            return null;
+        }
+        String tmpSeparator = String.valueOf(aSeparator);
+        String tmpPrefix = aDirectory.getAbsolutePath() + File.separator + "Clustering_"
+                + aRunResult.parameters().fragmentationName().replaceAll("\\s+", "_").trim() + "_split_";
+        //all partitioned molecules; if the split covers only marked clusters, the other molecules are not part of it
+        int[] tmpAllIndices = IntStream.concat(Arrays.stream(aSplit.trainingIndices()), Arrays.stream(aSplit.testIndices())).sorted().toArray();
+        List<String> tmpFailedFiles = new ArrayList<>(4);
+        this.writeClusteringFile(tmpPrefix + "all" + FileExtension.CSV, tmpFailedFiles, aWriter ->
+                ClusteringDataCsvWriter.writeTrainTestSplit(aWriter, aRunResult, aSplit, tmpAllIndices, tmpSeparator));
+        this.writeClusteringFile(tmpPrefix + "training" + FileExtension.CSV, tmpFailedFiles, aWriter ->
+                ClusteringDataCsvWriter.writeTrainTestSplit(aWriter, aRunResult, aSplit, aSplit.trainingIndices(), tmpSeparator));
+        this.writeClusteringFile(tmpPrefix + "test" + FileExtension.CSV, tmpFailedFiles, aWriter ->
+                ClusteringDataCsvWriter.writeTrainTestSplit(aWriter, aRunResult, aSplit, aSplit.testIndices(), tmpSeparator));
+        this.writeClusteringFile(tmpPrefix + "parameters" + FileExtension.TXT, tmpFailedFiles, aWriter -> {
+            aWriter.write("requestedTrainingFraction=" + aSplit.requestedTrainingFraction() + System.lineSeparator());
+            aWriter.write("actualTrainingFraction=" + aSplit.getActualTrainingFraction() + System.lineSeparator());
+            aWriter.write("numberOfTrainingMolecules=" + aSplit.trainingIndices().length + System.lineSeparator());
+            aWriter.write("numberOfTestMolecules=" + aSplit.testIndices().length + System.lineSeparator());
+            aWriter.write("selectionMode=" + aSplit.selectionMode().name() + System.lineSeparator());
+            aWriter.write("rules=single-molecule clusters and not clusterable molecules: training; clusters with n >= 2"
+                    + " molecules: round(n * training fraction) in [1, n - 1] training molecules" + System.lineSeparator());
+            for (String tmpLine : aRunResult.parameters().getParameterLines()) {
+                aWriter.write("clustering." + tmpLine + System.lineSeparator());
+            }
+        });
+        return tmpFailedFiles;
+    }
+    //
+    /**
+     * Exports the result of a vigilance scan as "Clustering_[fragmentation name]_vigilance_scan.csv" into the given
+     * directory.
+     *
+     * @param aDirectory directory to export to; method returns null if it is null or not a directory
+     * @param aRunResult clustering run the scan is based on (for the file name)
+     * @param anEntryList entries of the scan
+     * @param aSeparator separator char for the CSV file
+     * @return list of the files that could not be written (empty if written) or null if the directory is invalid
+     * @throws NullPointerException if the run result or entry list is null
+     */
+    public List<String> exportVigilanceScanCsvFile(File aDirectory, ClusteringRunResult aRunResult,
+                                                   List<VigilanceScan.ScanEntry> anEntryList, char aSeparator) throws NullPointerException {
+        Objects.requireNonNull(aRunResult, "Given clustering run result is null.");
+        Objects.requireNonNull(anEntryList, "Given entry list is null.");
+        if (aDirectory == null || !aDirectory.isDirectory()) {
+            return null;
+        }
+        List<String> tmpFailedFiles = new ArrayList<>(1);
+        this.writeClusteringFile(this.getClusteringFilePrefix(aDirectory, aRunResult) + "vigilance_scan" + FileExtension.CSV,
+                tmpFailedFiles, aWriter -> ClusteringDataCsvWriter.writeVigilanceScan(aWriter, anEntryList, String.valueOf(aSeparator)));
+        return tmpFailedFiles;
+    }
+    //
+    /**
+     * Exports a diverse subset as "Clustering_[fragmentation name]_diverse_subset.csv" into the given directory.
+     *
+     * @param aDirectory directory to export to; method returns null if it is null or not a directory
+     * @param aRunResult clustering run the subset was selected from
+     * @param aSelection selected molecules
+     * @param aSeparator separator char for the CSV file
+     * @return list of the files that could not be written (empty if written) or null if the directory is invalid
+     * @throws NullPointerException if the run result or selection is null
+     */
+    public List<String> exportDiverseSubsetCsvFile(File aDirectory, ClusteringRunResult aRunResult,
+                                                   List<DiverseSubsetSelector.SelectedMolecule> aSelection, char aSeparator)
+            throws NullPointerException {
+        Objects.requireNonNull(aRunResult, "Given clustering run result is null.");
+        Objects.requireNonNull(aSelection, "Given selection is null.");
+        if (aDirectory == null || !aDirectory.isDirectory()) {
+            return null;
+        }
+        List<String> tmpFailedFiles = new ArrayList<>(1);
+        this.writeClusteringFile(this.getClusteringFilePrefix(aDirectory, aRunResult) + "diverse_subset" + FileExtension.CSV,
+                tmpFailedFiles, aWriter -> ClusteringDataCsvWriter.writeDiverseSubset(aWriter, aRunResult, aSelection, String.valueOf(aSeparator)));
+        return tmpFailedFiles;
+    }
+    //
+    /**
+     * Exports the quality of the clusters as "Clustering_[fragmentation name]_cluster_quality.csv" into the given
+     * directory, including the stability of the clusters if it was checked.
+     *
+     * @param aDirectory directory to export to; method returns null if it is null or not a directory
+     * @param aRunResult clustering run
+     * @param aQuality cluster quality of the run
+     * @param aStabilityResult result of the stability check, null if it was not run
+     * @param aSeparator separator char for the CSV file
+     * @return list of the files that could not be written (empty if written) or null if the directory is invalid
+     * @throws NullPointerException if the run result or quality is null
+     */
+    public List<String> exportClusterQualityCsvFile(File aDirectory, ClusteringRunResult aRunResult, ClusterQuality aQuality,
+                                                    ClusterStability.StabilityResult aStabilityResult, char aSeparator)
+            throws NullPointerException {
+        Objects.requireNonNull(aRunResult, "Given clustering run result is null.");
+        Objects.requireNonNull(aQuality, "Given cluster quality is null.");
+        if (aDirectory == null || !aDirectory.isDirectory()) {
+            return null;
+        }
+        List<String> tmpFailedFiles = new ArrayList<>(1);
+        this.writeClusteringFile(this.getClusteringFilePrefix(aDirectory, aRunResult) + "cluster_quality" + FileExtension.CSV,
+                tmpFailedFiles, aWriter -> ClusteringDataCsvWriter.writeClusterQuality(aWriter, aQuality, aStabilityResult, null,
+                        String.valueOf(aSeparator)));
+        return tmpFailedFiles;
+    }
+    //
+    /**
+     * Exports a table of calculated descriptor values: one line per molecule with name, SMILES and one column per
+     * descriptor component with its CDK component name (untransformed values, NaN if the calculation failed). The group
+     * and type of every column are written to a second file next to it, named like the file with the suffix "_features"
+     * (see {@link ClusteringDataCsvWriter#writeFeatureDescription}).
+     *
+     * @param aFile file to export to; method returns null if it is null
+     * @param aMoleculeList molecules in the order of the matrix rows
+     * @param aDescriptorMatrix descriptor values, one row per molecule
+     * @param aSeparator separator char for the CSV file
+     * @return list of the files that could not be written (empty if written) or null if the file is null
+     * @throws NullPointerException if the molecule list or matrix is null
+     */
+    public List<String> exportDescriptorCsvFile(File aFile, List<MoleculeDataModel> aMoleculeList, FeatureMatrix aDescriptorMatrix,
+                                                char aSeparator) throws NullPointerException {
+        Objects.requireNonNull(aMoleculeList, "Given molecule list is null.");
+        Objects.requireNonNull(aDescriptorMatrix, "Given descriptor matrix is null.");
+        if (aFile == null) {
+            return null;
+        }
+        List<String> tmpFailedFiles = new ArrayList<>(2);
+        this.writeClusteringFile(aFile.getAbsolutePath(), tmpFailedFiles, aWriter ->
+                ClusteringDataCsvWriter.writeDescriptorTable(aWriter, aMoleculeList, aDescriptorMatrix, String.valueOf(aSeparator)));
+        //the type of every column (BIT, COUNT or CONTINUOUS) in a second file next to it, e.g. "Descriptors_1_features.csv"
+        String tmpPath = aFile.getAbsolutePath();
+        String tmpExtension = FileExtension.CSV.toString();
+        String tmpBasePath = tmpPath.toLowerCase(Locale.ROOT).endsWith(tmpExtension)
+                ? tmpPath.substring(0, tmpPath.length() - tmpExtension.length()) : tmpPath;
+        this.writeClusteringFile(tmpBasePath + "_features" + FileExtension.CSV, tmpFailedFiles, aWriter ->
+                ClusteringDataCsvWriter.writeFeatureDescription(aWriter, aDescriptorMatrix, null, null, null, String.valueOf(aSeparator)));
+        return tmpFailedFiles;
+    }
+    //
+    /**
+     * Returns the common prefix of the clustering export files: directory, "Clustering_" and the fragmentation name with
+     * white space replaced by underscores, followed by an underscore.
+     *
+     * @param aDirectory export directory
+     * @param aRunResult clustering run
+     * @return file path prefix
+     */
+    private String getClusteringFilePrefix(File aDirectory, ClusteringRunResult aRunResult) {
+        return aDirectory.getAbsolutePath() + File.separator + "Clustering_"
+                + aRunResult.parameters().fragmentationName().replaceAll("\\s+", "_").trim() + "_";
+    }
+    //
+    /**
+     * Functional interface for writing the content of a clustering export file.
+     */
+    @FunctionalInterface
+    private interface IClusteringFileContentWriter {
+        /**
+         * Writes the content to the given writer.
+         *
+         * @param aWriter writer
+         * @throws IOException if writing fails
+         */
+        void write(BufferedWriter aWriter) throws IOException;
+    }
+    //
+    /**
+     * Writes a clustering export file in UTF-8 with the given content writer; the file name is added to the list of
+     * failed files if writing fails.
+     *
+     * @param aFilePath path of the file
+     * @param aFailedFileList list of failed files (MAY BE CHANGED)
+     * @param aContentWriter writes the content
+     */
+    private void writeClusteringFile(String aFilePath, List<String> aFailedFileList, IClusteringFileContentWriter aContentWriter) {
+        try (BufferedWriter tmpWriter = Files.newBufferedWriter(Paths.get(aFilePath), StandardCharsets.UTF_8)) {
+            aContentWriter.write(tmpWriter);
+        } catch (IOException | SecurityException anException) {
+            Exporter.LOGGER.log(Level.WARNING, String.format("Clustering export file %s could not be written: %s",
+                    aFilePath, anException.toString()), anException);
+            aFailedFileList.add(new File(aFilePath).getName());
+        }
+    }
 }

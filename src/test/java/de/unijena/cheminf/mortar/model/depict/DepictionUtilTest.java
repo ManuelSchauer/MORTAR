@@ -181,4 +181,28 @@ class DepictionUtilTest {
         }
     }
     //</editor-fold>
+    //
+    /**
+     * Tests the depiction with a bar below the structure: the left part of the bar (inside the given fraction) is light
+     * blue, the right part (outside the fraction) is white, and the image has the requested size. The BufferedImage is
+     * checked, because a JavaFX image needs a running toolkit.
+     *
+     * @throws Exception if the SMILES cannot be parsed
+     */
+    @Test
+    void testDepictImageWithTextAndBar() throws Exception {
+        org.openscience.cdk.interfaces.IAtomContainer tmpMolecule = new org.openscience.cdk.smiles.SmilesParser(
+                org.openscience.cdk.silent.SilentChemObjectBuilder.getInstance()).parseSmiles("c1ccccc1O");
+        java.awt.image.BufferedImage tmpImage = DepictionUtil.depictBufferedImageWithTextAndOptionalBar(
+                tmpMolecule, 1.0, 200, 200, "50%", 0.5, false, true);
+        Assertions.assertEquals(200, tmpImage.getWidth());
+        Assertions.assertEquals(200, tmpImage.getHeight());
+        //a pixel in the bar area at the top edge of the label, left of the centred text, inside the fraction
+        int tmpBarY = 200 - de.unijena.cheminf.mortar.model.util.BasicDefinitions.DEFAULT_IMAGE_TEXT_LABEL_HEIGHT + 4;
+        java.awt.Color tmpInside = new java.awt.Color(tmpImage.getRGB(20, tmpBarY));
+        java.awt.Color tmpOutside = new java.awt.Color(tmpImage.getRGB(180, tmpBarY));
+        Assertions.assertTrue(tmpInside.getBlue() > tmpInside.getRed(), "inside the fraction the bar is light blue");
+        Assertions.assertEquals(255, tmpOutside.getRed(), "outside the fraction the bar is white");
+        Assertions.assertEquals(255, tmpOutside.getBlue(), "outside the fraction the bar is white");
+    }
 }

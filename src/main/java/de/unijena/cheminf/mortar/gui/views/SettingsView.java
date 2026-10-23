@@ -45,6 +45,7 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.geometry.Side;
 import javafx.scene.Group;
+import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
@@ -191,6 +192,63 @@ public class SettingsView extends AnchorPane {
         tmpTab.setContent(tmpScrollPane);
         this.tabPane.getTabs().add(tmpTab);
         return tmpTab;
+    }
+    //
+    /**
+     * Adds a tab with the given content, wrapped in a scroll pane. Used for tabs that consist of several sections,
+     * whose property rows can be created with {@link #createPropertyGridPane(List, Map, Map, Map)}.
+     *
+     * @param aLabel Label for the tab title and the tab Id
+     * @param aContent content of the tab
+     * @return Tab
+     */
+    public Tab addTab(String aLabel, Node aContent) {
+        Tab tmpTab = new Tab();
+        tmpTab.setClosable(false);
+        tmpTab.setId(aLabel);
+        Label tmpTabTitle = new Label(aLabel);
+        StackPane tmpStackPane = new StackPane(new Group(tmpTabTitle));
+        tmpTab.setGraphic(tmpStackPane);
+        tmpTab.setStyle("-fx-pref-height: 150");
+        ScrollPane tmpScrollPane = new ScrollPane(aContent);
+        tmpScrollPane.setFitToWidth(true);
+        tmpScrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        tmpTab.setContent(tmpScrollPane);
+        this.tabPane.getTabs().add(tmpTab);
+        return tmpTab;
+    }
+    //
+    /**
+     * Adds the given button to the buttons on the right side of the bottom bar, before the apply and cancel buttons.
+     *
+     * @param aButton button to add
+     */
+    public void addButtonToRightSide(Button aButton) {
+        this.hBoxRightSideButtons.getChildren().addFirst(aButton);
+    }
+    //
+    /**
+     * Creates a grid pane with one row per given property (name and control to change the value), styled like the rows
+     * of the tabs created by {@link #addTab(String, List, Map, Map, Map)}. The two columns share the width equally.
+     *
+     * @param aPropertiesList List of properties to show
+     * @param aDisplayNamesMap Map containing setting names as keys and language-specific names for the settings to display in the GUI
+     * @param aTooltipTextsMap Map containing setting names as keys and tooltip text as values
+     * @param aRecentPropertiesMap Map to hold recent properties to restore them if necessary
+     * @return GridPane with the property rows
+     */
+    public GridPane createPropertyGridPane(List<Property<?>> aPropertiesList, Map<String, String> aDisplayNamesMap,
+                                           Map<String, String> aTooltipTextsMap, Map<String, Object> aRecentPropertiesMap) {
+        GridPane tmpGridPane = new GridPane();
+        for (int i = 0; i < 2; i++) {
+            ColumnConstraints tmpColumnConstraints = new ColumnConstraints();
+            tmpColumnConstraints.setHalignment(i == 0 ? HPos.LEFT : HPos.RIGHT);
+            tmpColumnConstraints.setHgrow(Priority.ALWAYS);
+            tmpColumnConstraints.setPercentWidth(50);
+            tmpGridPane.getColumnConstraints().add(tmpColumnConstraints);
+        }
+        this.addPropertyItems(tmpGridPane, aPropertiesList, aDisplayNamesMap, aTooltipTextsMap, aRecentPropertiesMap);
+        return tmpGridPane;
     }
     //
     /**
