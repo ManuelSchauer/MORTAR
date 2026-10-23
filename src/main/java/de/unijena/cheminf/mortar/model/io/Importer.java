@@ -33,6 +33,7 @@ import de.unijena.cheminf.mortar.model.util.BasicDefinitions;
 import de.unijena.cheminf.mortar.model.util.ChemUtil;
 import de.unijena.cheminf.mortar.model.util.FileUtil;
 import de.unijena.cheminf.mortar.model.util.LogUtil;
+import de.unijena.cheminf.mortar.model.util.MiscUtil;
 
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
@@ -173,6 +174,10 @@ public class Importer {
      */
     private String fileName;
     /**
+     * Whether the file name had to be truncated to create the ID prefix of the molecules at the last import.
+     */
+    private boolean isIDPrefixTruncated;
+    /**
      * Container of general MORTAR settings, providing the recent directory path and other import-related settings.
      */
     private final SettingsContainer settingsContainer;
@@ -204,7 +209,10 @@ public class Importer {
      * CSV/TSV/DSV file will be treated
      * as a SMILES file. If the respective setting is activated, incomplete valences of the imported atoms are filled
      * with implicit hydrogen atoms. If no molecule name or ID is given in the input file, the file name with an appended
-     * counter is used as such and added to the returned atom containers as a property.
+     * counter is used as such and added to the returned atom containers as a property. Additionally, every successfully
+     * imported molecule is assigned a unique ID consisting of the (cleaned and possibly truncated, see
+     * {@link #isIDPrefixTruncated()}) file name and a consecutive 1-based number, e.g. "COCONUT_12". Structures that
+     * could not be imported do not get an ID, so the IDs have no gaps.
      *
      * @param aFile File to import
      * @param isRegardStereo whether stereochemistry should be encoded in the SMILES strings
@@ -220,6 +228,7 @@ public class Importer {
     public List<MoleculeDataModel> importMoleculeFile(File aFile, boolean isRegardStereo, boolean isFillOpenValencesWithImplH, boolean isKekulizationEnforced)
             throws NullPointerException, IOException, CDKException {
         Objects.requireNonNull(aFile, "aFile is null");
+        this.isIDPrefixTruncated = false;
         String tmpRecentDirFromContainer = this.settingsContainer.getRecentDirectoryPathSetting();
         if (tmpRecentDirFromContainer == null || tmpRecentDirFromContainer.isEmpty()) {
             this.settingsContainer.setRecentDirectoryPathSetting(SettingsContainer.RECENT_DIRECTORY_PATH_SETTING_DEFAULT);
@@ -260,7 +269,15 @@ public class Importer {
         }
         this.preprocessMoleculeSet(tmpImportedMoleculesSet, isFillOpenValencesWithImplH);
         this.fileName = aFile.getName();
-        List<MoleculeDataModel> tmpReturnList = this.parse(tmpImportedMoleculesSet, isRegardStereo, isKekulizationEnforced);
+        String tmpFileNameWithoutExtension = FileUtil.getFileNameWithoutExtension(aFile);
+        String tmpFullIDPrefix = MiscUtil.createIDPrefix(tmpFileNameWithoutExtension);
+        this.isIDPrefixTruncated = tmpFullIDPrefix.length() > MiscUtil.ID_PREFIX_MAX_LENGTH;
+        String tmpIDPrefix = MiscUtil.truncateIDPrefix(tmpFullIDPrefix, MiscUtil.ID_PREFIX_MAX_LENGTH);
+        if (this.isIDPrefixTruncated) {
+            Importer.LOGGER.log(Level.WARNING, "File name {0} was truncated to {1} for the molecule IDs.",
+                    new Object[]{tmpFileNameWithoutExtension, tmpIDPrefix});
+        }
+        List<MoleculeDataModel> tmpReturnList = this.parse(tmpImportedMoleculesSet, isRegardStereo, isKekulizationEnforced, tmpIDPrefix);
         return tmpReturnList;
     }
     //
@@ -274,14 +291,16 @@ public class Importer {
      * @param isRegardStereo whether stereochemistry should be encoded in the SMILES strings
      * @param isKekulizationEnforced whether imported molecules should always be kekulized, which means aromaticity
      *                               will not(!) be encoded in the internal SMILES strings (if false, aromaticity will be(!) encoded)
+     * @param anIDPrefix prefix for the molecule IDs, a consecutive 1-based number of the parsed molecules is appended to it
      * @return list of MoleculeDataModel instances or empty list if the input set is empty or null
      */
-    private List<MoleculeDataModel> parse(IAtomContainerSet anAtomContainerSet, boolean isRegardStereo, boolean isKekulizationEnforced) {
+    private List<MoleculeDataModel> parse(IAtomContainerSet anAtomContainerSet, boolean isRegardStereo, boolean isKekulizationEnforced, String anIDPrefix) {
         if (anAtomContainerSet == null || anAtomContainerSet.isEmpty()) {
             return new ArrayList<>(0);
         }
         List<MoleculeDataModel> tmpReturnList = new ArrayList<>(anAtomContainerSet.getAtomContainerCount());
         int tmpExceptionCount = 0;
+        int tmpIDCounter = 0;
         for (IAtomContainer tmpAtomContainer : anAtomContainerSet.atomContainers()) {
             //returns null if no SMILES code could be created
             String tmpSmiles = ChemUtil.createUniqueSmiles(tmpAtomContainer, isRegardStereo, !isKekulizationEnforced);
@@ -296,6 +315,8 @@ public class Importer {
                 tmpMoleculeDataModel = new MoleculeDataModel(tmpSmiles, tmpAtomContainer.getTitle(), tmpAtomContainer.getProperties());
             }
             tmpMoleculeDataModel.setName(tmpAtomContainer.getProperty(Importer.MOLECULE_NAME_PROPERTY_KEY));
+            //only counted for molecules that are actually imported, so that the IDs have no gaps
+            tmpMoleculeDataModel.setId(anIDPrefix + "_" + ++tmpIDCounter);
             tmpReturnList.add(tmpMoleculeDataModel);
         }
         int finalTmpExceptionCount = tmpExceptionCount;
@@ -313,6 +334,16 @@ public class Importer {
      */
     public String getFileName(){
         return this.fileName;
+    }
+    //
+    /**
+     * Returns whether the file name had to be truncated to create the ID prefix of the molecules at the last import
+     * because it was longer than {@link MiscUtil#ID_PREFIX_MAX_LENGTH}. It is reset at the start of every import.
+     *
+     * @return true if the ID prefix was truncated
+     */
+    public boolean isIDPrefixTruncated() {
+        return this.isIDPrefixTruncated;
     }
     //
     /**

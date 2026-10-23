@@ -54,6 +54,7 @@ import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
+import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.Pagination;
 import javafx.scene.control.SeparatorMenuItem;
@@ -542,6 +543,10 @@ public class OverviewViewController implements IViewToolController {
         //screenshot button listener
         this.overviewView.getScreenshotButton().setOnAction(actionEvent -> this.takeScreenshotOfStructureGridPane());
         //
+        //export menu items listeners
+        this.overviewView.getExportToSDFMenuItem().setOnAction(actionEvent -> this.exportDisplayedStructures(Exporter.ExportTypes.MOLECULE_SD_FILE));
+        this.overviewView.getExportToCSVMenuItem().setOnAction(actionEvent -> this.exportDisplayedStructures(Exporter.ExportTypes.MOLECULE_CSV_FILE));
+        //
         //listener to distinguish a drag from a click event (on the image views)
         /*
          * The following block of code was inspired by a post of the user "mipa" of the stackoverflow community;
@@ -743,17 +748,7 @@ public class OverviewViewController implements IViewToolController {
             OverviewViewController.LOGGER.log(Level.INFO, "Recent directory could not be read, resetting to default.");
         }
         //get the title of the overview without the number of molecules for the initial file name
-        String tmpBaseName = this.overviewViewTitle;
-        int tmpLastSeparatorIndex = tmpBaseName.lastIndexOf(" - ");
-        if (tmpLastSeparatorIndex > 0) {
-            tmpBaseName = tmpBaseName.substring(0, tmpLastSeparatorIndex);
-        }
-        tmpBaseName = tmpBaseName.replaceAll("\\s+", "").trim();
-        if (tmpBaseName.isEmpty()) {
-            tmpBaseName = "Overview_Screenshot";
-        } else {
-            tmpBaseName = FileUtil.replaceIllegalFileNameCharacters(tmpBaseName, "_");
-        }
+        String tmpBaseName = this.getFileNameProposalFromTitle("Overview_Screenshot");
         String tmpNonExistingFilePath = FileUtil.getNonExistingFilePath(
                 tmpRecentDirectory + File.separator + tmpBaseName,
                 Exporter.FileExtension.PNG.toString());
@@ -792,6 +787,123 @@ public class OverviewViewController implements IViewToolController {
                 tmpFinalScreenshotButton,
                 tmpFinalCapturedStage);
         tmpWriteThread.start();
+    }
+    //
+    /**
+     * Exports all structures displayed in the overview view (on all pages) as SD or CSV file. If the molecules tab is
+     * the data source, the user is informed beforehand that MORTAR holds all structures as SMILES codes only and that
+     * no fragments are exported, and asked to confirm. Fragment frequencies are
+     * only exported to CSV files and only if they are displayed in the overview, i.e. for the fragments tab as data
+     * source. The export runs in a background thread; the export button is disabled in the meantime.
+     *
+     * @param anExportType {@link Exporter.ExportTypes#MOLECULE_SD_FILE} or {@link Exporter.ExportTypes#MOLECULE_CSV_FILE}
+     */
+    private void exportDisplayedStructures(Exporter.ExportTypes anExportType) {
+        if (this.moleculeDataModelList == null || this.moleculeDataModelList.isEmpty()) {
+            GuiUtil.guiMessageAlert(
+                    Alert.AlertType.INFORMATION,
+                    Message.get("Exporter.MessageAlert.NoDataAvailable.title"),
+                    Message.get("Exporter.MessageAlert.NoDataAvailable.header"),
+                    null
+            );
+            return;
+        }
+        //the hint is only relevant if molecules (and not their fragments) are exported
+        if (this.dataSource == DataSources.MOLECULES_TAB && !GuiUtil.guiMoleculeExportConfirmationAlert(null)) {
+            return;
+        }
+        Exporter tmpExporter = new Exporter(this.settingsContainer);
+        File tmpFile = tmpExporter.openFileChooserForStructureExportFile(this.overviewViewStage, anExportType,
+                this.getFileNameProposalFromTitle("Overview_Export"));
+        if (tmpFile == null) {
+            // user canceled the dialog
+            return;
+        }
+        // copies to not be affected by clearGUICachesAtClosing() if the window is closed during the export
+        final List<MoleculeDataModel> tmpStructures = new ArrayList<>(this.moleculeDataModelList);
+        final boolean tmpIsFrequencyExported = this.dataSource == DataSources.FRAGMENTS_TAB;
+        // fragment names equal their IDs, so the name column is omitted if only fragments are exported
+        final boolean tmpIsNameExported = !tmpStructures.stream().allMatch(FragmentDataModel.class::isInstance);
+        final char tmpSeparator = this.settingsContainer.getCsvExportSeparatorSettingCharacter();
+        final File tmpFinalFile = tmpFile;
+        final MenuButton tmpFinalExportButton = this.overviewView.getExportMenuButton();
+        final Stage tmpFinalCapturedStage = this.overviewViewStage;
+        Task<List<String>> tmpExportTask = new Task<>() {
+            @Override
+            protected List<String> call() throws IOException {
+                return switch (anExportType) {
+                    case Exporter.ExportTypes.MOLECULE_SD_FILE ->
+                            tmpExporter.exportStructuresAsSDFile(tmpFinalFile, tmpStructures);
+                    case Exporter.ExportTypes.MOLECULE_CSV_FILE ->
+                            tmpExporter.exportStructuresAsCsvFile(tmpFinalFile, tmpStructures, tmpSeparator, tmpIsFrequencyExported, tmpIsNameExported);
+                    default -> throw new UnsupportedOperationException(String.format("Unsupported export type: %s", anExportType));
+                };
+            }
+        };
+        // setOnSucceeded / setOnFailed are dispatched back on the JavaFX application thread by the framework
+        tmpExportTask.setOnSucceeded(workerStateEvent -> {
+            if (tmpFinalCapturedStage.isShowing()) {
+                tmpFinalExportButton.setDisable(false);
+            }
+            List<String> tmpFailedStructures = tmpExportTask.getValue();
+            if (tmpFailedStructures == null) {
+                GuiUtil.guiMessageAlert(Alert.AlertType.WARNING,
+                        Message.get("OverviewView.exportButton.error.title"),
+                        Message.get("OverviewView.exportButton.error.header"),
+                        null);
+            } else if (!tmpFailedStructures.isEmpty()) {
+                GuiUtil.guiExpandableAlert(
+                        Alert.AlertType.WARNING.toString(),
+                        Message.get("OverviewView.exportButton.error.title"),
+                        Message.get("OverviewView.exportButton.partialError.header"),
+                        tmpFailedStructures.size() + " " + Message.get("OverviewView.exportButton.partialError.label"),
+                        String.join("\n", tmpFailedStructures)
+                );
+            } else {
+                GuiUtil.guiExportFinishedAlert(tmpFinalFile);
+            }
+        });
+        tmpExportTask.setOnFailed(workerStateEvent -> {
+            Throwable tmpCause = tmpExportTask.getException();
+            OverviewViewController.LOGGER.log(Level.SEVERE, tmpCause.toString(), tmpCause);
+            if (tmpFinalCapturedStage.isShowing()) {
+                tmpFinalExportButton.setDisable(false);
+            }
+            Exception tmpException = (tmpCause instanceof Exception anException)
+                    ? anException : new RuntimeException(tmpCause);
+            GuiUtil.guiExceptionAlert(
+                    Message.get("OverviewView.exportButton.error.title"),
+                    Message.get("OverviewView.exportButton.error.header"),
+                    Message.get("OverviewView.exportButton.error.text"),
+                    tmpException
+            );
+        });
+        // disable the button while the export is in progress to prevent duplicate exports
+        tmpFinalExportButton.setDisable(true);
+        Thread tmpExportThread = new Thread(tmpExportTask, "OverviewView-StructureExport");
+        tmpExportThread.setDaemon(true);
+        tmpExportThread.start();
+    }
+    //
+    /**
+     * Returns a file name proposal derived from the overview view title without the number of displayed structures,
+     * with all whitespaces removed and illegal file name characters replaced. If the title is empty, the given
+     * fallback is returned.
+     *
+     * @param aFallbackName file name to return if no proposal can be derived from the title
+     * @return file name proposal without file extension
+     */
+    private String getFileNameProposalFromTitle(String aFallbackName) {
+        String tmpBaseName = Objects.requireNonNullElse(this.overviewViewTitle, "");
+        int tmpLastSeparatorIndex = tmpBaseName.lastIndexOf(" - ");
+        if (tmpLastSeparatorIndex > 0) {
+            tmpBaseName = tmpBaseName.substring(0, tmpLastSeparatorIndex);
+        }
+        tmpBaseName = tmpBaseName.replaceAll("\\s+", "").trim();
+        if (tmpBaseName.isEmpty()) {
+            return aFallbackName;
+        }
+        return FileUtil.replaceIllegalFileNameCharacters(tmpBaseName, "_");
     }
     //
     /**
