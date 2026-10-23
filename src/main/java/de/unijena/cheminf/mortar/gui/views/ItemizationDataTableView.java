@@ -36,8 +36,11 @@ import de.unijena.cheminf.mortar.model.settings.SettingsContainer;
 
 import javafx.beans.binding.Bindings;
 import javafx.collections.FXCollections;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.ContextMenu;
+import javafx.scene.control.Label;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.TableColumn;
@@ -47,6 +50,8 @@ import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.VBox;
+import javafx.scene.shape.Rectangle;
 
 import java.awt.FontMetrics;
 import java.awt.Graphics2D;
@@ -60,6 +65,34 @@ import java.util.List;
  *
  */
 public class ItemizationDataTableView extends TableView implements IDataTableView {
+    //<editor-fold desc="private static final class constants" defaultstate="collapsed">
+    /**
+     * Height of the header bar above fragments with a display label that marks the group of the fragment, e.g. the
+     * substructures matched by the same SMARTS pattern.
+     */
+    private static final double GROUP_HEADER_HEIGHT = 20.0;
+    /**
+     * Style of the header bar marking a fragment group, similar to a table column header. The border widths are
+     * appended depending on the position of the cell in the group.
+     */
+    private static final String GROUP_HEADER_STYLE = "-fx-background-color: linear-gradient(#f4f4f4, #e2e2e2);"
+            + " -fx-border-color: #c8c8c8; -fx-font-size: 11px; -fx-padding: 0 0 0 6;"
+            //the text fill is set explicitly because selected table cells would otherwise turn the label text white
+            + " -fx-text-fill: black;";
+    /**
+     * Horizontal distance between the header bars of two neighbouring fragment groups.
+     */
+    private static final double GROUP_HEADER_GAP = 3.0;
+    /**
+     * Style of the fragment cells if fragments with display labels are shown. The cell padding is removed and only the
+     * right border (the vertical grid line) is kept, so the cell content starts directly at the left cell border. The
+     * content is as wide as the whole cell and covers the grid line in the header area, so that the header bar of a
+     * group is continuous over all its cells while the grid lines remain visible below it.
+     */
+    private static final String LABELLED_FRAGMENT_CELL_STYLE = "-fx-alignment: TOP_LEFT; -fx-padding: 0;"
+            + " -fx-border-width: 0 1 0 0;";
+    //</editor-fold>
+    //
     //<editor-fold desc="private class variables" defaultstate="collapsed">
     /**
      * TableColumn for name of the molecule.
@@ -187,7 +220,7 @@ public class ItemizationDataTableView extends TableView implements IDataTableVie
         int toIndex = Math.min(fromIndex + tmpRowsPerPage, this.itemsList.size());
         List<MoleculeDataModel> tmpList = this.itemsList.subList(fromIndex, toIndex);
         int tmpItemAmount = GuiUtil.getLargestNumberOfFragmentsForGivenMoleculeListAndFragmentationName(tmpList, aFragmentationName);
-        this.resetFragmentStructureColumns(tmpItemAmount);
+        this.resetFragmentStructureColumns(tmpItemAmount, this.hasLabelledFragments(tmpList));
         for (MoleculeDataModel tmpMoleculeDataModel : tmpList) {
             tmpMoleculeDataModel.setStructureImageWidth(this.moleculeStructureColumn.getWidth());
             //width of depictions of fragments does not need to be set, the fragment-sub-columns will adjust and have as much space as they need
@@ -216,19 +249,43 @@ public class ItemizationDataTableView extends TableView implements IDataTableVie
     //
     //<editor-fold desc="private methods" defaultstate="collapsed">
     /**
+     * Returns true if at least one fragment of the given molecules has a display label (see
+     * {@link FragmentDataModel#getDisplayLabelText()}).
+     *
+     * @param aMoleculeList molecules displayed on the current page
+     * @return true if labelled fragments are present
+     */
+    private boolean hasLabelledFragments(List<MoleculeDataModel> aMoleculeList) {
+        for (MoleculeDataModel tmpMolecule : aMoleculeList) {
+            if (!tmpMolecule.hasMoleculeUndergoneSpecificFragmentation(this.fragmentationName)) {
+                continue;
+            }
+            for (FragmentDataModel tmpFragment : tmpMolecule.getFragmentsOfSpecificFragmentation(this.fragmentationName)) {
+                if (tmpFragment.getDisplayLabelText() != null) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+    //
+    /**
      * Deletes the old columns of the fragment structures and adds new ones for the given number.
      *
      * @param anItemAmount int value for the number of columns to add
+     * @param aHasLabelledFragments whether fragments with display labels are shown; if true, the cells are styled
+     *                              without padding and only with the right grid line so that the group header bars
+     *                              are continuous
      */
-    private void resetFragmentStructureColumns(int anItemAmount) {
+    private void resetFragmentStructureColumns(int anItemAmount, boolean aHasLabelledFragments) {
         this.fragmentStructureColumn.getColumns().clear();
         for (int i = 0; i < anItemAmount; i++) {
             int tmpIndex = i;
-            TableColumn<MoleculeDataModel, ImageView> tmpColumn = new TableColumn<>("Fragment " + (i + 1)); //+1 to avoid 0 in GUI
+            TableColumn<MoleculeDataModel, Node> tmpColumn = new TableColumn<>("Fragment " + (i + 1)); //+1 to avoid 0 in GUI
             tmpColumn.setResizable(true);
             tmpColumn.setEditable(false);
             tmpColumn.setSortable(false);
-            tmpColumn.setStyle( "-fx-alignment: CENTER;");
+            tmpColumn.setStyle(aHasLabelledFragments ? ItemizationDataTableView.LABELLED_FRAGMENT_CELL_STYLE : "-fx-alignment: CENTER;");
             tmpColumn.setCellValueFactory(cellData -> Bindings.createObjectBinding(() -> {
                 if (!cellData.getValue().hasMoleculeUndergoneSpecificFragmentation(this.fragmentationName)) {
                     return null;
@@ -236,13 +293,53 @@ public class ItemizationDataTableView extends TableView implements IDataTableVie
                 if (tmpIndex >= cellData.getValue().getFragmentsOfSpecificFragmentation(this.fragmentationName).size()) {
                     return null;
                 }
-                FragmentDataModel tmpFragment = cellData.getValue().getFragmentsOfSpecificFragmentation(this.fragmentationName).get(tmpIndex);
+                List<FragmentDataModel> tmpFragments = cellData.getValue().getFragmentsOfSpecificFragmentation(this.fragmentationName);
+                FragmentDataModel tmpFragment = tmpFragments.get(tmpIndex);
                 int tmpFrequency = cellData.getValue().getFragmentFrequencyOfSpecificFragmentation(this.fragmentationName).get(tmpFragment.getUniqueSmiles());
                 String tmpFrequencyString = String.valueOf(tmpFrequency);
                 // just a precaution; it is highly unlikely that we get that many fragments of the same type for one(!) molecule
                 // cachedFontMetrics is reused here to avoid allocating a BufferedImage/Graphics2D per cell render
                 if (!DepictionUtil.isTextNarrowerThanImage(tmpFragment.getStructureImageWidth(), tmpFrequencyString, this.cachedFontMetrics)) {
                     tmpFrequencyString = DepictionUtil.fitIntegerDisplayToImageWidth(tmpFragment.getStructureImageWidth(), tmpFrequency, this.cachedFontMetrics);
+                }
+                // fragments with display labels, e.g. the name of the substructure pattern that produced them, are
+                // grouped by a header bar with the label above them; the frequency is displayed below the structure
+                String tmpLabelText = tmpFragment.getDisplayLabelText();
+                if (tmpLabelText != null) {
+                    //the fragments of a molecule are ordered by their label, e.g. the Biosynfoni key order, so the
+                    // fragments of a group are in neighbouring cells; the label is only written in the first cell of a
+                    // group and the bar has side borders only at the start and end of the group
+                    boolean tmpIsFirstOfGroup = tmpIndex == 0
+                            || !tmpLabelText.equals(tmpFragments.get(tmpIndex - 1).getDisplayLabelText());
+                    boolean tmpIsLastOfGroup = tmpIndex == tmpFragments.size() - 1
+                            || !tmpLabelText.equals(tmpFragments.get(tmpIndex + 1).getDisplayLabelText());
+                    Label tmpHeader = new Label(tmpIsFirstOfGroup ? tmpLabelText : "");
+                    tmpHeader.setAlignment(Pos.CENTER_LEFT);
+                    tmpHeader.setMaxWidth(Double.MAX_VALUE);
+                    tmpHeader.setMinHeight(ItemizationDataTableView.GROUP_HEADER_HEIGHT);
+                    tmpHeader.setPrefHeight(ItemizationDataTableView.GROUP_HEADER_HEIGHT);
+                    tmpHeader.setStyle(ItemizationDataTableView.GROUP_HEADER_STYLE + String.format(" -fx-border-width: 1 %d 1 %d;",
+                            tmpIsLastOfGroup ? 1 : 0, tmpIsFirstOfGroup ? 1 : 0));
+                    VBox.setMargin(tmpHeader, new Insets(0,
+                            tmpIsLastOfGroup ? ItemizationDataTableView.GROUP_HEADER_GAP : 0,
+                            0,
+                            tmpIsFirstOfGroup ? ItemizationDataTableView.GROUP_HEADER_GAP : 0));
+                    double tmpImageHeight = Math.max(tmpFragment.getStructureImageHeight() - ItemizationDataTableView.GROUP_HEADER_HEIGHT, 1.0);
+                    ImageView tmpImage = tmpFragment.getStructureWithText(tmpFrequencyString,
+                            tmpFragment.getStructureImageWidth(), tmpImageHeight);
+                    VBox tmpCellBox = new VBox(tmpHeader, tmpImage);
+                    tmpCellBox.setAlignment(Pos.TOP_CENTER);
+                    //the box has exactly the cell width, independent of the image width, and is anchored at the left cell
+                    // border, so that the header bars of neighbouring cells touch and every group starts with the same
+                    // distance to the left cell border; an image wider than the cell is centered and clipped
+                    tmpCellBox.minWidthProperty().bind(tmpColumn.widthProperty());
+                    tmpCellBox.prefWidthProperty().bind(tmpColumn.widthProperty());
+                    tmpCellBox.maxWidthProperty().bind(tmpColumn.widthProperty());
+                    Rectangle tmpClip = new Rectangle();
+                    tmpClip.widthProperty().bind(tmpCellBox.widthProperty());
+                    tmpClip.heightProperty().bind(tmpCellBox.heightProperty());
+                    tmpCellBox.setClip(tmpClip);
+                    return tmpCellBox;
                 }
                 return tmpFragment.getStructureWithText(tmpFrequencyString);
             }));
