@@ -81,11 +81,17 @@ import java.util.logging.Logger;
  * covered by a specific SMARTS pattern. Each matched substructure consists of the matched atoms and all bonds between
  * them, free valences are saturated with implicit hydrogen atoms, and aromaticity is re-detected on the fragment.
  * Bonds of aromatic systems that are only partially matched therefore appear in the Kekulé form of the input molecule.
+ * <br><b>Known limitation of the matched substructures option:</b> MORTAR identifies fragments by their unique SMILES
+ * code across the whole data set. Keys whose SMARTS pattern matches only a single atom (ether, hydroxyl, and epoxide
+ * oxygen; terminal nitrogen and both amino acid keys; methyl) can produce identical fragments, e.g. "O" for an ether
+ * and a hydroxyl oxygen atom. Such fragments are combined into one fragment that carries the labels of all keys that
+ * produced it anywhere in the data set, and its frequency in a molecule is the sum over these keys. The number of
+ * matches per key and the representative structures option are not affected.
  * <br>The label and the SMARTS pattern of the key are attached to every returned fragment as properties (see
  * {@link #BIOSYNFONI_LABEL_PROPERTY_KEY}, {@link #BIOSYNFONI_SMARTS_PROPERTY_KEY},
  * {@link IMoleculeFragmenter#FRAGMENT_CATEGORY_PROPERTY_KEY}, and
- * {@link IMoleculeFragmenter#FRAGMENT_DISPLAY_LABEL_PROPERTY_KEY}); the latter is used to display the label below
- * the fragment structure in the GUI.
+ * {@link IMoleculeFragmenter#FRAGMENT_DISPLAY_LABEL_PROPERTY_KEY}); the latter is used to group the fragments by
+ * their key in the GUI.
  * <br>
  * <br>As in the reference implementation, two optional overlap filters are available as settings:
  * <ul>
@@ -416,7 +422,8 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
                 Message.get("BiosynfoniFragmenter.BiosynfoniReturnedFragmentsOption.RepresentativeStructures.tooltip")),
         /**
          * Every match of a key is returned as the substructure formed by the matched atoms, so the different
-         * substructures matched by a key become visible.
+         * substructures matched by a key become visible. Note that fragments of keys matching only a single atom may
+         * coincide and are then combined, see the class documentation.
          */
         MATCHED_SUBSTRUCTURES(
                 Message.get("BiosynfoniFragmenter.BiosynfoniReturnedFragmentsOption.MatchedSubstructures.displayName"),
@@ -783,6 +790,11 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
                     continue;
                 }
                 if (tmpAreMatchedSubstructuresReturned) {
+                    //TODO: keys matching only a single atom (O_ETHER, O_HYDROXYL, O_EPOXY, N_NITRATE, ALL_STD_AMINOS,
+                    // NON_STD_AMINOS, D_METHYL) can produce identical fragments ("O", "N") whose labels and frequencies
+                    // are then combined across keys, see class documentation; to be discussed: return the representative
+                    // structure for these keys also in this mode, since a single matched atom does not show the
+                    // promiscuity of the pattern anyway
                     for (int[] tmpMatch : tmpMatches) {
                         tmpFragments.add(this.createMatchedSubstructureFragment(tmpMoleculeClone, tmpMatch, tmpKeys[i]));
                     }
