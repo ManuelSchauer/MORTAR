@@ -115,11 +115,6 @@ public class DepictionUtil {
     private static final int FONT_SIZE_FOR_IMAGE_WITH_TEXT = 20;
     //
     /**
-     * Minimum font size to which the text of structure images with text may be reduced to fit the image width.
-     */
-    private static final int MIN_FONT_SIZE_FOR_IMAGE_WITH_TEXT = 9;
-    //
-    /**
      * Standard font style for depicting structure images with text.
      */
     private static final int FONT_STYLE_FOR_IMAGE_WITH_TEXT = Font.BOLD;
@@ -403,29 +398,6 @@ public class DepictionUtil {
     }
     //
     /**
-     * Shortens the given text with "..." so that the text followed by the given suffix is narrower than the image if
-     * both are used with depictImageWithText(). The suffix itself is never shortened.
-     *
-     * @param anImageWidth the width of the image that is intended to be generated
-     * @param aText the text that may be shortened
-     * @param aSuffix the text that is appended unchanged, may be empty
-     * @param aFontMetrics a {@link FontMetrics} instance configured with the standard MORTAR text font
-     * @return the possibly shortened text followed by the suffix
-     */
-    public static String fitTextToImageWidth(double anImageWidth, String aText, String aSuffix, FontMetrics aFontMetrics) {
-        if (DepictionUtil.isTextNarrowerThanImage(anImageWidth, aText + aSuffix, aFontMetrics)) {
-            return aText + aSuffix;
-        }
-        String tmpEllipsis = "...";
-        int tmpEnd = aText.length();
-        while (tmpEnd > 0 && !DepictionUtil.isTextNarrowerThanImage(anImageWidth,
-                aText.substring(0, tmpEnd) + tmpEllipsis + aSuffix, aFontMetrics)) {
-            tmpEnd--;
-        }
-        return aText.substring(0, tmpEnd) + tmpEllipsis + aSuffix;
-    }
-    //
-    /**
      * Checks whether the given text would be narrower than the image if both are used with depictImageWithText().
      * Allocates a temporary {@link BufferedImage} and {@link Graphics2D} internally.
      * When this method is called repeatedly (e.g. in a table cell factory), consider using
@@ -561,94 +533,6 @@ public class DepictionUtil {
             boolean aFillToFit,
             boolean anIsBackgroundWhite
     ) {
-        return DepictionUtil.depictImageWithText(
-                anAtomContainer,
-                aZoom,
-                aWidth,
-                aHeight,
-                aText,
-                aFillToFit,
-                anIsBackgroundWhite,
-                DepictionUtil.FONT_SIZE_FOR_IMAGE_WITH_TEXT);
-    }
-    //
-    /**
-     * Depicts and returns an image of the AtomContainer with the given text and suffix below it. If the text does not
-     * fit into the image width with the standard font size, the font size is reduced step by step down to a minimum
-     * size. Only if the text does not fit even with the minimum font size, the text (but not the suffix) is shortened
-     * with "...".
-     *
-     * @param anAtomContainer the molecule to depict
-     * @param aZoom double; the zoom is a scaling factor, specifying a zoom of 2 is double size, 0.5 half size, etc.
-     * @param aWidth double for image width
-     * @param aHeight double for image height
-     * @param aText text label below the structure that may be shrunk or shortened
-     * @param aSuffix text appended to the label that is never shortened, may be empty
-     * @param aFillToFit if true, resize depictions to fill all available space
-     * @param anIsBackgroundWhite true if the image should have an opaque white background; false if the background
-     *                            should be transparent
-     * @return Image of 2D structure of IAtomContainer with the fitted text below
-     */
-    public static Image depictImageWithTextFittedToWidth(
-            IAtomContainer anAtomContainer,
-            double aZoom,
-            double aWidth,
-            double aHeight,
-            String aText,
-            String aSuffix,
-            boolean aFillToFit,
-            boolean anIsBackgroundWhite
-    ) {
-        int tmpFontSize = DepictionUtil.FONT_SIZE_FOR_IMAGE_WITH_TEXT;
-        String tmpText = aText + aSuffix;
-        Graphics2D tmpGraphics2d = DepictionUtil.getGraphicsInstanceWithStandardFont(1, 1);
-        try {
-            while (tmpFontSize > DepictionUtil.MIN_FONT_SIZE_FOR_IMAGE_WITH_TEXT
-                    && !DepictionUtil.isTextNarrowerThanImage(aWidth, tmpText, tmpGraphics2d.getFontMetrics())) {
-                tmpFontSize--;
-                tmpGraphics2d.setFont(new Font(DepictionUtil.FONT_NAME_FOR_IMAGE_WITH_TEXT,
-                        DepictionUtil.FONT_STYLE_FOR_IMAGE_WITH_TEXT,
-                        tmpFontSize));
-            }
-            tmpText = DepictionUtil.fitTextToImageWidth(aWidth, aText, aSuffix, tmpGraphics2d.getFontMetrics());
-        } finally {
-            tmpGraphics2d.dispose();
-        }
-        return DepictionUtil.depictImageWithText(
-                anAtomContainer,
-                aZoom,
-                aWidth,
-                aHeight,
-                tmpText,
-                aFillToFit,
-                anIsBackgroundWhite,
-                tmpFontSize);
-    }
-    //
-    /**
-     * Depicts and returns an image of the AtomContainer with the given text below it.
-     *
-     * @param anAtomContainer the molecule to depict
-     * @param aZoom double; the zoom is a scaling factor, specifying a zoom of 2 is double size, 0.5 half size, etc.
-     * @param aWidth double for image width
-     * @param aHeight double for image height
-     * @param aText text label below the structure
-     * @param aFillToFit if true, resize depictions to fill all available space
-     * @param anIsBackgroundWhite true if the image should have an opaque white background; false if the background
-     *                            should be transparent
-     * @param aFontSize font size of the text
-     * @return Image of 2D structure of IAtomContainer with given text below
-     */
-    private static Image depictImageWithText(
-            IAtomContainer anAtomContainer,
-            double aZoom,
-            double aWidth,
-            double aHeight,
-            String aText,
-            boolean aFillToFit,
-            boolean anIsBackgroundWhite,
-            int aFontSize
-    ) {
         if (aHeight < BasicDefinitions.DEFAULT_IMAGE_TEXT_LABEL_HEIGHT) {
             DepictionUtil.LOGGER.log(Level.WARNING,
                     "Given image height is smaller than the required text label height");
@@ -679,7 +563,7 @@ public class DepictionUtil {
             tmpGraphics2d.setColor(Color.BLACK);
             tmpGraphics2d.setFont(new Font(DepictionUtil.FONT_NAME_FOR_IMAGE_WITH_TEXT,
                     DepictionUtil.FONT_STYLE_FOR_IMAGE_WITH_TEXT,
-                    aFontSize));
+                    DepictionUtil.FONT_SIZE_FOR_IMAGE_WITH_TEXT));
             FontMetrics tmpFontMetric = tmpGraphics2d.getFontMetrics();
             int tmpTextWidth = tmpFontMetric.stringWidth(aText);
             tmpGraphics2d.drawString(

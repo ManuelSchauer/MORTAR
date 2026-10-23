@@ -983,9 +983,9 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
     }
 
     /**
-     * Computes the canonical rank of every atom using the CDK canonical labelling. Ties of symmetry-equivalent atoms
-     * are broken by the atom index; this does not influence the number of accepted matches because such atoms are
-     * interchangeable.
+     * Computes the canonical rank of every atom using the CDK canonical labelling, which yields a unique, input order
+     * independent numbering of the atoms. The atom index is only used as a formal tie-breaker for the sorting and does
+     * not take effect because the canonical labels are distinct.
      *
      * @param aMolecule the molecule
      * @return canonical rank of every atom, indexed by atom index

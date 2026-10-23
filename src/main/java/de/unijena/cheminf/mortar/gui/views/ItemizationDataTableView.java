@@ -274,7 +274,8 @@ public class ItemizationDataTableView extends TableView implements IDataTableVie
      *
      * @param anItemAmount int value for the number of columns to add
      * @param aHasLabelledFragments whether fragments with display labels are shown; if true, the cells are styled
-     *                              without padding and grid lines so that the group header bars are continuous
+     *                              without padding and only with the right grid line so that the group header bars
+     *                              are continuous
      */
     private void resetFragmentStructureColumns(int anItemAmount, boolean aHasLabelledFragments) {
         this.fragmentStructureColumn.getColumns().clear();
@@ -324,7 +325,7 @@ public class ItemizationDataTableView extends TableView implements IDataTableVie
                             0,
                             tmpIsFirstOfGroup ? ItemizationDataTableView.GROUP_HEADER_GAP : 0));
                     double tmpImageHeight = Math.max(tmpFragment.getStructureImageHeight() - ItemizationDataTableView.GROUP_HEADER_HEIGHT, 1.0);
-                    ImageView tmpImage = tmpFragment.getStructureWithTextFittedToWidth(tmpFrequencyString, "",
+                    ImageView tmpImage = tmpFragment.getStructureWithText(tmpFrequencyString,
                             tmpFragment.getStructureImageWidth(), tmpImageHeight);
                     VBox tmpCellBox = new VBox(tmpHeader, tmpImage);
                     tmpCellBox.setAlignment(Pos.TOP_CENTER);
