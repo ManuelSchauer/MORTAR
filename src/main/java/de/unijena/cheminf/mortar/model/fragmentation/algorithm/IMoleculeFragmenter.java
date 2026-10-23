@@ -297,7 +297,8 @@ public interface IMoleculeFragmenter {
      * Property key/name to assign a short label to a fragment, represented by an IAtomContainer, e.g. the name of the
      * substructure pattern that produced the fragment. In the GUI, fragments with the same label are listed below each
      * other in the fragments tab and grouped under a header with the label in the items tab. If the same fragment is
-     * produced with different labels, all labels are combined.
+     * produced with different labels, all labels are combined. The labels are only used for single fragmentations,
+     * not in pipelines.
      */
     String FRAGMENT_DISPLAY_LABEL_PROPERTY_KEY = "IMoleculeFragmenter.DisplayLabel";
 
