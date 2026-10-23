@@ -862,6 +862,21 @@ public class ClusteringResultView extends BorderPane {
     }
     //
     /**
+     * Returns the number of a text of the cluster column for sorting: the cluster index, or the largest integer for the
+     * text of the not clusterable molecules, so that they are sorted after all clusters in ascending order.
+     *
+     * @param aText text of the cluster column
+     * @return cluster index or {@link Integer#MAX_VALUE}
+     */
+    private static int getClusterNumberForSorting(String aText) {
+        try {
+            return Integer.parseInt(aText);
+        } catch (NumberFormatException anException) {
+            return Integer.MAX_VALUE;
+        }
+    }
+    //
+    /**
      * Creates a numeric column, which sorts by value and shows the value in the given format; NaN is shown as "-" and
      * sorted like a missing value.
      *
@@ -963,6 +978,8 @@ public class ClusteringResultView extends BorderPane {
                 aCellData.getValue().clusterIndex() < 0
                         ? Message.get("ClusteringResultView.notClusterable.text")
                         : Integer.toString(aCellData.getValue().clusterIndex())));
+        //numeric order instead of text order (2 before 11), the not clusterable molecules after the clusters
+        tmpClusterColumn.setComparator(Comparator.comparingInt(ClusteringResultView::getClusterNumberForSorting));
         TableColumn<ClusteringRunResult.ClusterSummary, Integer> tmpSizeColumn =
                 new TableColumn<>(Message.get("ClusteringResultView.sizeColumn.header"));
         tmpSizeColumn.setCellValueFactory(aCellData -> new ReadOnlyObjectWrapper<>(aCellData.getValue().getSize()));
