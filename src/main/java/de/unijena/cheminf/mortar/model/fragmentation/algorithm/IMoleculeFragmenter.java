@@ -294,9 +294,10 @@ public interface IMoleculeFragmenter {
     String FRAGMENT_CATEGORY_PROPERTY_KEY = "IMoleculeFragmenter.Category";
 
     /**
-     * Property key/name to assign a short label to a fragment, represented by an IAtomContainer, that is displayed
-     * below the fragment structure in the GUI, e.g. the name of the substructure pattern that produced the fragment.
-     * If the same fragment is produced with different labels, all labels are displayed.
+     * Property key/name to assign a short label to a fragment, represented by an IAtomContainer, e.g. the name of the
+     * substructure pattern that produced the fragment. In the GUI, fragments with the same label are listed below each
+     * other in the fragments tab and grouped under a header with the label in the items tab. If the same fragment is
+     * produced with different labels, all labels are combined.
      */
     String FRAGMENT_DISPLAY_LABEL_PROPERTY_KEY = "IMoleculeFragmenter.DisplayLabel";
 
