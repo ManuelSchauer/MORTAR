@@ -1255,6 +1255,69 @@ public class AlkylStructureFragmenterTest {
     }
 
     /**
+     * Tests hydrogen atoms that remain explicit after hydrogen suppression (isotopes, molecular hydrogen). They are no
+     * neighbors in the sense of the tertiary/quaternary carbon detection, stay bonded to their atom and do not form
+     * fragments of their own; saturation does not create molecular hydrogen.
+     *
+     * @throws InvalidSmilesException if SMILES cannot be parsed
+     * @throws CloneNotSupportedException if cloning of the original molecule is not supported
+     */
+    @Test
+    void remainingExplicitHydrogenTest() throws InvalidSmilesException, CloneNotSupportedException {
+        SmilesParser tmpParser = new SmilesParser(SilentChemObjectBuilder.getInstance());
+        Map<String, List<String>> tmpExpectedFragmentsMap = new HashMap<>();
+        //secondary carbon with deuterium, no tertiary carbon
+        tmpExpectedFragmentsMap.put("[2H]C(C)C", List.of("[2H]C(C)C"));
+        //tertiary carbon with deuterium, the deuterium stays on the carbon
+        tmpExpectedFragmentsMap.put("[2H]C(C)(C)C", List.of("[2H]C(*)(*)*", "C", "C", "C"));
+        //deuterium in a chain, the carbon is secondary and therefore cut from the ring
+        tmpExpectedFragmentsMap.put("[2H]C(CC)C1CCCCC1", List.of("[2H]CCC", "C1CCCCC1"));
+        //molecular hydrogen is no fragment of its own after saturation
+        tmpExpectedFragmentsMap.put("CC.[H][H]", List.of("CC", "[H][H]"));
+        AlkylStructureFragmenter tmpASF = new AlkylStructureFragmenter();
+        for (Map.Entry<String, List<String>> tmpEntry : tmpExpectedFragmentsMap.entrySet()) {
+            IAtomContainer tmpTestStructureAC = tmpParser.parseSmiles(tmpEntry.getKey());
+            int tmpPreFragmenationCount = this.countAtoms(tmpTestStructureAC);
+            List<IAtomContainer> tmpACList = tmpASF.fragmentMolecule(tmpTestStructureAC);
+            Assertions.assertTrue(this.checkChemicalFormula(tmpPreFragmenationCount, tmpACList));
+            List<String> tmpFragmentsSMILESList = this.generateSMILESFromACList(tmpACList, false);
+            List<String> tmpExpectedSMILESList = new ArrayList<>();
+            for (String tmpExpectedSmiles : tmpEntry.getValue()) {
+                tmpExpectedSMILESList.add(ChemUtil.createUniqueSmiles(tmpParser.parseSmiles(tmpExpectedSmiles), false, true));
+            }
+            Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList), tmpExpectedSMILESList),
+                    () -> tmpEntry.getKey() + " -> " + tmpFragmentsSMILESList);
+        }
+    }
+
+    /**
+     * Tests that the dissection of linear chains does not depend on the atom order without hydrogen saturation. The
+     * chain is walked from its end that is bonded to the rest of the molecule, so the unsaturated (radical) ends of
+     * the chain segments are always at the same positions.
+     *
+     * @throws InvalidSmilesException if SMILES cannot be parsed
+     * @throws CloneNotSupportedException if cloning of the original molecule is not supported
+     */
+    @Test
+    void chainDissectionAtomOrderTest() throws InvalidSmilesException, CloneNotSupportedException {
+        SmilesParser tmpParser = new SmilesParser(SilentChemObjectBuilder.getInstance());
+        AlkylStructureFragmenter tmpASF = new AlkylStructureFragmenter();
+        tmpASF.setFragmentSaturationSetting(IMoleculeFragmenter.FragmentSaturationOption.NO_SATURATION);
+        tmpASF.setMaxChainLengthSetting(3);
+        List<String> tmpExpectedSMILESList = new ArrayList<>();
+        for (String tmpExpectedSmiles : List.of("[CH2]C[CH2]", "[CH2]C", "[CH]1CCCCC1")) {
+            tmpExpectedSMILESList.add(ChemUtil.createUniqueSmiles(tmpParser.parseSmiles(tmpExpectedSmiles), false, true));
+        }
+        //chain atoms before and after the ring atoms, attachment point at the start, in the middle and at the end
+        for (String tmpSmiles : List.of("CCCCCC1CCCCC1", "C1CCCCC1CCCCC", "C(C1CCCCC1)CCCC", "C1CCCC(C1)CCCCC")) {
+            List<IAtomContainer> tmpACList = tmpASF.fragmentMolecule(tmpParser.parseSmiles(tmpSmiles));
+            List<String> tmpFragmentsSMILESList = this.generateSMILESFromACList(tmpACList, false);
+            Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList), new ArrayList<>(tmpExpectedSMILESList)),
+                    () -> tmpSmiles + " -> " + tmpFragmentsSMILESList);
+        }
+    }
+
+    /**
      * Tests the fragmentation of aromatic remnants as produced by a previous fragmentation in a pipeline, e.g. alkane
      * fragments of the ErtlFunctionalGroupsFinderFragmenter whose aromatic ring was opened by the removal of a hetero
      * atom. These cannot be kekulized, so their aromatic bonds have no bond order. They are treated as conjugated pi

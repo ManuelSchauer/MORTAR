@@ -109,8 +109,8 @@ import java.util.logging.Logger;
  *     inactive {@code CC(C)c1ccccc1 -> *C(C)C, c1ccccc1}; kept at ring next to an isolated carbon
  *     {@code CC(C)C(C)C1CCCCC1 -> *C(*)*, *C(C)C1CCCCC1, C, C}.</li>
  *     <li><b>Linear chains</b>: the remaining saturated carbons form chains that are cut from all other substructures and,
- *     if activated, dissected into chains of the set maximum length, walked from the chain end with the lowest atom
- *     index. Examples: {@code CC1CCCCC1 -> C1CCCCC1, C}; maximum length 3:
+ *     if activated, dissected into chains of the set maximum length, walked from the chain end that is bonded to the
+ *     rest of the molecule (from the end with the lower atom index if both or none are). Examples: {@code CC1CCCCC1 -> C1CCCCC1, C}; maximum length 3:
  *     {@code CCCCCCCC -> CCC, CCC, CC}.</li>
  * </ol>
  * <p>
@@ -644,6 +644,7 @@ public class AlkylStructureFragmenter implements IMoleculeFragmenter {
         }
         for (int i = 0; i < tmpAtomCount; i++) {
             IAtom tmpAtom = aMolecule.getAtom(i);
+            tmpClassification.isHydrogen[i] = Objects.nonNull(tmpAtom.getAtomicNumber()) && tmpAtom.getAtomicNumber() == IElement.H;
             tmpClassification.isRingAtom[i] = tmpAtom.isInRing();
             tmpClassification.isAromaticAtom[i] = tmpAtom.isAromatic();
             tmpClassification.isConjugatedAtom[i] = tmpAtom.isAromatic();
@@ -664,26 +665,33 @@ public class AlkylStructureFragmenter implements IMoleculeFragmenter {
                 tmpClassification.isConjugatedAtom[tmpEnd] = true;
             }
         }
-        //multiple bonds of conjugated atoms are conjugated as well
-        for (int i = 0; i < tmpBondCount; i++) {
-            IBond tmpBond = aMolecule.getBond(i);
-            int tmpBegin = aMolecule.indexOf(tmpBond.getBegin());
-            int tmpEnd = aMolecule.indexOf(tmpBond.getEnd());
-            if (this.isMultipleBond(tmpBond) && (tmpClassification.isConjugatedAtom[tmpBegin] || tmpClassification.isConjugatedAtom[tmpEnd])) {
-                tmpClassification.isConjugatedBond[i] = true;
-                tmpClassification.isConjugatedAtom[tmpBegin] = true;
-                tmpClassification.isConjugatedAtom[tmpEnd] = true;
+        //multiple bonds of conjugated atoms are conjugated as well; repeated until nothing changes, so that the result
+        // does not depend on the bond order in the container (e.g. cumulated double bonds of an allene next to a diene)
+        boolean tmpHasChanged = true;
+        while (tmpHasChanged) {
+            tmpHasChanged = false;
+            for (int i = 0; i < tmpBondCount; i++) {
+                IBond tmpBond = aMolecule.getBond(i);
+                int tmpBegin = aMolecule.indexOf(tmpBond.getBegin());
+                int tmpEnd = aMolecule.indexOf(tmpBond.getEnd());
+                if (!tmpClassification.isConjugatedBond[i] && this.isMultipleBond(tmpBond)
+                        && (tmpClassification.isConjugatedAtom[tmpBegin] || tmpClassification.isConjugatedAtom[tmpEnd])) {
+                    tmpClassification.isConjugatedBond[i] = true;
+                    tmpClassification.isConjugatedAtom[tmpBegin] = true;
+                    tmpClassification.isConjugatedAtom[tmpEnd] = true;
+                    tmpHasChanged = true;
+                }
             }
         }
-        //tertiary and quaternary carbons
+        //tertiary and quaternary carbons, remaining explicit hydrogens (e.g. isotopes) are no neighbors in this sense
         for (int i = 0; i < tmpAtomCount; i++) {
             IAtom tmpAtom = aMolecule.getAtom(i);
-            int tmpBondCountOfAtom = tmpAtom.getBondCount();
+            int tmpBondCountOfAtom = this.getHeavyAtomNeighborCount(aMolecule, tmpClassification, i);
             boolean tmpHasOnlySingleBonds = true;
             for (IBond tmpBond : tmpAtom.bonds()) {
                 tmpHasOnlySingleBonds &= tmpBond.getOrder() == IBond.Order.SINGLE && !this.isAromaticBondWithoutOrder(tmpBond);
             }
-            if (!tmpClassification.isRingAtom[i] && !tmpClassification.isAromaticAtom[i] && tmpHasOnlySingleBonds
+            if (!tmpClassification.isHydrogen[i] && !tmpClassification.isRingAtom[i] && !tmpClassification.isAromaticAtom[i] && tmpHasOnlySingleBonds
                     && (tmpBondCountOfAtom == 3 || tmpBondCountOfAtom == 4)) {
                 tmpClassification.isTertiaryCarbon[i] = tmpBondCountOfAtom == 3;
                 tmpClassification.isQuaternaryCarbon[i] = tmpBondCountOfAtom == 4;
@@ -703,7 +711,7 @@ public class AlkylStructureFragmenter implements IMoleculeFragmenter {
         }
         //chain atoms: saturated, non-core, non-tertiary/quaternary atoms
         for (int i = 0; i < tmpAtomCount; i++) {
-            tmpClassification.isChainAtom[i] = !tmpClassification.isCoreAtom(i) && !tmpClassification.isTertQuatCarbon(i)
+            tmpClassification.isChainAtom[i] = !tmpClassification.isHydrogen[i] && !tmpClassification.isCoreAtom(i) && !tmpClassification.isTertQuatCarbon(i)
                     && !tmpClassification.hasDoubleBond[i] && !tmpClassification.hasTripleBond[i]
                     && !tmpClassification.hasAromaticBondWithoutOrder[i];
         }
@@ -736,9 +744,11 @@ public class AlkylStructureFragmenter implements IMoleculeFragmenter {
             IBond tmpBond = aMolecule.getBond(i);
             int tmpBegin = aMolecule.indexOf(tmpBond.getBegin());
             int tmpEnd = aMolecule.indexOf(tmpBond.getEnd());
-            if (aClassification.isRingBond[i] || aClassification.isConjugatedBond[i] || this.isMultipleBond(tmpBond)
-                    || this.isAromaticBondWithoutOrder(tmpBond)) {
-                //rules 1-3: ring, conjugated and multiple bonds are never cut
+            if (aClassification.isHydrogen[tmpBegin] || aClassification.isHydrogen[tmpEnd]) {
+                //remaining explicit hydrogens (e.g. isotopes) stay bonded to their atom
+                tmpIsBondKept[i] = true;
+            } else if (aClassification.isRingBond[i] || aClassification.isConjugatedBond[i] || this.isMultipleBond(tmpBond)) {
+                //rules 1-3: ring, conjugated (incl. aromatic) and multiple bonds are never cut
                 tmpIsBondKept[i] = true;
             } else if (aClassification.isTertQuatCarbon(tmpBegin) || aClassification.isTertQuatCarbon(tmpEnd)) {
                 //rule 4: bonds of tertiary/quaternary carbons
@@ -755,7 +765,10 @@ public class AlkylStructureFragmenter implements IMoleculeFragmenter {
 
     /**
      * Dissects the linear chains (connected chain atoms, see class documentation) into chains of the given maximum
-     * length by marking the respective bonds as cut. Every chain is walked from its terminal atom with the lowest index.
+     * length by marking the respective bonds as cut. Every chain is walked from its end that is bonded to the rest of
+     * the molecule (attachment point), so that the result does not depend on the order of the atoms in the container,
+     * also without hydrogen saturation; if both or none of the ends are bonded to the rest of the molecule, the chain is
+     * symmetric in this respect and walked from the end with the lower atom index.
      *
      * @param aMolecule the molecule to fragment
      * @param aClassification classification of the molecule's atoms and bonds
@@ -766,33 +779,18 @@ public class AlkylStructureFragmenter implements IMoleculeFragmenter {
                                        boolean[] anIsBondKeptArray, int aMaxChainLength) {
         int tmpAtomCount = aMolecule.getAtomCount();
         int[] tmpPositionInSegment = new int[tmpAtomCount];
-        for (int tmpStart = 0; tmpStart < tmpAtomCount; tmpStart++) {
-            //chains are started at the terminal chain atom (at most one kept chain bond) with the lowest index
-            if (!aClassification.isChainAtom[tmpStart] || aClassification.isTertQuatUnitMember[tmpStart]
-                    || tmpPositionInSegment[tmpStart] != 0 || this.getKeptChainBonds(aMolecule, anIsBondKeptArray, tmpStart).size() > 1) {
+        for (int tmpEnd = 0; tmpEnd < tmpAtomCount; tmpEnd++) {
+            //chain ends are chain atoms with at most one kept bond to another chain atom
+            if (!aClassification.isChainAtom[tmpEnd] || aClassification.isTertQuatUnitMember[tmpEnd] || tmpPositionInSegment[tmpEnd] != 0
+                    || this.getKeptChainBonds(aMolecule, aClassification, anIsBondKeptArray, tmpEnd).size() > 1) {
                 continue;
             }
-            tmpPositionInSegment[tmpStart] = 1;
-            int tmpCurrent = tmpStart;
-            boolean tmpHasNext = true;
-            while (tmpHasNext) {
-                tmpHasNext = false;
-                for (IBond tmpBond : this.getKeptChainBonds(aMolecule, anIsBondKeptArray, tmpCurrent)) {
-                    int tmpNext = aMolecule.indexOf(tmpBond.getOther(aMolecule.getAtom(tmpCurrent)));
-                    if (tmpPositionInSegment[tmpNext] != 0) {
-                        continue;
-                    }
-                    if (tmpPositionInSegment[tmpCurrent] < aMaxChainLength) {
-                        tmpPositionInSegment[tmpNext] = tmpPositionInSegment[tmpCurrent] + 1;
-                    } else {
-                        anIsBondKeptArray[aMolecule.indexOf(tmpBond)] = false;
-                        tmpPositionInSegment[tmpNext] = 1;
-                    }
-                    tmpCurrent = tmpNext;
-                    tmpHasNext = true;
-                    break;
-                }
-            }
+            int tmpOtherEnd = this.walkChain(aMolecule, aClassification, anIsBondKeptArray, tmpEnd, tmpPositionInSegment, Integer.MAX_VALUE);
+            //the walk only located the other end, it is reset and repeated from the chosen start
+            this.resetChainPositions(aMolecule, aClassification, anIsBondKeptArray, tmpEnd, tmpPositionInSegment);
+            int tmpStart = this.isBondedToRestOfMolecule(aMolecule, aClassification, anIsBondKeptArray, tmpOtherEnd)
+                    && !this.isBondedToRestOfMolecule(aMolecule, aClassification, anIsBondKeptArray, tmpEnd) ? tmpOtherEnd : tmpEnd;
+            this.walkChain(aMolecule, aClassification, anIsBondKeptArray, tmpStart, tmpPositionInSegment, aMaxChainLength);
         }
     }
 
@@ -990,21 +988,123 @@ public class AlkylStructureFragmenter implements IMoleculeFragmenter {
     }
 
     /**
-     * Returns the kept bonds of the given atom to other chain atoms that are not part of a tertiary/quaternary unit.
+     * Returns the kept bonds of the given chain atom to other chain atoms that are not part of a tertiary/quaternary
+     * unit.
      *
      * @param aMolecule the molecule to fragment
+     * @param aClassification classification of the molecule's atoms and bonds
      * @param anIsBondKeptArray kept bonds
      * @param anAtomIndex index of the chain atom
      * @return list of the kept chain bonds of the atom
      */
-    private List<IBond> getKeptChainBonds(IAtomContainer aMolecule, boolean[] anIsBondKeptArray, int anAtomIndex) {
+    private List<IBond> getKeptChainBonds(IAtomContainer aMolecule, MoleculeClassification aClassification,
+                                          boolean[] anIsBondKeptArray, int anAtomIndex) {
         List<IBond> tmpChainBonds = new ArrayList<>(2);
-        for (IBond tmpBond : aMolecule.getAtom(anAtomIndex).bonds()) {
-            if (anIsBondKeptArray[aMolecule.indexOf(tmpBond)]) {
+        IAtom tmpAtom = aMolecule.getAtom(anAtomIndex);
+        for (IBond tmpBond : tmpAtom.bonds()) {
+            int tmpOther = aMolecule.indexOf(tmpBond.getOther(tmpAtom));
+            if (anIsBondKeptArray[aMolecule.indexOf(tmpBond)] && aClassification.isChainAtom[tmpOther]
+                    && !aClassification.isTertQuatUnitMember[tmpOther]) {
                 tmpChainBonds.add(tmpBond);
             }
         }
         return tmpChainBonds;
+    }
+
+    /**
+     * Walks a linear chain from the given end, numbering its atoms by their position in the current chain segment and
+     * cutting the bond to the next atom whenever a segment reaches the given maximum length.
+     *
+     * @param aMolecule the molecule to fragment
+     * @param aClassification classification of the molecule's atoms and bonds
+     * @param anIsBondKeptArray kept bonds, changed by this method if a segment is full
+     * @param aStart index of the chain end to start at
+     * @param aPositionInSegmentArray positions of the atoms in their segment (0 = not visited), changed by this method
+     * @param aMaxChainLength maximum number of atoms per segment
+     * @return index of the last atom of the walk, i.e. the other end of the chain
+     */
+    private int walkChain(IAtomContainer aMolecule, MoleculeClassification aClassification, boolean[] anIsBondKeptArray,
+                          int aStart, int[] aPositionInSegmentArray, int aMaxChainLength) {
+        aPositionInSegmentArray[aStart] = 1;
+        int tmpCurrent = aStart;
+        boolean tmpHasNext = true;
+        while (tmpHasNext) {
+            tmpHasNext = false;
+            for (IBond tmpBond : this.getKeptChainBonds(aMolecule, aClassification, anIsBondKeptArray, tmpCurrent)) {
+                int tmpNext = aMolecule.indexOf(tmpBond.getOther(aMolecule.getAtom(tmpCurrent)));
+                if (aPositionInSegmentArray[tmpNext] != 0) {
+                    continue;
+                }
+                if (aPositionInSegmentArray[tmpCurrent] < aMaxChainLength) {
+                    aPositionInSegmentArray[tmpNext] = aPositionInSegmentArray[tmpCurrent] + 1;
+                } else {
+                    anIsBondKeptArray[aMolecule.indexOf(tmpBond)] = false;
+                    aPositionInSegmentArray[tmpNext] = 1;
+                }
+                tmpCurrent = tmpNext;
+                tmpHasNext = true;
+                break;
+            }
+        }
+        return tmpCurrent;
+    }
+
+    /**
+     * Resets the segment positions of all atoms of the linear chain containing the given atom to 0 (not visited).
+     *
+     * @param aMolecule the molecule to fragment
+     * @param aClassification classification of the molecule's atoms and bonds
+     * @param anIsBondKeptArray kept bonds
+     * @param anAtomIndex index of an atom of the chain
+     * @param aPositionInSegmentArray positions of the atoms in their segment, changed by this method
+     */
+    private void resetChainPositions(IAtomContainer aMolecule, MoleculeClassification aClassification, boolean[] anIsBondKeptArray,
+                                     int anAtomIndex, int[] aPositionInSegmentArray) {
+        List<Integer> tmpStack = new ArrayList<>();
+        tmpStack.add(anAtomIndex);
+        aPositionInSegmentArray[anAtomIndex] = 0;
+        while (!tmpStack.isEmpty()) {
+            int tmpCurrent = tmpStack.removeLast();
+            for (IBond tmpBond : this.getKeptChainBonds(aMolecule, aClassification, anIsBondKeptArray, tmpCurrent)) {
+                int tmpNext = aMolecule.indexOf(tmpBond.getOther(aMolecule.getAtom(tmpCurrent)));
+                if (aPositionInSegmentArray[tmpNext] != 0) {
+                    aPositionInSegmentArray[tmpNext] = 0;
+                    tmpStack.add(tmpNext);
+                }
+            }
+        }
+    }
+
+    /**
+     * Checks whether the given chain atom is bonded to an atom outside of its chain (ignoring remaining explicit
+     * hydrogens), i.e. whether it is an attachment point of the chain.
+     *
+     * @param aMolecule the molecule to fragment
+     * @param aClassification classification of the molecule's atoms and bonds
+     * @param anIsBondKeptArray kept bonds
+     * @param anAtomIndex index of the chain atom
+     * @return true if the atom has a heavy-atom neighbor outside of its chain
+     */
+    private boolean isBondedToRestOfMolecule(IAtomContainer aMolecule, MoleculeClassification aClassification,
+                                             boolean[] anIsBondKeptArray, int anAtomIndex) {
+        return this.getHeavyAtomNeighborCount(aMolecule, aClassification, anAtomIndex)
+                > this.getKeptChainBonds(aMolecule, aClassification, anIsBondKeptArray, anAtomIndex).size();
+    }
+
+    /**
+     * Counts the neighbors of the given atom that are no remaining explicit hydrogens.
+     *
+     * @param aMolecule the molecule
+     * @param aClassification classification of the molecule's atoms
+     * @param anAtomIndex index of the atom
+     * @return number of neighbors that are no hydrogen atoms
+     */
+    private int getHeavyAtomNeighborCount(IAtomContainer aMolecule, MoleculeClassification aClassification, int anAtomIndex) {
+        int tmpCount = 0;
+        for (IAtom tmpNeighbor : aMolecule.getAtom(anAtomIndex).neighbors()) {
+            tmpCount += aClassification.isHydrogen[aMolecule.indexOf(tmpNeighbor)] ? 0 : 1;
+        }
+        return tmpCount;
     }
 
     /**
@@ -1174,6 +1274,10 @@ public class AlkylStructureFragmenter implements IMoleculeFragmenter {
      */
     protected static final class MoleculeClassification {
         /**
+         * Hydrogen atoms that remained explicit after hydrogen suppression (e.g. isotopes or H2).
+         */
+        final boolean[] isHydrogen;
+        /**
          * Atoms in rings.
          */
         final boolean[] isRingAtom;
@@ -1237,6 +1341,7 @@ public class AlkylStructureFragmenter implements IMoleculeFragmenter {
          * @param aBondCount number of bonds
          */
         MoleculeClassification(int anAtomCount, int aBondCount) {
+            this.isHydrogen = new boolean[anAtomCount];
             this.isRingAtom = new boolean[anAtomCount];
             this.isRingBond = new boolean[aBondCount];
             this.isAromaticAtom = new boolean[anAtomCount];

@@ -122,6 +122,10 @@ public class AlkylStructureFragmenterIntegrationTest {
      */
     private static final Map<String, Integer> STEREO_STATISTICS = new java.util.concurrent.ConcurrentHashMap<>();
     /**
+     * Key of a test-only atom property holding the index of the atom in the unpermuted molecule.
+     */
+    private static final String ORIGINAL_INDEX_PROPERTY_KEY = "TEST.ORIGINAL_INDEX";
+    /**
      * Maximum chain length setting values to test.
      */
     private static final int[] MAX_CHAIN_LENGTHS = {1, 2, 3, 6};
@@ -220,6 +224,38 @@ public class AlkylStructureFragmenterIntegrationTest {
     }
 
     /**
+     * Runs the systematically generated test molecules (see {@link AlkylTestMoleculeGenerator}: all combinations of
+     * structural motifs and linkers covering the cases of the fragmentation rules) through all setting combinations and
+     * checks the invariants, chemistry rules and stereo rules of every result, and that the result does not depend on
+     * the order of atoms and bonds in the input.
+     *
+     * @throws Exception if the test molecules cannot be generated
+     */
+    @Test
+    public void generatedMoleculesTest() throws Exception {
+        List<IAtomContainer> tmpMolecules = AlkylTestMoleculeGenerator.generate();
+        Assertions.assertTrue(tmpMolecules.size() > 10000, "Generated test set is unexpectedly small: " + tmpMolecules.size());
+        List<String> tmpViolations = new ArrayList<>();
+        Random tmpRandom = new Random(42);
+        for (AlkylStructureFragmenter tmpASF : this.createAllSettingCombinations()) {
+            for (IAtomContainer tmpMolecule : tmpMolecules) {
+                List<String> tmpMoleculeViolations = this.checkInvariants(tmpASF, tmpMolecule);
+                tmpMoleculeViolations.replaceAll(tmpViolation -> tmpMolecule.getTitle() + ": " + tmpViolation);
+                tmpViolations.addAll(tmpMoleculeViolations);
+                List<String> tmpExpected = this.fragmentToSortedSignatures(tmpASF, this.copyWithoutStereo(tmpMolecule, null));
+                List<String> tmpPermuted = this.fragmentToSortedSignatures(tmpASF, this.copyWithoutStereo(tmpMolecule, tmpRandom));
+                if (!tmpExpected.equals(tmpPermuted)) {
+                    tmpViolations.add(String.format("%s [%s]: fragments depend on the atom order: %s vs. permuted %s", tmpMolecule.getTitle(),
+                            this.describeSettings(tmpASF), tmpExpected, tmpPermuted));
+                }
+            }
+        }
+        tmpViolations.forEach(System.out::println);
+        Assertions.assertTrue(tmpViolations.isEmpty(), () -> tmpViolations.size() + " violations:\n"
+                + String.join("\n", tmpViolations.subList(0, Math.min(tmpViolations.size(), 200))));
+    }
+
+    /**
      * Checks that explicit hydrogen atoms in the input do not change the fragmentation result.
      *
      * @throws Exception if the test structures cannot be read
@@ -268,8 +304,8 @@ public class AlkylStructureFragmenterIntegrationTest {
     /**
      * Differential test of the rule-based {@link AlkylStructureFragmenter} against the previous implementation
      * ({@link LegacyAlkylStructureFragmenter}, test reference only): both are applied with all setting combinations to
-     * the hand-picked test molecules and the substructure library, and their fragments (unique stereo SMILES) are
-     * compared.
+     * the hand-picked test molecules, the substructure library and the generated test molecules (see
+     * {@link AlkylTestMoleculeGenerator}), and their fragments (unique stereo SMILES) are compared.
      * <p>
      * Two differences were decided to be intended (see AlkylStructureFragmenterTest.specificTest10 and specificTest11);
      * they are recognized structurally and counted, every other difference fails the test:
@@ -279,6 +315,8 @@ public class AlkylStructureFragmenterIntegrationTest {
      *     the neighbors of this carbon are ordinary chain atoms (legacy cut off their first chain atom).</li>
      *     <li>B: isolation active, separation from rings inactive, molecule with a tertiary/quaternary carbon bonded to a
      *     ring and to a conjugated non-ring atom: the bond to the conjugated system is kept (legacy cut it).</li>
+     *     <li>C: the result of the previous version violates the invariants or chemistry rules (e.g. a cut double bond of an
+     *     allene or a cut conjugated bond to a single aromatic remnant atom), the result of the new version does not.</li>
      * </ul>
      *
      * @throws Exception if the test structures cannot be read
@@ -286,6 +324,7 @@ public class AlkylStructureFragmenterIntegrationTest {
     @Test
     public void differentialTest() throws Exception {
         List<IAtomContainer> tmpMolecules = new ArrayList<>(this.loadTestMolecules());
+        tmpMolecules.addAll(AlkylTestMoleculeGenerator.generate());
         List<String> tmpDifferences = new ArrayList<>();
         Map<String, Integer> tmpIntendedDifferenceCounts = new HashMap<>();
         for (AlkylStructureFragmenter tmpASF : this.createAllSettingCombinations()) {
@@ -299,6 +338,10 @@ public class AlkylStructureFragmenterIntegrationTest {
                 List<String> tmpLegacy = this.fragmentToSortedStereoSmiles(tmpLegacyASF, tmpMolecule);
                 if (!tmpNew.equals(tmpLegacy)) {
                     String tmpIntendedDifference = this.getIntendedDifference(tmpASF, tmpMolecule);
+                    if (tmpIntendedDifference == null && !this.checkInvariants(new LegacyAdapter(tmpASF), tmpMolecule).isEmpty()
+                            && this.checkInvariants(tmpASF, tmpMolecule).isEmpty()) {
+                        tmpIntendedDifference = "C (the previous version violates the fragmentation rules, the new one does not)";
+                    }
                     if (tmpIntendedDifference != null) {
                         tmpIntendedDifferenceCounts.merge(tmpIntendedDifference, 1, Integer::sum);
                         continue;
@@ -344,6 +387,47 @@ public class AlkylStructureFragmenterIntegrationTest {
             }
         }
         return null;
+    }
+
+    /**
+     * Applies the previous implementation ({@link LegacyAlkylStructureFragmenter}) with the settings of a given new
+     * fragmenter, so that its results can be checked with {@link #checkInvariants(AlkylStructureFragmenter, IAtomContainer)}.
+     */
+    private static final class LegacyAdapter extends AlkylStructureFragmenter {
+        /**
+         * The previous implementation.
+         */
+        private final LegacyAlkylStructureFragmenter legacyFragmenter;
+
+        /**
+         * Constructor, takes over the settings of the given fragmenter.
+         *
+         * @param aFragmenter fragmenter whose settings are used
+         */
+        LegacyAdapter(AlkylStructureFragmenter aFragmenter) {
+            this.setFragmentSideChainsSetting(aFragmenter.getFragmentSideChainsSetting());
+            this.setMaxChainLengthSetting(aFragmenter.getMaxChainLengthSetting());
+            this.setIsolateTertQuatCarbonsSetting(aFragmenter.getIsolateTertQuatCarbonSetting());
+            this.setSeparateTertQuatCarbonFromRingSetting(aFragmenter.getSeparateTertQuatCarbonFromRingSetting());
+            this.setPreserveStereoChemistrySetting(aFragmenter.getPreserveStereoChemistrySetting());
+            this.legacyFragmenter = new LegacyAlkylStructureFragmenter();
+            this.legacyFragmenter.setFragmentSideChainsSetting(aFragmenter.getFragmentSideChainsSetting());
+            this.legacyFragmenter.setMaxChainLengthSetting(aFragmenter.getMaxChainLengthSetting());
+            this.legacyFragmenter.setIsolateTertQuatCarbonsSetting(aFragmenter.getIsolateTertQuatCarbonSetting());
+            this.legacyFragmenter.setSeparateTertQuatCarbonFromRingSetting(aFragmenter.getSeparateTertQuatCarbonFromRingSetting());
+            this.legacyFragmenter.setPreserveStereoChemistrySetting(aFragmenter.getPreserveStereoChemistrySetting());
+        }
+
+        @Override
+        public boolean shouldBeFiltered(IAtomContainer aMolecule) {
+            return this.legacyFragmenter.shouldBeFiltered(aMolecule);
+        }
+
+        @Override
+        public List<IAtomContainer> fragmentMolecule(IAtomContainer aMolecule) throws CloneNotSupportedException {
+            this.legacyFragmenter.shouldBeFiltered(aMolecule);
+            return this.legacyFragmenter.fragmentMolecule(aMolecule);
+        }
     }
 
     /**
@@ -547,7 +631,10 @@ public class AlkylStructureFragmenterIntegrationTest {
                     tmpViolations.add(aContext + ": stereo element references atoms or bonds outside of its fragment");
                 }
             }
-            if (tmpFragment.stereoElements().iterator().hasNext() && ChemUtil.createUniqueSmiles(tmpFragment, true) == null) {
+            //known CDK limitation: unique stereo SMILES are canonicalized via InChI, which fails for aromatic remnants that
+            // cannot be kekulized (also for the input molecule itself), so these fragments are not checked
+            if (tmpFragment.stereoElements().iterator().hasNext() && !this.containsNonKekulizableAromaticRemnant(tmpFragment)
+                    && ChemUtil.createUniqueSmiles(tmpFragment, true) == null) {
                 tmpViolations.add(aContext + ": stereo SMILES of fragment cannot be generated");
             }
         }
@@ -674,6 +761,34 @@ public class AlkylStructureFragmenterIntegrationTest {
         for (int i = 0; i < aFragment.getAtomCount(); i++) {
             if (Integer.valueOf(anInputAtomIndex).equals(aFragment.getAtom(i).getProperty(AlkylStructureFragmenter.INTERNAL_ASF_ATOM_INDEX_PROPERTY_KEY))) {
                 return Stereocenters.of(aFragment).isStereocenter(i);
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Checks whether the given fragment contains aromatic atoms or bonds without an assigned double bond pattern, i.e.
+     * aromatic bonds without bond order or aromatic atoms without double bond.
+     *
+     * @param aFragment fragment to check
+     * @return true if a non-kekulizable aromatic remnant is contained
+     */
+    private boolean containsNonKekulizableAromaticRemnant(IAtomContainer aFragment) {
+        for (IBond tmpBond : aFragment.bonds()) {
+            if (this.isAromaticWithoutOrder(tmpBond)) {
+                return true;
+            }
+        }
+        for (IAtom tmpAtom : aFragment.atoms()) {
+            if (!tmpAtom.isAromatic()) {
+                continue;
+            }
+            boolean tmpHasDoubleBond = false;
+            for (IBond tmpBond : aFragment.getConnectedBondsList(tmpAtom)) {
+                tmpHasDoubleBond |= tmpBond.getOrder() == IBond.Order.DOUBLE;
+            }
+            if (!tmpHasDoubleBond) {
+                return true;
             }
         }
         return false;
@@ -1043,6 +1158,9 @@ public class AlkylStructureFragmenterIntegrationTest {
     private IAtomContainer copyWithoutStereo(IAtomContainer aMolecule, Random aRandom) throws CloneNotSupportedException {
         IAtomContainer tmpClone = aMolecule.clone();
         tmpClone.setStereoElements(new ArrayList<>());
+        for (int i = 0; i < tmpClone.getAtomCount(); i++) {
+            tmpClone.getAtom(i).setProperty(AlkylStructureFragmenterIntegrationTest.ORIGINAL_INDEX_PROPERTY_KEY, i);
+        }
         if (aRandom == null) {
             return tmpClone;
         }
@@ -1066,6 +1184,75 @@ public class AlkylStructureFragmenterIntegrationTest {
             tmpPermuted.addBond(tmpNewBond);
         }
         return tmpPermuted;
+    }
+
+    /**
+     * Fragments the given molecule (a copy made by {@link #copyWithoutStereo(IAtomContainer, Random)}) and describes
+     * every fragment structurally by the original indices of its atoms with their hydrogen counts, pseudo atom
+     * neighbors and aromaticity, and by its bonds between original atom indices with their orders. In contrast to SMILES
+     * codes, these signatures do not depend on canonicalization, which is ambiguous for some radicals (e.g. aromatic
+     * remnants of the Ertl fragmenter).
+     *
+     * @param anASF configured fragmenter
+     * @param aMolecule molecule to fragment
+     * @return sorted fragment signatures, or the exception class name if the fragmentation fails
+     */
+    private List<String> fragmentToSortedSignatures(AlkylStructureFragmenter anASF, IAtomContainer aMolecule) {
+        try {
+            List<String> tmpSignatures = new ArrayList<>();
+            for (IAtomContainer tmpFragment : anASF.fragmentMolecule(aMolecule)) {
+                if (this.isLinearAlkane(tmpFragment)) {
+                    //which atoms of a dissected chain end up in which piece depends on the end the dissection starts at,
+                    // which is defined only up to the chain's symmetry; the resulting pieces are identical, so linear
+                    // chains are described by their length and hydrogen count only
+                    int tmpHydrogenCount = 0;
+                    for (IAtom tmpAtom : tmpFragment.atoms()) {
+                        tmpHydrogenCount += tmpAtom.getImplicitHydrogenCount();
+                    }
+                    tmpSignatures.add(String.format("chain:%d:H%d", tmpFragment.getAtomCount(), tmpHydrogenCount));
+                    continue;
+                }
+                List<String> tmpParts = new ArrayList<>();
+                for (IAtom tmpAtom : tmpFragment.atoms()) {
+                    if (this.isPseudo(tmpAtom)) {
+                        continue;
+                    }
+                    int tmpPseudoNeighbors = 0;
+                    for (IAtom tmpNeighbor : tmpFragment.getConnectedAtomsList(tmpAtom)) {
+                        tmpPseudoNeighbors += this.isPseudo(tmpNeighbor) ? 1 : 0;
+                    }
+                    tmpParts.add(String.format("a%d:H%d:P%d:%b", this.getOriginalIndex(aMolecule, tmpAtom),
+                            tmpAtom.getImplicitHydrogenCount(), tmpPseudoNeighbors, tmpAtom.isAromatic()));
+                }
+                for (IBond tmpBond : tmpFragment.bonds()) {
+                    if (this.isPseudo(tmpBond.getBegin()) || this.isPseudo(tmpBond.getEnd())) {
+                        continue;
+                    }
+                    int tmpBegin = this.getOriginalIndex(aMolecule, tmpBond.getBegin());
+                    int tmpEnd = this.getOriginalIndex(aMolecule, tmpBond.getEnd());
+                    tmpParts.add(String.format("b%d-%d:%s", Math.min(tmpBegin, tmpEnd), Math.max(tmpBegin, tmpEnd), tmpBond.getOrder()));
+                }
+                Collections.sort(tmpParts);
+                tmpSignatures.add(String.join(",", tmpParts));
+            }
+            Collections.sort(tmpSignatures);
+            return tmpSignatures;
+        } catch (Exception anException) {
+            return List.of(anException.getClass().getSimpleName());
+        }
+    }
+
+    /**
+     * Returns the original atom index (set by {@link #copyWithoutStereo(IAtomContainer, Random)}) of the input atom that
+     * the given fragment atom was copied from.
+     *
+     * @param aMolecule fragmented copy
+     * @param aFragmentAtom fragment atom
+     * @return original atom index
+     */
+    private int getOriginalIndex(IAtomContainer aMolecule, IAtom aFragmentAtom) {
+        int tmpIndex = aFragmentAtom.getProperty(AlkylStructureFragmenter.INTERNAL_ASF_ATOM_INDEX_PROPERTY_KEY);
+        return aMolecule.getAtom(tmpIndex).getProperty(AlkylStructureFragmenterIntegrationTest.ORIGINAL_INDEX_PROPERTY_KEY);
     }
 
     /**
