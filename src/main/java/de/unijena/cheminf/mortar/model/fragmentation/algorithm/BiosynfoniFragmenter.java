@@ -497,7 +497,8 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
     //<editor-fold desc="Private final variables">
     /**
      * Compiled SMARTS patterns in the order of {@link BiosynfoniKey#values()}. Every fragmenter instance holds its
-     * own patterns so that instances used in parallel do not share them.
+     * own patterns so that instances used in parallel do not share them. The automatic preparation of the target
+     * molecule is disabled because it is prepared once per molecule before all patterns are matched.
      */
     private final SmartsPattern[] smartsPatterns;
 
@@ -548,7 +549,8 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
         BiosynfoniKey[] tmpKeys = BiosynfoniKey.values();
         this.smartsPatterns = new SmartsPattern[tmpKeys.length];
         for (int i = 0; i < tmpKeys.length; i++) {
-            this.smartsPatterns[i] = SmartsPattern.create(tmpKeys[i].getSmarts());
+            //preparation (ring perception and aromaticity) is done once per molecule in fragmentMolecule()
+            this.smartsPatterns[i] = SmartsPattern.create(tmpKeys[i].getSmarts()).setPrepare(false);
         }
         this.smilesParser = new SmilesParser(SilentChemObjectBuilder.getInstance());
         this.fragmentAromaticityModel = new Aromaticity(ElectronDonation.daylight(),
@@ -766,6 +768,8 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
                     }
                 }
             }
+            //marks ring atoms and bonds and applies the Daylight aromaticity model once for all patterns, whose
+            // automatic preparation is disabled
             SmartsPattern.prepare(tmpMoleculeClone);
             int[] tmpCanonicalRanks = this.intraSubstructureOverlapFilterSetting.get()
                     ? BiosynfoniFragmenter.getCanonicalRanks(tmpMoleculeClone) : null;

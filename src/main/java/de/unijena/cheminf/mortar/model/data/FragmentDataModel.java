@@ -77,11 +77,12 @@ public class FragmentDataModel extends MoleculeDataModel {
     private final Set<MoleculeDataModel> parentMolecules;
     //
     /**
-     * Display labels of this fragment, e.g. the names of the substructure patterns that produced it, see
-     * {@link de.unijena.cheminf.mortar.model.fragmentation.algorithm.IMoleculeFragmenter#FRAGMENT_DISPLAY_LABEL_PROPERTY_KEY}.
-     * They are used to group fragments in the GUI.
+     * Display labels of this fragment in alphabetical order, e.g. the names of the substructure patterns that produced
+     * it, see {@link de.unijena.cheminf.mortar.model.fragmentation.algorithm.IMoleculeFragmenter#FRAGMENT_DISPLAY_LABEL_PROPERTY_KEY}.
+     * They are used to group fragments in the GUI. Only created when the first label is added, because most
+     * fragmenters do not set display labels; guarded by synchronizing on this object.
      */
-    private final Set<String> displayLabels;
+    private Set<String> displayLabels;
     //
     /**
      * Display labels in alphabetical order, separated by commas, or null if there is none; cached because it is
@@ -120,7 +121,6 @@ public class FragmentDataModel extends MoleculeDataModel {
         this.moleculePercentage = 0.;
         // sounds weird but to set the number of the total molecule set as expected size kills the performance
         this.parentMolecules = ConcurrentHashMap.newKeySet();
-        this.displayLabels = ConcurrentHashMap.newKeySet();
     }
     //
     /**
@@ -138,7 +138,6 @@ public class FragmentDataModel extends MoleculeDataModel {
         this.moleculePercentage = 0.;
         // sounds weird but to set the number of the total molecule set as expected size kills the performance
         this.parentMolecules = ConcurrentHashMap.newKeySet();
-        this.displayLabels = ConcurrentHashMap.newKeySet();
     }
     //</editor-fold>
     //
@@ -170,13 +169,14 @@ public class FragmentDataModel extends MoleculeDataModel {
      * @param aLabel label to add
      * @throws NullPointerException if the given label is null
      */
-    public void addDisplayLabel(String aLabel) throws NullPointerException {
-        Objects.requireNonNull(aLabel, "Given label is null.");
+    public synchronized void addDisplayLabel(String aLabel) throws NullPointerException {
         //synchronized so that the cached text always corresponds to the complete set of labels
-        synchronized (this.displayLabels) {
-            if (this.displayLabels.add(aLabel)) {
-                this.displayLabelText = String.join(", ", new TreeSet<>(this.displayLabels));
-            }
+        Objects.requireNonNull(aLabel, "Given label is null.");
+        if (this.displayLabels == null) {
+            this.displayLabels = new TreeSet<>();
+        }
+        if (this.displayLabels.add(aLabel)) {
+            this.displayLabelText = String.join(", ", this.displayLabels);
         }
     }
     //

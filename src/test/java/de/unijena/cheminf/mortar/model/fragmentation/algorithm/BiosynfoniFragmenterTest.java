@@ -260,7 +260,8 @@ class BiosynfoniFragmenterTest {
             }
         }
         throw new IllegalArgumentException("Unknown label: " + aLabel);
-    }    //
+    }
+    //
     /**
      * Counts the returned fragments per Biosynfoni label.
      *
