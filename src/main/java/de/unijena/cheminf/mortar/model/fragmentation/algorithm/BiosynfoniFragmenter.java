@@ -837,6 +837,11 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
     }
 
     @Override
+    public boolean providesDisplayLabels() {
+        return true;
+    }
+
+    @Override
     public IAtomContainer applyPreprocessing(IAtomContainer aMolecule)
             throws NullPointerException, IllegalArgumentException, CloneNotSupportedException {
         Objects.requireNonNull(aMolecule, "Given molecule is null.");

@@ -298,8 +298,10 @@ public class FragmentationService {
         String tmpFragmentationName = this.createAndCheckFragmentationName(this.selectedFragmenter.getFragmentationAlgorithmDisplayName());
         this.existingFragmentations.add(tmpFragmentationName);
         this.currentFragmentationName = tmpFragmentationName;
-        //display labels, e.g. the names of the Biosynfoni substructures, are only used for single fragmentations
-        this.fragments = this.startFragmentation(aListOfMolecules, aNumberOfTasks, this.selectedFragmenter, tmpFragmentationName, isStereoChemistryRegarded, true);
+        //display labels, e.g. the names of the Biosynfoni substructures, are only used for single fragmentations and
+        // only collected if the fragmenter assigns them itself
+        this.fragments = this.startFragmentation(aListOfMolecules, aNumberOfTasks, this.selectedFragmenter, tmpFragmentationName,
+                isStereoChemistryRegarded, this.selectedFragmenter.providesDisplayLabels());
         FragmentationService.LOGGER.log(Level.INFO, "Number of different fragments extracted: {0}", this.fragments == null ? 0 : this.fragments.size());
     }
     //

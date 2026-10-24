@@ -420,5 +420,17 @@ public interface IMoleculeFragmenter {
      */
     IAtomContainer applyPreprocessing(IAtomContainer aMolecule)
             throws NullPointerException, IllegalArgumentException, CloneNotSupportedException;
+
+    /**
+     * Returns true if the fragmenter assigns display labels to its fragments (see
+     * {@link #FRAGMENT_DISPLAY_LABEL_PROPERTY_KEY}). Only then, the labels are collected in single fragmentations.
+     * This prevents labels from being taken over from input molecules that carry the respective property, e.g. after
+     * re-importing exported fragments, if the fragmenter passes on the properties of the input molecule.
+     *
+     * @return true if the fragmenter assigns display labels; false by default
+     */
+    default boolean providesDisplayLabels() {
+        return false;
+    }
     //</editor-fold>
 }
