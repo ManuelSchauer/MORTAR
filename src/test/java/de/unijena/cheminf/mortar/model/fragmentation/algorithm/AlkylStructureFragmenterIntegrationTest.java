@@ -156,7 +156,8 @@ public class AlkylStructureFragmenterIntegrationTest {
 
     /**
      * Checks that the fragmentation result does not depend on the order of atoms and bonds in the input container
-     * and on the begin/end orientation of the bonds.
+     * and on the begin/end orientation of the bonds, with and without hydrogen saturation (without saturation, the
+     * positions of the unsaturated atoms reveal the direction in which chains were dissected).
      *
      * @throws Exception if the test structures cannot be read
      */
@@ -165,13 +166,19 @@ public class AlkylStructureFragmenterIntegrationTest {
         List<IAtomContainer> tmpMolecules = this.loadTestMolecules();
         List<String> tmpViolations = new ArrayList<>();
         Random tmpRandom = new Random(42);
+        List<AlkylStructureFragmenter> tmpFragmenters = new ArrayList<>();
         for (AlkylStructureFragmenter tmpASF : this.createAllSettingCombinations()) {
+            tmpFragmenters.add(tmpASF);
+            AlkylStructureFragmenter tmpUnsaturatedASF = (AlkylStructureFragmenter) tmpASF.copy();
+            tmpUnsaturatedASF.setFragmentSaturationSetting(IMoleculeFragmenter.FragmentSaturationOption.NO_SATURATION);
+            tmpFragmenters.add(tmpUnsaturatedASF);
+        }
+        for (AlkylStructureFragmenter tmpASF : tmpFragmenters) {
             for (IAtomContainer tmpMolecule : tmpMolecules) {
-                IAtomContainer tmpReference = this.copyWithoutStereo(tmpMolecule, null);
-                List<String> tmpExpected = this.fragmentToSortedSmilesOrException(tmpASF, tmpReference);
+                //structural signatures instead of SMILES, the canonical SMILES of radicals can depend on the atom order
+                List<String> tmpExpected = this.fragmentToSortedSignatures(tmpASF, this.copyWithoutStereo(tmpMolecule, null));
                 for (int i = 0; i < AlkylStructureFragmenterIntegrationTest.PERMUTATION_COUNT; i++) {
-                    IAtomContainer tmpPermuted = this.copyWithoutStereo(tmpMolecule, tmpRandom);
-                    List<String> tmpActual = this.fragmentToSortedSmilesOrException(tmpASF, tmpPermuted);
+                    List<String> tmpActual = this.fragmentToSortedSignatures(tmpASF, this.copyWithoutStereo(tmpMolecule, tmpRandom));
                     if (!tmpExpected.equals(tmpActual)) {
                         tmpViolations.add(String.format("%s [%s]: %s vs. permuted %s",
                                 ChemUtil.createUniqueSmiles(tmpMolecule, false), this.describeSettings(tmpASF),
@@ -1308,8 +1315,9 @@ public class AlkylStructureFragmenterIntegrationTest {
     }
 
     private String describeSettings(AlkylStructureFragmenter anASF) {
-        return String.format("sideChains=%b, maxLength=%d, isolateTertQuat=%b, separateTertQuatFromRing=%b",
+        return String.format("sideChains=%b, maxLength=%d, isolateTertQuat=%b, separateTertQuatFromRing=%b, saturation=%s",
                 anASF.getFragmentSideChainsSetting(), anASF.getMaxChainLengthSetting(),
-                anASF.getIsolateTertQuatCarbonSetting(), anASF.getSeparateTertQuatCarbonFromRingSetting());
+                anASF.getIsolateTertQuatCarbonSetting(), anASF.getSeparateTertQuatCarbonFromRingSetting(),
+                anASF.getFragmentSaturationSetting());
     }
 }

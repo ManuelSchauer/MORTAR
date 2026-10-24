@@ -119,6 +119,13 @@ import java.util.logging.Logger;
  * and still a stereocenter (if the respective setting is active).
  * </p>
  * <p>
+ * Known limitation (outside of this class): if stereo chemistry is regarded in MORTAR, the unique SMILES codes of the
+ * fragments are generated via InChI-based canonicalization ({@link de.unijena.cheminf.mortar.model.util.ChemUtil#createUniqueSmiles(IAtomContainer, boolean)}),
+ * which fails for aromatic remnants that cannot be kekulized (e.g. opened aromatic rings in fragments of the Ertl
+ * fragmenter). Such fragments get no SMILES code and are therefore skipped by the fragmentation task, although this
+ * class returns them correctly.
+ * </p>
+ * <p>
  * Every atom of a returned fragment (except pseudo atoms) carries the index of the corresponding atom in the
  * fragmented (hydrogen-suppressed) molecule as property {@link #INTERNAL_ASF_ATOM_INDEX_PROPERTY_KEY}.
  * </p>
@@ -1115,7 +1122,7 @@ public class AlkylStructureFragmenter implements IMoleculeFragmenter {
      * @return the copy
      */
     private IAtom copyAtom(IAtom anAtom, int anIndex) {
-        IAtom tmpCopy = this.builder.newInstance(IAtom.class, anAtom.getSymbol());
+        IAtom tmpCopy = this.builder.newInstance(IAtom.class);
         tmpCopy.setAtomicNumber(anAtom.getAtomicNumber());
         tmpCopy.setImplicitHydrogenCount(anAtom.getImplicitHydrogenCount());
         tmpCopy.setFormalCharge(anAtom.getFormalCharge());

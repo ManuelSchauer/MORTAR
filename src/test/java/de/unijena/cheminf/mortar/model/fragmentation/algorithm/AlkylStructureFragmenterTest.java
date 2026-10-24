@@ -1164,32 +1164,17 @@ public class AlkylStructureFragmenterTest {
             tmpASF.setIsolateTertQuatCarbonsSetting((boolean) tmpExample[1]);
             tmpASF.setSeparateTertQuatCarbonFromRingSetting((boolean) tmpExample[2]);
             tmpASF.setMaxChainLengthSetting((int) tmpExample[3]);
-            IAtomContainer tmpMolecule = this.parseAsInPipeline((String) tmpExample[0]);
+            IAtomContainer tmpMolecule = AlkylTestMoleculeGenerator.parseAsInPipeline((String) tmpExample[0]);
+            Assertions.assertNotNull(tmpMolecule, () -> "Invalid example SMILES " + tmpExample[0]);
             this.preprocessTestMolecule(tmpASF, tmpMolecule, false, false, true);
             List<String> tmpActual = this.generateSMILESFromACList(tmpASF.fragmentMolecule(tmpMolecule), false);
             List<String> tmpExpected = new ArrayList<>();
             for (String tmpExpectedSmiles : ((String) tmpExample[4]).split(" ")) {
-                tmpExpected.add(ChemUtil.createUniqueSmiles(this.parseAsInPipeline(tmpExpectedSmiles), false, true));
+                tmpExpected.add(ChemUtil.createUniqueSmiles(AlkylTestMoleculeGenerator.parseAsInPipeline(tmpExpectedSmiles), false, true));
             }
             Collections.sort(tmpActual);
             Collections.sort(tmpExpected);
             Assertions.assertEquals(tmpExpected, tmpActual, tmpExample[0] + " " + Arrays.toString(tmpExample));
-        }
-    }
-
-    /**
-     * Parses the given SMILES like MORTAR does for fragments in a pipeline: with kekulization or, if that fails (e.g.
-     * aromatic remnants), without.
-     *
-     * @param aSmiles SMILES to parse
-     * @return the parsed molecule
-     * @throws CDKException if the SMILES cannot be parsed
-     */
-    private IAtomContainer parseAsInPipeline(String aSmiles) throws CDKException {
-        try {
-            return ChemUtil.parseSmilesToAtomContainer(aSmiles, true, true);
-        } catch (CDKException anException) {
-            return ChemUtil.parseSmilesToAtomContainer(aSmiles, false, false);
         }
     }
 
