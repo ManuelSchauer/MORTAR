@@ -37,10 +37,12 @@ import javafx.beans.property.Property;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.SimpleIntegerProperty;
 
+import org.openscience.cdk.atomtype.CDKAtomTypeMatcher;
 import org.openscience.cdk.exception.CDKException;
 import org.openscience.cdk.graph.Cycles;
 import org.openscience.cdk.interfaces.IAtom;
 import org.openscience.cdk.interfaces.IAtomContainer;
+import org.openscience.cdk.interfaces.IAtomType;
 import org.openscience.cdk.interfaces.IBond;
 import org.openscience.cdk.interfaces.IChemObjectBuilder;
 import org.openscience.cdk.interfaces.IDoubleBondStereochemistry;
@@ -54,6 +56,7 @@ import org.openscience.cdk.stereo.Stereocenters;
 import org.openscience.cdk.stereo.TetrahedralChirality;
 import org.openscience.cdk.tools.CDKHydrogenAdder;
 import org.openscience.cdk.tools.manipulator.AtomContainerManipulator;
+import org.openscience.cdk.tools.manipulator.AtomTypeManipulator;
 
 import javax.vecmath.Point2d;
 import javax.vecmath.Point3d;
@@ -90,7 +93,7 @@ import java.util.logging.Logger;
  *     (e.g. an exocyclic double bond) belongs to that core, all other multiple bonds form isolated fragments.
  *     Examples: {@code C=C1CCCCC1 -> C=C1CCCCC1}; {@code CC=CC -> C=C, C, C}.</li>
  *     <li><b>Tertiary and quaternary carbons</b>: non-cyclic, non-aromatic carbons with only single bonds to three or
- *     four other atoms.
+ *     four other carbon atoms (hydrogen atoms are not counted, also if they are explicit, e.g. isotopes).
  *     <ul>
  *         <li>With the isolation setting, such a carbon is cut from all its neighbors, unless it is bonded to a ring
  *         and not to be separated from it. The neighbors of an isolated carbon are treated like any other atoms, e.g.
@@ -99,9 +102,11 @@ import java.util.logging.Logger;
  *         <li>A non-isolated tertiary/quaternary carbon (isolation setting inactive, or kept at a ring) forms a unit
  *         with its saturated neighbors (like tert-butyl) and keeps its bonds to other non-isolated
  *         tertiary/quaternary carbons, to conjugated systems, and to rings unless separated from them. Bonds of the
- *         saturated neighbors to further atoms are cut. Examples: isolation inactive
- *         {@code CC(C)(C)CCCC(C)C -> CC(C)(C)C, CC(C)C, C}; kept at ring {@code CC(C)c1ccccc1 -> CC(C)c1ccccc1};
- *         bonded to ring and conjugated system {@code CC(C1CCCCC1)C=CC=C -> C=CC=CC(C)C1CCCCC1}.</li>
+ *         saturated neighbors to further atoms are cut, except to the tertiary/quaternary carbon of another unit: units
+ *         that are directly bonded or share a saturated neighbor form one fragment. Examples: isolation inactive
+ *         {@code CC(C)(C)CCCC(C)C -> CC(C)(C)C, CC(C)C, C}; shared neighbor {@code CC(C)CC(C)C -> CC(C)CC(C)C}, but
+ *         {@code CC(C)CCC(C)C -> CC(C)C, CC(C)C}; kept at ring {@code CC(C)c1ccccc1 -> CC(C)c1ccccc1}; bonded to ring
+ *         and conjugated system {@code CC(C1CCCCC1)C=CC=C -> C=CC=CC(C)C1CCCCC1}.</li>
  *     </ul></li>
  *     <li><b>Pseudo atoms</b>: every cut bond of a tertiary/quaternary carbon is replaced by a pseudo atom on that carbon,
  *     so that the carbon keeps its original number of bonds; the other side of the cut is saturated with hydrogen.
@@ -110,8 +115,8 @@ import java.util.logging.Logger;
  *     {@code CC(C)C(C)C1CCCCC1 -> *C(*)*, *C(C)C1CCCCC1, C, C}.</li>
  *     <li><b>Linear chains</b>: the remaining saturated carbons form chains that are cut from all other substructures and,
  *     if activated, dissected into chains of the set maximum length, walked from the chain end that is bonded to the
- *     rest of the molecule (from the end with the lower atom index if both or none are). Examples: {@code CC1CCCCC1 -> C1CCCCC1, C}; maximum length 3:
- *     {@code CCCCCCCC -> CCC, CCC, CC}.</li>
+ *     rest of the molecule (from the end with the lower atom index if both or none are). Examples:
+ *     {@code CC1CCCCC1 -> C1CCCCC1, C}; maximum length 3: {@code CCCCCCCC -> CCC, CCC, CC}.</li>
  * </ol>
  * <p>
  * Afterwards, cut bonds are saturated with implicit hydrogen atoms (if the respective setting is active) and the
@@ -126,8 +131,11 @@ import java.util.logging.Logger;
  * class returns them correctly.
  * </p>
  * <p>
- * Every atom of a returned fragment (except pseudo atoms) carries the index of the corresponding atom in the
- * fragmented (hydrogen-suppressed) molecule as property {@link #INTERNAL_ASF_ATOM_INDEX_PROPERTY_KEY}.
+ * Every atom (except pseudo atoms) and every bond of a generated fragment carries the index of the corresponding atom
+ * or bond in the fragmented (hydrogen-suppressed) molecule as property {@link #INTERNAL_ASF_ATOM_INDEX_PROPERTY_KEY}
+ * or {@link #INTERNAL_ASF_BOND_INDEX_PROPERTY_KEY}, e.g. for mapping fragments back to the molecule. Non-fragmentable
+ * molecules that are returned unchanged (see {@link #fragmentMolecule(IAtomContainer)}) do not carry these
+ * properties.
  * </p>
  *
  * @author Maximilian Rottmann (maximilian.rottmann@studmail.w-hs.de), Manuel Schauer
@@ -938,26 +946,28 @@ public class AlkylStructureFragmenter implements IMoleculeFragmenter {
     }
 
     /**
-     * Sets missing implicit hydrogen counts of the given molecule's atoms.
+     * Sets missing implicit hydrogen counts of the given molecule's atoms. Only atoms without a count are changed, so
+     * that given counts (e.g. of radicals in aromatic remnants) are kept; if a count cannot be determined, it is set to 0.
      *
      * @param aMolecule molecule to check
      */
     private void ensureImplicitHydrogenCounts(IAtomContainer aMolecule) {
-        boolean tmpIsCountMissing = false;
+        CDKAtomTypeMatcher tmpMatcher = CDKAtomTypeMatcher.getInstance(this.builder);
+        CDKHydrogenAdder tmpHydrogenAdder = CDKHydrogenAdder.getInstance(this.builder);
         for (IAtom tmpAtom : aMolecule.atoms()) {
-            tmpIsCountMissing |= Objects.isNull(tmpAtom.getImplicitHydrogenCount());
-        }
-        if (!tmpIsCountMissing) {
-            return;
-        }
-        try {
-            AtomContainerManipulator.percieveAtomTypesAndConfigureAtoms(aMolecule);
-            CDKHydrogenAdder.getInstance(this.builder).addImplicitHydrogens(aMolecule);
-        } catch (CDKException anException) {
-            AlkylStructureFragmenter.LOGGER.log(Level.WARNING, String.format("Implicit hydrogen counts could not be determined for molecule %s: %s",
-                    aMolecule.getProperty(Importer.MOLECULE_NAME_PROPERTY_KEY), anException));
-        }
-        for (IAtom tmpAtom : aMolecule.atoms()) {
+            if (Objects.nonNull(tmpAtom.getImplicitHydrogenCount())) {
+                continue;
+            }
+            try {
+                IAtomType tmpAtomType = tmpMatcher.findMatchingAtomType(aMolecule, tmpAtom);
+                if (Objects.nonNull(tmpAtomType) && !"X".equals(tmpAtomType.getAtomTypeName())) {
+                    AtomTypeManipulator.configure(tmpAtom, tmpAtomType);
+                    tmpHydrogenAdder.addImplicitHydrogens(aMolecule, tmpAtom);
+                }
+            } catch (CDKException anException) {
+                AlkylStructureFragmenter.LOGGER.log(Level.WARNING, String.format("Implicit hydrogen count could not be determined for an atom of molecule %s: %s",
+                        aMolecule.getProperty(Importer.MOLECULE_NAME_PROPERTY_KEY), anException));
+            }
             if (Objects.isNull(tmpAtom.getImplicitHydrogenCount())) {
                 tmpAtom.setImplicitHydrogenCount(0);
             }

@@ -1152,6 +1152,8 @@ public class AlkylStructureFragmenterTest {
                 {"CC(C)(C)CCCC(C)C", true, false, 6, "*C(*)(*)* *C(*)* C C C C C CCC"},
                 {"c1ccc(cc1)C(C)CC", true, true, 6, "c1ccccc1 *C(*)* C CC"},
                 {"CC(C)(C)CCCC(C)C", false, false, 6, "CC(C)(C)C CC(C)C C"},
+                {"CC(C)CC(C)C", false, false, 6, "CC(C)CC(C)C"},
+                {"CC(C)CCC(C)C", false, false, 6, "CC(C)C CC(C)C"},
                 {"CC(C)c1ccccc1", true, false, 6, "CC(C)c1ccccc1"},
                 {"CC(C1CCCCC1)C=CC=C", true, false, 6, "C=CC=CC(C)C1CCCCC1"},
                 {"C=CC(C)(C)C", false, false, 6, "C=C *C(C)(C)C"},
@@ -1273,6 +1275,23 @@ public class AlkylStructureFragmenterTest {
             Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList), tmpExpectedSMILESList),
                     () -> tmpEntry.getKey() + " -> " + tmpFragmentsSMILESList);
         }
+    }
+
+    /**
+     * Tests that missing implicit hydrogen counts are only set for the atoms without a count, so that given counts (here
+     * of a radical as in aromatic remnants of the Ertl fragmenter) are kept.
+     *
+     * @throws InvalidSmilesException if SMILES cannot be parsed
+     * @throws CloneNotSupportedException if cloning of the original molecule is not supported
+     */
+    @Test
+    void missingImplicitHydrogenCountTest() throws InvalidSmilesException, CloneNotSupportedException {
+        SmilesParser tmpParser = new SmilesParser(SilentChemObjectBuilder.getInstance());
+        IAtomContainer tmpMolecule = tmpParser.parseSmiles("[CH2]CCC");
+        tmpMolecule.getAtom(3).setImplicitHydrogenCount(null);
+        List<IAtomContainer> tmpFragments = new AlkylStructureFragmenter().fragmentMolecule(tmpMolecule);
+        String tmpExpected = ChemUtil.createUniqueSmiles(tmpParser.parseSmiles("[CH2]CCC"), false, true);
+        Assertions.assertEquals(List.of(tmpExpected), this.generateSMILESFromACList(tmpFragments, false));
     }
 
     /**
