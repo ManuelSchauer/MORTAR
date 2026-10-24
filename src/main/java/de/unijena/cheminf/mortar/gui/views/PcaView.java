@@ -87,6 +87,7 @@ import org.openscience.cdk.exception.CDKException;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -535,7 +536,6 @@ public class PcaView extends BorderPane {
         this.threeDimensionalToggleButton.selectedProperty().addListener((anObservable, anOldValue, aNewValue) -> this.showDimension(aNewValue));
         //the axes are fixed to PC1 to PC3 in 3D
         tmpAxisGrid.disableProperty().bind(this.threeDimensionalToggleButton.selectedProperty());
-        tmpLoadingVectorsButton.disableProperty().bind(this.threeDimensionalToggleButton.selectedProperty());
         HBox tmpDimensionBox = new HBox(GuiDefinitions.GUI_BUTTON_SPACING_VALUE, tmpTwoDimensionalToggleButton, this.threeDimensionalToggleButton);
         VBox tmpRightBox = new VBox(GuiDefinitions.GUI_SPACING_VALUE, tmpDimensionBox, tmpAxisGrid, new Label(Message.get("PcaView.colourBy.label")),
                 this.colourComboBox, this.colourLegendBox, this.centresCheckBox, tmpLoadingVectorsButton, tmpResetViewButton,
@@ -943,19 +943,19 @@ public class PcaView extends BorderPane {
     //
     /**
      * Opens the dialog to choose the features whose loading vectors are shown: a searchable list of all features of the
-     * processed matrix with check boxes, sorted by the length of their vector on the shown components; "Main features"
-     * checks the features with the largest weight in both components, "None" unchecks all.
+     * processed matrix with check boxes, sorted by the length of their vector on the shown components (the two axes of
+     * the 2D plot or PC1 to PC3 in 3D); "Main features" checks the features with the largest weight in the shown
+     * components, "None" unchecks all.
      */
     private void chooseLoadingVectors() {
-        int tmpX = this.xComponentComboBox.getValue();
-        int tmpY = this.yComponentComboBox.getValue();
+        int[] tmpComponents = this.getLoadingVectorComponents();
         double[][] tmpLoadings = this.pcaResult.loadings();
         FeatureMatrix tmpProcessed = this.runResult.processedMatrix();
         List<Integer> tmpFeatures = new ArrayList<>(tmpProcessed.getColumnCount());
         for (int j = 0; j < tmpProcessed.getColumnCount(); j++) {
             tmpFeatures.add(j);
         }
-        tmpFeatures.sort(Comparator.comparingDouble((Integer j) -> -Math.hypot(tmpLoadings[tmpX][j], tmpLoadings[tmpY][j])));
+        tmpFeatures.sort(Comparator.comparingDouble((Integer j) -> -PcaView.getLoadingVectorLength(tmpLoadings, tmpComponents, j)));
         Map<Integer, BooleanProperty> tmpCheckedPropertyMap = new LinkedHashMap<>();
         for (Integer tmpFeature : tmpFeatures) {
             tmpCheckedPropertyMap.put(tmpFeature, new SimpleBooleanProperty(this.loadingVectorFeatureIndices.contains(tmpFeature)));
@@ -971,9 +971,16 @@ public class PcaView extends BorderPane {
         tmpListView.setCellFactory(CheckBoxListCell.forListView(tmpCheckedPropertyMap::get, new StringConverter<>() {
             @Override
             public String toString(Integer aFeature) {
-                return aFeature == null ? "" : String.format(Locale.getDefault(), Message.get("PcaView.loadingVectors.item.text"),
-                        tmpProcessed.getFeatureName(aFeature), tmpProcessed.getFeatureGroupName(aFeature),
-                        PcaView.getComponentLabel(tmpX), tmpLoadings[tmpX][aFeature], PcaView.getComponentLabel(tmpY), tmpLoadings[tmpY][aFeature]);
+                if (aFeature == null) {
+                    return "";
+                }
+                List<String> tmpParts = new ArrayList<>(tmpComponents.length);
+                for (int tmpComponent : tmpComponents) {
+                    tmpParts.add(String.format(Locale.getDefault(), "%s %+.3f", PcaView.getComponentLabel(tmpComponent),
+                            tmpLoadings[tmpComponent][aFeature]));
+                }
+                return String.format(Message.get("PcaView.loadingVectors.item.text"), tmpProcessed.getFeatureName(aFeature),
+                        tmpProcessed.getFeatureGroupName(aFeature), String.join(", ", tmpParts));
             }
             @Override
             public Integer fromString(String aString) {
@@ -984,7 +991,7 @@ public class PcaView extends BorderPane {
         tmpListView.setPrefWidth(520);
         Button tmpMainButton = new Button(Message.get("PcaView.loadingVectors.mainButton.text"));
         tmpMainButton.setOnAction(anEvent -> {
-            for (int tmpComponent : new int[] {tmpX, tmpY}) {
+            for (int tmpComponent : tmpComponents) {
                 for (PrincipalComponentAnalysis.FeatureLoading tmpLoading : this.pcaResult.getTopLoadings(tmpComponent, PcaView.NUMBER_OF_AXIS_FEATURES)) {
                     tmpCheckedPropertyMap.get(tmpLoading.featureIndex()).set(true);
                 }
@@ -1002,8 +1009,8 @@ public class PcaView extends BorderPane {
             tmpDialog.initOwner(this.getScene().getWindow());
         }
         tmpDialog.setTitle(Message.get("PcaView.loadingVectorsButton.text"));
-        tmpDialog.setHeaderText(String.format(Message.get("PcaView.loadingVectors.header"), PcaView.getComponentLabel(tmpX),
-                PcaView.getComponentLabel(tmpY)));
+        tmpDialog.setHeaderText(String.format(Message.get("PcaView.loadingVectors.header"), String.join(", ",
+                Arrays.stream(tmpComponents).mapToObj(PcaView::getComponentLabel).toList())));
         tmpDialog.getDialogPane().setContent(new VBox(GuiDefinitions.GUI_SPACING_VALUE, tmpSearchBox, tmpListView, tmpHintLabel));
         tmpDialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
         if (tmpDialog.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) {
@@ -1023,13 +1030,17 @@ public class PcaView extends BorderPane {
      * mean of the molecules) in the direction of the feature's weights on the shown components, labelled with the
      * feature name. All vectors share one scale, chosen so that the longest possible vector of all features reaches
      * {@link #LOADING_VECTOR_LENGTH_SHARE} of the smaller score range; so the lengths can be compared, and a feature with
-     * a long vector separates the molecules along it. The vectors are clipped to the plot area.
+     * a long vector separates the molecules along it. The vectors are clipped to the plot area. In 3D, the vectors on
+     * PC1 to PC3 are passed to the 3D view, scaled the same way to the cube of the scores.
      */
     private void updateLoadingVectors() {
         if (this.loadingVectorPane == null) {
             return;
         }
         this.loadingVectorPane.getChildren().clear();
+        if (this.pca3dView != null) {
+            this.update3dLoadingVectors();
+        }
         if (this.loadingVectorFeatureIndices.isEmpty() || !this.chart.isVisible() || this.xAxis.getWidth() <= 0.0 || this.yAxis.getHeight() <= 0.0) {
             return;
         }
@@ -1075,8 +1086,7 @@ public class PcaView extends BorderPane {
             }
             //the name a little beyond the tip, on the side the arrow points to
             String tmpName = tmpProcessed.getFeatureName(tmpFeature);
-            Text tmpLabel = new Text(tmpName.length() > PcaView.MAXIMUM_FEATURE_NAME_LENGTH
-                    ? tmpName.substring(0, PcaView.MAXIMUM_FEATURE_NAME_LENGTH - 1) + "\u2026" : tmpName);
+            Text tmpLabel = new Text(PcaView.shortenFeatureName(tmpName));
             tmpLabel.setFill(PcaView.LOADING_VECTOR_COLOR);
             tmpLabel.setStyle("-fx-font-weight: bold;");
             double tmpWidth = tmpLabel.getLayoutBounds().getWidth();
@@ -1084,6 +1094,40 @@ public class PcaView extends BorderPane {
             tmpLabel.setY(tmpTip.getY() + 6.0 * Math.sin(tmpAngle) + (Math.sin(tmpAngle) > 0.0 ? 10.0 : 0.0));
             this.loadingVectorPane.getChildren().add(tmpLabel);
         }
+    }
+    //
+    /**
+     * Passes the loading vectors of the chosen features on PC1 to PC3 to the 3D view; the longest possible vector of all
+     * features reaches {@link #LOADING_VECTOR_LENGTH_SHARE} of the half edge of the cube of the scores.
+     */
+    private void update3dLoadingVectors() {
+        int[] tmpComponents = {0, 1, 2};
+        double[][] tmpLoadings = this.pcaResult.loadings();
+        double tmpMaximumLength = 0.0;
+        for (int j = 0; j < tmpLoadings[0].length; j++) {
+            tmpMaximumLength = Math.max(tmpMaximumLength, PcaView.getLoadingVectorLength(tmpLoadings, tmpComponents, j));
+        }
+        double tmpScale = tmpMaximumLength > 0.0 ? PcaView.LOADING_VECTOR_LENGTH_SHARE * this.pca3dView.getMaximumScore() / tmpMaximumLength : 0.0;
+        double[][] tmpTips = new double[this.loadingVectorFeatureIndices.size()][];
+        String[] tmpNames = new String[tmpTips.length];
+        int v = 0;
+        for (int tmpFeature : this.loadingVectorFeatureIndices) {
+            tmpTips[v] = new double[] {tmpScale * tmpLoadings[0][tmpFeature], tmpScale * tmpLoadings[1][tmpFeature],
+                    tmpScale * tmpLoadings[2][tmpFeature]};
+            tmpNames[v] = PcaView.shortenFeatureName(this.runResult.processedMatrix().getFeatureName(tmpFeature));
+            v++;
+        }
+        this.pca3dView.setLoadingVectors(tmpTips, tmpNames);
+    }
+    //
+    /**
+     * Returns the components the loading vectors are shown on: PC1 to PC3 in 3D, otherwise the two axes of the 2D plot.
+     *
+     * @return component indices
+     */
+    private int[] getLoadingVectorComponents() {
+        return this.threeDimensionalToggleButton.isSelected() ? new int[] {0, 1, 2}
+                : new int[] {this.xComponentComboBox.getValue(), this.yComponentComboBox.getValue()};
     }
     //
     /**
@@ -1150,6 +1194,7 @@ public class PcaView extends BorderPane {
                         }
                     });
             this.plotPane.getChildren().add(this.pca3dView);
+            this.update3dLoadingVectors();
         }
         this.chart.setVisible(!anIsThreeDimensional);
         //the loading vectors are only drawn in the 2D plot
@@ -1319,6 +1364,33 @@ public class PcaView extends BorderPane {
      */
     private static String getComponentLabel(int aComponent) {
         return "PC" + (aComponent + 1);
+    }
+    //
+    /**
+     * Returns the length of the loading vector of a feature on the given components.
+     *
+     * @param aLoadings loadings, components x features
+     * @param aComponents components
+     * @param aFeature feature index
+     * @return Euclidean length of the loadings of the feature on the components
+     */
+    private static double getLoadingVectorLength(double[][] aLoadings, int[] aComponents, int aFeature) {
+        double tmpSum = 0.0;
+        for (int tmpComponent : aComponents) {
+            tmpSum += aLoadings[tmpComponent][aFeature] * aLoadings[tmpComponent][aFeature];
+        }
+        return Math.sqrt(tmpSum);
+    }
+    //
+    /**
+     * Shortens a feature name to {@link #MAXIMUM_FEATURE_NAME_LENGTH} characters with an ellipsis.
+     *
+     * @param aName feature name
+     * @return shortened name
+     */
+    private static String shortenFeatureName(String aName) {
+        return aName.length() > PcaView.MAXIMUM_FEATURE_NAME_LENGTH
+                ? aName.substring(0, PcaView.MAXIMUM_FEATURE_NAME_LENGTH - 1) + "\u2026" : aName;
     }
     //
     /**

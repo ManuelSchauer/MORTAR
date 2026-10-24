@@ -50,6 +50,7 @@ import javafx.scene.shape.MeshView;
 import javafx.scene.shape.Sphere;
 import javafx.scene.shape.TriangleMesh;
 import javafx.scene.transform.Rotate;
+import javafx.scene.transform.Translate;
 
 import java.math.BigDecimal;
 import java.math.MathContext;
@@ -72,6 +73,8 @@ import java.util.function.IntConsumer;
  * so that the proportions of the projection are kept. The axes have tick marks at round values. Their labels are not
  * part of the 3D scene, where text would be rotated and scaled by the perspective and become blurred, but sharp 2D labels
  * in an overlay that are moved to the projected positions of their anchors after every rotation, zoom and resize.
+ * Loading vectors of chosen features can be shown as arrows from the origin (see {@link #setLoadingVectors}), labelled
+ * the same way.
  *
  * @author Manuel Schauer
  * @version 1.0.0.0
@@ -130,6 +133,30 @@ public class Pca3dView extends Pane {
      * Approximate number of tick marks per half axis.
      */
     private static final int TICKS_PER_HALF_AXIS = 4;
+    /**
+     * Radius of the shaft of a loading vector.
+     */
+    private static final double LOADING_VECTOR_RADIUS = 1.2;
+    /**
+     * Radius of the sphere at the tip of a loading vector.
+     */
+    private static final double LOADING_VECTOR_TIP_RADIUS = 3.5;
+    /**
+     * Colour of the loading vectors, the same as in the 2D plot.
+     */
+    private static final Color LOADING_VECTOR_COLOR = Color.web("#b2182b");
+    /**
+     * Style of the name of an axis.
+     */
+    private static final String AXIS_NAME_STYLE = "-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #404040;";
+    /**
+     * Style of the value of a tick mark.
+     */
+    private static final String TICK_VALUE_STYLE = "-fx-font-size: 10px; -fx-text-fill: #606060;";
+    /**
+     * Style of the name of a loading vector.
+     */
+    private static final String LOADING_VECTOR_NAME_STYLE = "-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #b2182b;";
     //</editor-fold>
     //
     //<editor-fold desc="private final variables" defaultstate="collapsed">
@@ -173,6 +200,14 @@ public class Pca3dView extends Pane {
      * Anchor of every label in the 3D scene, in the order of the labels of the overlay.
      */
     private final List<Node> labelAnchors;
+    /**
+     * Number of labels of the axes and tick marks; the labels of the loading vectors follow them in the overlay.
+     */
+    private final int numberOfAxisLabels;
+    /**
+     * Group of the loading vectors in the 3D scene.
+     */
+    private final Group loadingVectorGroup;
     //</editor-fold>
     //
     //<editor-fold desc="private variables" defaultstate="collapsed">
@@ -242,8 +277,10 @@ public class Pca3dView extends Pane {
         this.labelOverlay = new Pane();
         this.labelOverlay.setMouseTransparent(true);
         this.labelAnchors = new ArrayList<>();
-        this.world = new Group(this.moleculeMeshView, this.centreMeshView);
+        this.loadingVectorGroup = new Group();
+        this.world = new Group(this.moleculeMeshView, this.centreMeshView, this.loadingVectorGroup);
         this.world.getChildren().addAll(this.createAxes(tmpMaximum, anAxisNameArray));
+        this.numberOfAxisLabels = this.labelAnchors.size();
         this.rotateX = new Rotate(Pca3dView.START_ANGLE_X, Rotate.X_AXIS);
         this.rotateY = new Rotate(Pca3dView.START_ANGLE_Y, Rotate.Y_AXIS);
         this.world.getTransforms().addAll(this.rotateX, this.rotateY);
@@ -339,6 +376,73 @@ public class Pca3dView extends Pane {
     }
     //
     /**
+     * Shows the given loading vectors as arrows from the origin of the components to their tips, labelled with the
+     * given names; replaces the vectors shown before. The tips are given in score units of the first three components,
+     * scaled by the caller so that their lengths can be compared.
+     *
+     * @param aTipScoresArray tip of every vector in score units of PC1 to PC3
+     * @param aNameArray name of every vector
+     * @throws NullPointerException if a parameter is null
+     * @throws IllegalArgumentException if the arrays have different lengths
+     */
+    public void setLoadingVectors(double[][] aTipScoresArray, String[] aNameArray) throws NullPointerException, IllegalArgumentException {
+        Objects.requireNonNull(aTipScoresArray, "Given vector tips are null.");
+        Objects.requireNonNull(aNameArray, "Given vector names are null.");
+        if (aTipScoresArray.length != aNameArray.length) {
+            throw new IllegalArgumentException("The number of vector tips and names differ.");
+        }
+        this.loadingVectorGroup.getChildren().clear();
+        //the labels of the vectors shown before follow the labels of the axes
+        while (this.labelAnchors.size() > this.numberOfAxisLabels) {
+            this.labelAnchors.removeLast();
+            this.labelOverlay.getChildren().removeLast();
+        }
+        PhongMaterial tmpMaterial = new PhongMaterial(Pca3dView.LOADING_VECTOR_COLOR);
+        Point3D tmpCylinderAxis = new Point3D(0.0, 1.0, 0.0);
+        for (int v = 0; v < aTipScoresArray.length; v++) {
+            double[] tmpTip = this.toScene(aTipScoresArray[v]);
+            Point3D tmpDirection = new Point3D(tmpTip[0], tmpTip[1], tmpTip[2]);
+            double tmpLength = tmpDirection.magnitude();
+            if (!(tmpLength > 0.0)) {
+                continue;
+            }
+            //the cylinder lies centred on the y-axis; it is rotated onto the direction and moved to the middle of the vector
+            Cylinder tmpShaft = new Cylinder(Pca3dView.LOADING_VECTOR_RADIUS, tmpLength, 12);
+            tmpShaft.setMaterial(tmpMaterial);
+            Point3D tmpUnit = tmpDirection.normalize();
+            Point3D tmpRotationAxis = tmpCylinderAxis.crossProduct(tmpUnit);
+            double tmpAngle = Math.toDegrees(Math.acos(Math.max(-1.0, Math.min(1.0, tmpCylinderAxis.dotProduct(tmpUnit)))));
+            tmpShaft.getTransforms().add(new Translate(tmpTip[0] / 2.0, tmpTip[1] / 2.0, tmpTip[2] / 2.0));
+            if (tmpRotationAxis.magnitude() > 1.0e-9) {
+                tmpShaft.getTransforms().add(new Rotate(tmpAngle, tmpRotationAxis));
+            } else if (tmpUnit.getY() < 0.0) {
+                //exactly opposite to the cylinder axis
+                tmpShaft.getTransforms().add(new Rotate(180.0, Rotate.X_AXIS));
+            }
+            Sphere tmpHead = new Sphere(Pca3dView.LOADING_VECTOR_TIP_RADIUS, 12);
+            tmpHead.setMaterial(tmpMaterial);
+            tmpHead.setTranslateX(tmpTip[0]);
+            tmpHead.setTranslateY(tmpTip[1]);
+            tmpHead.setTranslateZ(tmpTip[2]);
+            //the name a little beyond the tip
+            double tmpLabelFactor = (tmpLength + 2.0 * Pca3dView.LOADING_VECTOR_TIP_RADIUS) / tmpLength;
+            this.loadingVectorGroup.getChildren().addAll(tmpShaft, tmpHead, this.addLabel(new double[] {tmpTip[0] * tmpLabelFactor,
+                    tmpTip[1] * tmpLabelFactor, tmpTip[2] * tmpLabelFactor}, aNameArray[v], Pca3dView.LOADING_VECTOR_NAME_STYLE));
+        }
+        this.updateLabelPositions();
+    }
+    //
+    /**
+     * Returns the half edge length of the cube the scores are scaled into, in score units, i.e. the largest absolute
+     * score of the first three components.
+     *
+     * @return largest absolute score of PC1 to PC3
+     */
+    public double getMaximumScore() {
+        return Pca3dView.HALF_SIZE / this.scale;
+    }
+    //
+    /**
      * Sets the rotation and the zoom back to the start.
      */
     public void resetView() {
@@ -407,7 +511,7 @@ public class Pca3dView extends Pane {
             tmpNodes.add(tmpAxis);
             //name of the axis at its positive end
             double[] tmpEnd = this.toScene(Pca3dView.unitScores(tmpComponent, 1.12 * Pca3dView.HALF_SIZE / this.scale));
-            tmpNodes.add(this.addLabel(tmpEnd, anAxisNameArray[tmpComponent], true));
+            tmpNodes.add(this.addLabel(tmpEnd, anAxisNameArray[tmpComponent], Pca3dView.AXIS_NAME_STYLE));
             if (!(aMaximumScore > 0.0)) {
                 continue;
             }
@@ -428,7 +532,8 @@ public class Pca3dView extends Pane {
                 tmpTick.setTranslateY(tmpPosition[1]);
                 tmpTick.setTranslateZ(tmpPosition[2]);
                 tmpNodes.add(tmpTick);
-                tmpNodes.add(this.addLabel(tmpPosition, String.format(Locale.getDefault(), "%." + tmpDecimals + "f", tmpValue), false));
+                tmpNodes.add(this.addLabel(tmpPosition, String.format(Locale.getDefault(), "%." + tmpDecimals + "f", tmpValue),
+                        Pca3dView.TICK_VALUE_STYLE));
             }
         }
         return tmpNodes;
@@ -439,17 +544,16 @@ public class Pca3dView extends Pane {
      *
      * @param aPosition scene position of the label
      * @param aText text of the label
-     * @param anIsAxisName true for the name of an axis (larger, bold), false for a tick value
+     * @param aStyle style of the label, e.g. {@link #AXIS_NAME_STYLE}
      * @return anchor node, to be added to the 3D scene
      */
-    private Node addLabel(double[] aPosition, String aText, boolean anIsAxisName) {
+    private Node addLabel(double[] aPosition, String aText, String aStyle) {
         Group tmpAnchor = new Group();
         tmpAnchor.setTranslateX(aPosition[0]);
         tmpAnchor.setTranslateY(aPosition[1]);
         tmpAnchor.setTranslateZ(aPosition[2]);
         Label tmpLabel = new Label(aText);
-        tmpLabel.setStyle(anIsAxisName ? "-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #404040;"
-                : "-fx-font-size: 10px; -fx-text-fill: #606060;");
+        tmpLabel.setStyle(aStyle);
         this.labelAnchors.add(tmpAnchor);
         this.labelOverlay.getChildren().add(tmpLabel);
         return tmpAnchor;
@@ -472,7 +576,7 @@ public class Pca3dView extends Pane {
                 continue;
             }
             Bounds tmpBounds = tmpLabel.getLayoutBounds();
-            //tick values right of the tick, axis names centred
+            //right of the anchor
             tmpLabel.relocate(tmpLocal.getX() + 4.0, tmpLocal.getY() - tmpBounds.getHeight() / 2.0);
         }
     }
