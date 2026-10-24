@@ -87,7 +87,8 @@ public class FragmentationTask implements Callable<FragmentationTaskResult> {
     /**
      * Whether the display labels of the fragments (see
      * {@link IMoleculeFragmenter#FRAGMENT_DISPLAY_LABEL_PROPERTY_KEY}) should be collected. They are only used for
-     * single fragmentations, not in pipelines.
+     * single fragmentations, not in pipelines, and only if the fragmenter assigns them, see
+     * {@link IMoleculeFragmenter#providesDisplayLabels()}.
      */
     private final boolean areDisplayLabelsCollected;
     //</editor-fold>
@@ -103,7 +104,8 @@ public class FragmentationTask implements Callable<FragmentationTaskResult> {
      * @param aFragmentationName String
      * @param isStereo Whether stereochemistry in the fragments should be regarded when creating their SMILES codes
      * @param areDisplayLabelsCollected whether the display labels of the fragments should be collected; should only be
-     *                                  true for single fragmentations, not in pipelines
+     *                                  true for single fragmentations, not in pipelines, and only if the fragmenter
+     *                                  assigns them (see {@link IMoleculeFragmenter#providesDisplayLabels()})
      */
     public FragmentationTask(List<MoleculeDataModel> aListOfMolecules,
                              IMoleculeFragmenter aFragmenter,
