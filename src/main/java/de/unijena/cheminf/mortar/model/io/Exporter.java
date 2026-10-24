@@ -40,6 +40,7 @@ import com.lowagie.text.pdf.PdfWriter;
 
 import de.unijena.cheminf.mortar.controller.TabNames;
 import de.unijena.cheminf.mortar.message.Message;
+import de.unijena.cheminf.mortar.model.clustering.ClusterChemistryCheck;
 import de.unijena.cheminf.mortar.model.clustering.ClusterProfiler;
 import de.unijena.cheminf.mortar.model.clustering.ClusterQuality;
 import de.unijena.cheminf.mortar.model.clustering.ClusterStability;
@@ -489,7 +490,7 @@ public class Exporter {
         //quality of the clusters and distance to the nearest other cluster; the overall silhouette is in the parameters
         ClusterQuality tmpQuality = new ClusterQuality(aRunResult);
         this.writeClusteringFile(tmpPrefix + "cluster_quality" + FileExtension.CSV, tmpFailedFiles, aWriter ->
-                ClusteringDataCsvWriter.writeClusterQuality(aWriter, tmpQuality, null, aClusterIndices, tmpSeparator));
+                ClusteringDataCsvWriter.writeClusterQuality(aWriter, tmpQuality, null, null, aClusterIndices, tmpSeparator));
         //type of every raw column, which determines its transformation, and whether the filter kept it
         this.writeClusteringFile(tmpPrefix + "features" + FileExtension.CSV, tmpFailedFiles, aWriter ->
                 ClusteringDataCsvWriter.writeFeatureDescription(aWriter, aRunResult.rawMatrix(), aRunResult.parameters().countTransformation(),
@@ -507,6 +508,12 @@ public class Exporter {
             aWriter.write("numberOfEpochs=" + aRunResult.clusteringResult().numberOfEpochs() + System.lineSeparator());
             aWriter.write("overallSilhouette=" + tmpQuality.getOverallSilhouette() + System.lineSeparator());
             aWriter.write("overallNeighbourPurity=" + tmpQuality.getOverallNeighbourPurity() + System.lineSeparator());
+            //random baseline: random assignments with the same cluster sizes
+            aWriter.write("randomOverallSilhouette=" + tmpQuality.getRandomOverallSilhouette() + System.lineSeparator());
+            aWriter.write("randomOverallSilhouetteDeviation=" + tmpQuality.getRandomOverallSilhouetteDeviation() + System.lineSeparator());
+            aWriter.write("randomOverallNeighbourPurity=" + tmpQuality.getRandomOverallNeighbourPurity() + System.lineSeparator());
+            aWriter.write("randomOverallNeighbourPurityDeviation=" + tmpQuality.getRandomOverallNeighbourPurityDeviation() + System.lineSeparator());
+            aWriter.write("numberOfRandomAssignments=" + ClusterQuality.NUMBER_OF_RANDOM_ASSIGNMENTS + System.lineSeparator());
             aWriter.write("numberOfNeighbours=" + ClusterQuality.NUMBER_OF_NEIGHBOURS + System.lineSeparator());
             aWriter.write("isQualitySampled=" + tmpQuality.isSampled() + System.lineSeparator());
             if (tmpIsRestricted) {
@@ -1542,18 +1549,20 @@ public class Exporter {
     //
     /**
      * Exports the quality of the clusters as "Clustering_[fragmentation name]_cluster_quality.csv" into the given
-     * directory, including the stability of the clusters if it was checked.
+     * directory, including the stability of the clusters and the chemical check if they were run.
      *
      * @param aDirectory directory to export to; method returns null if it is null or not a directory
      * @param aRunResult clustering run
      * @param aQuality cluster quality of the run
      * @param aStabilityResult result of the stability check, null if it was not run
+     * @param aChemistryCheckResult result of the chemical check, null if it was not run
      * @param aSeparator separator char for the CSV file
      * @return list of the files that could not be written (empty if written) or null if the directory is invalid
      * @throws NullPointerException if the run result or quality is null
      */
     public List<String> exportClusterQualityCsvFile(File aDirectory, ClusteringRunResult aRunResult, ClusterQuality aQuality,
-                                                    ClusterStability.StabilityResult aStabilityResult, char aSeparator)
+                                                    ClusterStability.StabilityResult aStabilityResult,
+                                                    ClusterChemistryCheck.ChemistryCheckResult aChemistryCheckResult, char aSeparator)
             throws NullPointerException {
         Objects.requireNonNull(aRunResult, "Given clustering run result is null.");
         Objects.requireNonNull(aQuality, "Given cluster quality is null.");
@@ -1562,7 +1571,7 @@ public class Exporter {
         }
         List<String> tmpFailedFiles = new ArrayList<>(1);
         this.writeClusteringFile(this.getClusteringFilePrefix(aDirectory, aRunResult) + "cluster_quality" + FileExtension.CSV,
-                tmpFailedFiles, aWriter -> ClusteringDataCsvWriter.writeClusterQuality(aWriter, aQuality, aStabilityResult, null,
+                tmpFailedFiles, aWriter -> ClusteringDataCsvWriter.writeClusterQuality(aWriter, aQuality, aStabilityResult, aChemistryCheckResult, null,
                         String.valueOf(aSeparator)));
         return tmpFailedFiles;
     }

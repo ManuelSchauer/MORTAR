@@ -39,27 +39,35 @@ import javafx.application.ConditionalFeature;
 import javafx.application.Platform;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.SimpleBooleanProperty;
+import javafx.beans.value.ChangeListener;
 import javafx.collections.FXCollections;
+import javafx.collections.transformation.FilteredList;
 import javafx.geometry.Insets;
+import javafx.geometry.Point2D;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.chart.ScatterChart;
 import javafx.scene.chart.XYChart;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
 import javafx.scene.control.Separator;
+import javafx.scene.control.TextField;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.Tooltip;
+import javafx.scene.control.cell.CheckBoxListCell;
 import javafx.scene.image.ImageView;
 import javafx.scene.input.MouseButton;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Pane;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
@@ -68,15 +76,21 @@ import javafx.scene.paint.CycleMethod;
 import javafx.scene.paint.LinearGradient;
 import javafx.scene.paint.Stop;
 import javafx.scene.shape.Circle;
+import javafx.scene.shape.Line;
 import javafx.scene.shape.Polygon;
 import javafx.scene.shape.Rectangle;
+import javafx.scene.text.Text;
+import javafx.util.StringConverter;
 
 import org.openscience.cdk.exception.CDKException;
 
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -175,6 +189,23 @@ public class PcaView extends BorderPane {
      * Maximum length of a feature name in the axis labels and the overview; longer names (e.g. fragment SMILES) are cut.
      */
     private static final int MAXIMUM_FEATURE_NAME_LENGTH = 28;
+    /**
+     * Share of the smaller score range (largest absolute score of the two shown components) that the longest possible
+     * loading vector of all features reaches; all vectors share this scale, so that their lengths can be compared.
+     */
+    private static final double LOADING_VECTOR_LENGTH_SHARE = 0.9;
+    /**
+     * Colour of the loading vectors, distinct from the cluster colours and the viridis scale.
+     */
+    private static final Color LOADING_VECTOR_COLOR = Color.web("#b2182b");
+    /**
+     * Length of the sides of the arrow head of a loading vector, in pixels.
+     */
+    private static final double ARROW_HEAD_LENGTH = 9.0;
+    /**
+     * Half the opening angle of the arrow head of a loading vector, in radians.
+     */
+    private static final double ARROW_HEAD_ANGLE = Math.toRadians(25.0);
     /**
      * Logger of this class.
      */
@@ -297,6 +328,14 @@ public class PcaView extends BorderPane {
      * Three-dimensional view, created when it is shown for the first time; null before.
      */
     private Pca3dView pca3dView;
+    /**
+     * Pane over the scatter plot with the loading vectors (biplot); it does not take mouse events.
+     */
+    private Pane loadingVectorPane;
+    /**
+     * Features (columns of the processed matrix) whose loading vectors are shown, in the order they were chosen.
+     */
+    private final Set<Integer> loadingVectorFeatureIndices = new LinkedHashSet<>();
     //</editor-fold>
     //
     //<editor-fold desc="Constructor" defaultstate="collapsed">
@@ -395,6 +434,17 @@ public class PcaView extends BorderPane {
             PcaView.setBounds(this.yAxis, this.dragStart[4] + tmpDeltaY, this.dragStart[5] + tmpDeltaY);
         });
         this.chart.setOnMouseReleased(anEvent -> this.dragStart = null);
+        //loading vectors over the plot, redrawn whenever the axes have been laid out anew (zoom, move, resize)
+        this.loadingVectorPane = new Pane();
+        this.loadingVectorPane.setMouseTransparent(true);
+        ChangeListener<Boolean> tmpRedrawListener = (anObservable, anOldValue, aNewValue) -> {
+            if (!aNewValue) {
+                this.updateLoadingVectors();
+            }
+        };
+        this.xAxis.needsLayoutProperty().addListener(tmpRedrawListener);
+        this.yAxis.needsLayoutProperty().addListener(tmpRedrawListener);
+        this.chart.needsLayoutProperty().addListener(tmpRedrawListener);
         //</editor-fold>
         //<editor-fold desc="controls on the right">
         List<Integer> tmpComponents = new ArrayList<>();
@@ -408,6 +458,10 @@ public class PcaView extends BorderPane {
         this.centresCheckBox.selectedProperty().addListener((anObservable, anOldValue, aNewValue) -> this.updatePointStyles());
         Button tmpResetViewButton = new Button(Message.get("PcaView.resetViewButton.text"));
         tmpResetViewButton.setOnAction(anEvent -> this.resetView());
+        //loading vectors of chosen features in the 2D plot
+        Button tmpLoadingVectorsButton = new Button(Message.get("PcaView.loadingVectorsButton.text"));
+        tmpLoadingVectorsButton.setTooltip(new Tooltip(Message.get("PcaView.loadingVectorsButton.tooltip")));
+        tmpLoadingVectorsButton.setOnAction(anEvent -> this.chooseLoadingVectors());
         GridPane tmpAxisGrid = new GridPane();
         tmpAxisGrid.setHgap(GuiDefinitions.GUI_SPACING_VALUE);
         tmpAxisGrid.setVgap(GuiDefinitions.GUI_SPACING_VALUE);
@@ -481,9 +535,10 @@ public class PcaView extends BorderPane {
         this.threeDimensionalToggleButton.selectedProperty().addListener((anObservable, anOldValue, aNewValue) -> this.showDimension(aNewValue));
         //the axes are fixed to PC1 to PC3 in 3D
         tmpAxisGrid.disableProperty().bind(this.threeDimensionalToggleButton.selectedProperty());
+        tmpLoadingVectorsButton.disableProperty().bind(this.threeDimensionalToggleButton.selectedProperty());
         HBox tmpDimensionBox = new HBox(GuiDefinitions.GUI_BUTTON_SPACING_VALUE, tmpTwoDimensionalToggleButton, this.threeDimensionalToggleButton);
         VBox tmpRightBox = new VBox(GuiDefinitions.GUI_SPACING_VALUE, tmpDimensionBox, tmpAxisGrid, new Label(Message.get("PcaView.colourBy.label")),
-                this.colourComboBox, this.colourLegendBox, this.centresCheckBox, tmpResetViewButton,
+                this.colourComboBox, this.colourLegendBox, this.centresCheckBox, tmpLoadingVectorsButton, tmpResetViewButton,
                 new Separator(), new Label(Message.get("PcaView.clusterList.label")), this.clusterListView, tmpListButtonBox,
                 new Separator(), this.detailImageView, this.detailLabel);
         tmpRightBox.setPadding(new Insets(GuiDefinitions.GUI_INSETS_VALUE));
@@ -505,7 +560,7 @@ public class PcaView extends BorderPane {
         this.hoverLabel.setPadding(new Insets(GuiDefinitions.GUI_INSETS_VALUE));
         //</editor-fold>
         this.setTop(tmpInfoLabel);
-        this.plotPane = new StackPane(this.chart);
+        this.plotPane = new StackPane(this.chart, this.loadingVectorPane);
         this.setCenter(this.plotPane);
         this.setRight(tmpRightBox);
         this.setBottom(new VBox(tmpMeaningBox, this.hoverLabel));
@@ -883,6 +938,165 @@ public class PcaView extends BorderPane {
         }
         this.xAxis.setLabel(this.axisLabels[tmpX]);
         this.yAxis.setLabel(this.axisLabels[tmpY]);
+        this.updateLoadingVectors();
+    }
+    //
+    /**
+     * Opens the dialog to choose the features whose loading vectors are shown: a searchable list of all features of the
+     * processed matrix with check boxes, sorted by the length of their vector on the shown components; "Main features"
+     * checks the features with the largest weight in both components, "None" unchecks all.
+     */
+    private void chooseLoadingVectors() {
+        int tmpX = this.xComponentComboBox.getValue();
+        int tmpY = this.yComponentComboBox.getValue();
+        double[][] tmpLoadings = this.pcaResult.loadings();
+        FeatureMatrix tmpProcessed = this.runResult.processedMatrix();
+        List<Integer> tmpFeatures = new ArrayList<>(tmpProcessed.getColumnCount());
+        for (int j = 0; j < tmpProcessed.getColumnCount(); j++) {
+            tmpFeatures.add(j);
+        }
+        tmpFeatures.sort(Comparator.comparingDouble((Integer j) -> -Math.hypot(tmpLoadings[tmpX][j], tmpLoadings[tmpY][j])));
+        Map<Integer, BooleanProperty> tmpCheckedPropertyMap = new LinkedHashMap<>();
+        for (Integer tmpFeature : tmpFeatures) {
+            tmpCheckedPropertyMap.put(tmpFeature, new SimpleBooleanProperty(this.loadingVectorFeatureIndices.contains(tmpFeature)));
+        }
+        TextField tmpSearchField = new TextField();
+        tmpSearchField.setPromptText(Message.get("ClusteringResultView.chooseDescriptors.search.prompt"));
+        FilteredList<Integer> tmpFilteredFeatures = new FilteredList<>(FXCollections.observableArrayList(tmpFeatures));
+        tmpSearchField.textProperty().addListener((anObservable, anOldValue, aNewValue) -> tmpFilteredFeatures.setPredicate(aFeature ->
+                aNewValue == null || aNewValue.isBlank()
+                        || tmpProcessed.getFeatureName(aFeature).toLowerCase(Locale.ROOT).contains(aNewValue.trim().toLowerCase(Locale.ROOT))));
+        ListView<Integer> tmpListView = new ListView<>(tmpFilteredFeatures);
+        //name, group and the loadings on the shown components
+        tmpListView.setCellFactory(CheckBoxListCell.forListView(tmpCheckedPropertyMap::get, new StringConverter<>() {
+            @Override
+            public String toString(Integer aFeature) {
+                return aFeature == null ? "" : String.format(Locale.getDefault(), Message.get("PcaView.loadingVectors.item.text"),
+                        tmpProcessed.getFeatureName(aFeature), tmpProcessed.getFeatureGroupName(aFeature),
+                        PcaView.getComponentLabel(tmpX), tmpLoadings[tmpX][aFeature], PcaView.getComponentLabel(tmpY), tmpLoadings[tmpY][aFeature]);
+            }
+            @Override
+            public Integer fromString(String aString) {
+                return null;
+            }
+        }));
+        tmpListView.setPrefHeight(400);
+        tmpListView.setPrefWidth(520);
+        Button tmpMainButton = new Button(Message.get("PcaView.loadingVectors.mainButton.text"));
+        tmpMainButton.setOnAction(anEvent -> {
+            for (int tmpComponent : new int[] {tmpX, tmpY}) {
+                for (PrincipalComponentAnalysis.FeatureLoading tmpLoading : this.pcaResult.getTopLoadings(tmpComponent, PcaView.NUMBER_OF_AXIS_FEATURES)) {
+                    tmpCheckedPropertyMap.get(tmpLoading.featureIndex()).set(true);
+                }
+            }
+        });
+        Button tmpNoneButton = new Button(Message.get("ClusteringResultView.markNoneButton.text"));
+        tmpNoneButton.setOnAction(anEvent -> tmpCheckedPropertyMap.values().forEach(aProperty -> aProperty.set(false)));
+        HBox tmpSearchBox = new HBox(GuiDefinitions.GUI_SPACING_VALUE, tmpSearchField, tmpMainButton, tmpNoneButton);
+        HBox.setHgrow(tmpSearchField, Priority.ALWAYS);
+        Label tmpHintLabel = new Label(Message.get("PcaView.loadingVectors.hint.text"));
+        tmpHintLabel.setWrapText(true);
+        tmpHintLabel.setMaxWidth(520);
+        Dialog<ButtonType> tmpDialog = new Dialog<>();
+        if (this.getScene() != null) {
+            tmpDialog.initOwner(this.getScene().getWindow());
+        }
+        tmpDialog.setTitle(Message.get("PcaView.loadingVectorsButton.text"));
+        tmpDialog.setHeaderText(String.format(Message.get("PcaView.loadingVectors.header"), PcaView.getComponentLabel(tmpX),
+                PcaView.getComponentLabel(tmpY)));
+        tmpDialog.getDialogPane().setContent(new VBox(GuiDefinitions.GUI_SPACING_VALUE, tmpSearchBox, tmpListView, tmpHintLabel));
+        tmpDialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+        if (tmpDialog.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) {
+            return;
+        }
+        this.loadingVectorFeatureIndices.clear();
+        tmpCheckedPropertyMap.forEach((aFeature, aProperty) -> {
+            if (aProperty.get()) {
+                this.loadingVectorFeatureIndices.add(aFeature);
+            }
+        });
+        this.updateLoadingVectors();
+    }
+    //
+    /**
+     * Draws the loading vectors of the chosen features over the 2D plot: an arrow from the origin of the components (the
+     * mean of the molecules) in the direction of the feature's weights on the shown components, labelled with the
+     * feature name. All vectors share one scale, chosen so that the longest possible vector of all features reaches
+     * {@link #LOADING_VECTOR_LENGTH_SHARE} of the smaller score range; so the lengths can be compared, and a feature with
+     * a long vector separates the molecules along it. The vectors are clipped to the plot area.
+     */
+    private void updateLoadingVectors() {
+        if (this.loadingVectorPane == null) {
+            return;
+        }
+        this.loadingVectorPane.getChildren().clear();
+        if (this.loadingVectorFeatureIndices.isEmpty() || !this.chart.isVisible() || this.xAxis.getWidth() <= 0.0 || this.yAxis.getHeight() <= 0.0) {
+            return;
+        }
+        int tmpX = this.xComponentComboBox.getValue();
+        int tmpY = this.yComponentComboBox.getValue();
+        double[][] tmpLoadings = this.pcaResult.loadings();
+        double tmpMaximumScoreX = 0.0;
+        double tmpMaximumScoreY = 0.0;
+        for (double[] tmpScore : this.pcaResult.scores()) {
+            tmpMaximumScoreX = Math.max(tmpMaximumScoreX, Math.abs(tmpScore[tmpX]));
+            tmpMaximumScoreY = Math.max(tmpMaximumScoreY, Math.abs(tmpScore[tmpY]));
+        }
+        double tmpMaximumLength = 0.0;
+        for (int j = 0; j < tmpLoadings[tmpX].length; j++) {
+            tmpMaximumLength = Math.max(tmpMaximumLength, Math.hypot(tmpLoadings[tmpX][j], tmpLoadings[tmpY][j]));
+        }
+        if (tmpMaximumLength <= 0.0) {
+            return;
+        }
+        double tmpScale = PcaView.LOADING_VECTOR_LENGTH_SHARE * Math.min(tmpMaximumScoreX, tmpMaximumScoreY) / tmpMaximumLength;
+        //plot area in the coordinates of the pane, the vectors are clipped to it
+        Point2D tmpTopLeft = this.loadingVectorPane.sceneToLocal(this.xAxis.localToScene(0.0, 0.0).getX(),
+                this.yAxis.localToScene(0.0, 0.0).getY());
+        this.loadingVectorPane.setClip(new Rectangle(tmpTopLeft.getX(), tmpTopLeft.getY(), this.xAxis.getWidth(), this.yAxis.getHeight()));
+        Point2D tmpOrigin = this.toLoadingVectorPane(0.0, 0.0);
+        FeatureMatrix tmpProcessed = this.runResult.processedMatrix();
+        for (int tmpFeature : this.loadingVectorFeatureIndices) {
+            Point2D tmpTip = this.toLoadingVectorPane(tmpScale * tmpLoadings[tmpX][tmpFeature], tmpScale * tmpLoadings[tmpY][tmpFeature]);
+            Line tmpLine = new Line(tmpOrigin.getX(), tmpOrigin.getY(), tmpTip.getX(), tmpTip.getY());
+            tmpLine.setStroke(PcaView.LOADING_VECTOR_COLOR);
+            tmpLine.setStrokeWidth(1.5);
+            this.loadingVectorPane.getChildren().add(tmpLine);
+            double tmpAngle = Math.atan2(tmpTip.getY() - tmpOrigin.getY(), tmpTip.getX() - tmpOrigin.getX());
+            if (tmpOrigin.distance(tmpTip) > PcaView.ARROW_HEAD_LENGTH) {
+                for (double tmpSide : new double[] {-1.0, 1.0}) {
+                    double tmpHeadAngle = tmpAngle + Math.PI + tmpSide * PcaView.ARROW_HEAD_ANGLE;
+                    Line tmpHead = new Line(tmpTip.getX(), tmpTip.getY(), tmpTip.getX() + PcaView.ARROW_HEAD_LENGTH * Math.cos(tmpHeadAngle),
+                            tmpTip.getY() + PcaView.ARROW_HEAD_LENGTH * Math.sin(tmpHeadAngle));
+                    tmpHead.setStroke(PcaView.LOADING_VECTOR_COLOR);
+                    tmpHead.setStrokeWidth(1.5);
+                    this.loadingVectorPane.getChildren().add(tmpHead);
+                }
+            }
+            //the name a little beyond the tip, on the side the arrow points to
+            String tmpName = tmpProcessed.getFeatureName(tmpFeature);
+            Text tmpLabel = new Text(tmpName.length() > PcaView.MAXIMUM_FEATURE_NAME_LENGTH
+                    ? tmpName.substring(0, PcaView.MAXIMUM_FEATURE_NAME_LENGTH - 1) + "\u2026" : tmpName);
+            tmpLabel.setFill(PcaView.LOADING_VECTOR_COLOR);
+            tmpLabel.setStyle("-fx-font-weight: bold;");
+            double tmpWidth = tmpLabel.getLayoutBounds().getWidth();
+            tmpLabel.setX(tmpTip.getX() + 6.0 * Math.cos(tmpAngle) - (Math.cos(tmpAngle) < 0.0 ? tmpWidth : 0.0));
+            tmpLabel.setY(tmpTip.getY() + 6.0 * Math.sin(tmpAngle) + (Math.sin(tmpAngle) > 0.0 ? 10.0 : 0.0));
+            this.loadingVectorPane.getChildren().add(tmpLabel);
+        }
+    }
+    //
+    /**
+     * Returns the position of the given component values in the coordinates of the loading vector pane.
+     *
+     * @param aXValue value on the x axis
+     * @param aYValue value on the y axis
+     * @return position in the pane
+     */
+    private Point2D toLoadingVectorPane(double aXValue, double aYValue) {
+        double tmpSceneX = this.xAxis.localToScene(this.xAxis.getDisplayPosition(aXValue), 0.0).getX();
+        double tmpSceneY = this.yAxis.localToScene(0.0, this.yAxis.getDisplayPosition(aYValue)).getY();
+        return this.loadingVectorPane.sceneToLocal(tmpSceneX, tmpSceneY);
     }
     //
     /**
@@ -938,6 +1152,8 @@ public class PcaView extends BorderPane {
             this.plotPane.getChildren().add(this.pca3dView);
         }
         this.chart.setVisible(!anIsThreeDimensional);
+        //the loading vectors are only drawn in the 2D plot
+        this.loadingVectorPane.setVisible(!anIsThreeDimensional);
         if (this.pca3dView != null) {
             this.pca3dView.setVisible(anIsThreeDimensional);
         }
@@ -1093,6 +1309,16 @@ public class PcaView extends BorderPane {
             return Color.GREY;
         }
         return Color.hsb((aClusterIndex * PcaView.GOLDEN_ANGLE) % 360.0, 0.75, 0.85);
+    }
+    //
+    /**
+     * Returns the short name of a component, e.g. "PC1".
+     *
+     * @param aComponent component index
+     * @return short name
+     */
+    private static String getComponentLabel(int aComponent) {
+        return "PC" + (aComponent + 1);
     }
     //
     /**

@@ -25,6 +25,7 @@
 
 package de.unijena.cheminf.mortar.model.io;
 
+import de.unijena.cheminf.mortar.model.clustering.ClusterChemistryCheck;
 import de.unijena.cheminf.mortar.model.clustering.ClusterProfiler;
 import de.unijena.cheminf.mortar.model.clustering.ClusterQuality;
 import de.unijena.cheminf.mortar.model.clustering.ClusterStability;
@@ -190,28 +191,39 @@ public final class ClusteringDataCsvWriter {
     /**
      * Writes the quality of the clusters with one line per cluster (see {@link ClusterQuality}): size, mean similarity to
      * the own cluster vector, mean distance within the cluster, silhouette, number of molecules with negative
-     * silhouette, number k of nearest neighbours (min(10, size - 1)), neighbour purity, nearest cluster with the mean
+     * silhouette, number k of nearest neighbours (min(10, size - 1)), neighbour purity with its random baseline, nearest
+     * cluster with the mean
      * distance to it, cluster with the most neighbour
-     * contacts and their share, and, if given, the stability (mean Jaccard index) of the stability check.
+     * contacts and their share, and, if given, the stability (mean Jaccard index) of the stability check and the values
+     * of the chemical check (mean Tanimoto similarity and share of the most frequent scaffold, each with its random
+     * baseline, and the most frequent scaffold; the fingerprint is named in the Tanimoto headers).
      *
      * @param aWriter writer to write to (is not closed)
      * @param aQuality cluster quality
      * @param aStabilityResult result of the stability check, null if it was not run (the column is left out)
+     * @param aChemistryCheckResult result of the chemical check, null if it was not run (the columns are left out)
      * @param aClusterIndices clusters to write; null or empty for all
      * @param aSeparator column separator, e.g. "," or ";"
      * @throws NullPointerException if the writer, quality or separator is null
      * @throws IOException if writing fails
      */
     public static void writeClusterQuality(Writer aWriter, ClusterQuality aQuality, ClusterStability.StabilityResult aStabilityResult,
+                                           ClusterChemistryCheck.ChemistryCheckResult aChemistryCheckResult,
                                            Set<Integer> aClusterIndices, String aSeparator) throws NullPointerException, IOException {
         Objects.requireNonNull(aWriter, "Given writer is null.");
         Objects.requireNonNull(aQuality, "Given cluster quality is null.");
         Objects.requireNonNull(aSeparator, "Given separator is null.");
         List<String> tmpHeader = new ArrayList<>(List.of(ClusteringDataCsvWriter.CLUSTER_COLUMN_HEADER, "Size", "MeanSimilarityToOwnCentre",
-                "MeanDistanceWithinCluster", "Silhouette", "NegativeSilhouettes", "NumberOfNeighbours", "NeighbourPurity", "NearestCluster",
+                "MeanDistanceWithinCluster", "Silhouette", "NegativeSilhouettes", "NumberOfNeighbours", "NeighbourPurity", "RandomNeighbourPurity", "NearestCluster",
                 "MeanDistanceToNearestCluster", "MostContactsCluster", "ContactShareWithMostContacts"));
         if (aStabilityResult != null) {
-            tmpHeader.add("StabilityJaccard");
+            //the mode tells what was changed in the runs (seeds or subsamples of the molecules)
+            tmpHeader.add("StabilityJaccard_" + aStabilityResult.mode().name());
+        }
+        if (aChemistryCheckResult != null) {
+            String tmpFingerprintName = aChemistryCheckResult.fingerprint().name();
+            tmpHeader.addAll(List.of("MeanTanimoto_" + tmpFingerprintName, "RandomMeanTanimoto_" + tmpFingerprintName,
+                    "MostFrequentScaffoldShare", "RandomMostFrequentScaffoldShare", "MostFrequentScaffold"));
         }
         aWriter.write(String.join(aSeparator, tmpHeader) + System.lineSeparator());
         for (ClusterQuality.ClusterQualityEntry tmpEntry : aQuality.getEntries()) {
@@ -221,11 +233,22 @@ public final class ClusteringDataCsvWriter {
             List<String> tmpValues = new ArrayList<>(List.of(Integer.toString(tmpEntry.clusterIndex()), Integer.toString(tmpEntry.size()),
                     Double.toString(tmpEntry.meanSimilarityToOwnCentre()), Double.toString(tmpEntry.meanDistanceWithinCluster()),
                     Double.toString(tmpEntry.silhouette()), Integer.toString(tmpEntry.numberOfNegativeSilhouettes()),
-                    Integer.toString(tmpEntry.numberOfNeighbours()), Double.toString(tmpEntry.neighbourPurity()), Integer.toString(tmpEntry.nearestClusterIndex()),
+                    Integer.toString(tmpEntry.numberOfNeighbours()), Double.toString(tmpEntry.neighbourPurity()),
+                    Double.toString(tmpEntry.randomNeighbourPurity()), Integer.toString(tmpEntry.nearestClusterIndex()),
                     Double.toString(tmpEntry.meanDistanceToNearestCluster()), Integer.toString(tmpEntry.mostContactsClusterIndex()),
                     Double.toString(tmpEntry.contactShareWithMostContacts())));
             if (aStabilityResult != null) {
                 tmpValues.add(Double.toString(aStabilityResult.getClusterJaccardIndex(tmpEntry.clusterIndex())));
+            }
+            if (aChemistryCheckResult != null) {
+                int tmpIndex = tmpEntry.clusterIndex();
+                String tmpScaffold = aChemistryCheckResult.getMostFrequentScaffold(tmpIndex);
+                tmpValues.addAll(List.of(Double.toString(aChemistryCheckResult.getMeanTanimoto(tmpIndex)),
+                        Double.toString(aChemistryCheckResult.getRandomMeanTanimoto(tmpIndex)),
+                        Double.toString(aChemistryCheckResult.getScaffoldShare(tmpIndex)),
+                        Double.toString(aChemistryCheckResult.getRandomScaffoldShare(tmpIndex)),
+                        //"" stands for acyclic molecules, written as such to tell it from a missing scaffold
+                        tmpScaffold == null ? "" : ClusteringDataCsvWriter.escape(tmpScaffold.isEmpty() ? "acyclic" : tmpScaffold, aSeparator)));
             }
             aWriter.write(String.join(aSeparator, tmpValues) + System.lineSeparator());
         }
@@ -425,11 +448,13 @@ public final class ClusteringDataCsvWriter {
         Objects.requireNonNull(anEntryList, "Given entry list is null.");
         Objects.requireNonNull(aSeparator, "Given separator is null.");
         aWriter.write(String.join(aSeparator, "Vigilance", "NumberOfClusters", "NumberOfSingletons", "LargestClusterSize",
-                "NumberOfUnclusteredMolecules", "MeanSimilarityToClusterVector", "IsOverflow", "IsConverged") + System.lineSeparator());
+                "NumberOfUnclusteredMolecules", "MeanSimilarityToClusterVector", "Silhouette", "NeighbourPurity", "IsOverflow",
+                "IsConverged") + System.lineSeparator());
         for (VigilanceScan.ScanEntry tmpEntry : anEntryList) {
             aWriter.write(String.join(aSeparator, VigilanceScan.formatVigilance(tmpEntry.vigilance()), Integer.toString(tmpEntry.numberOfClusters()),
                     Integer.toString(tmpEntry.numberOfSingletons()), Integer.toString(tmpEntry.largestClusterSize()),
                     Integer.toString(tmpEntry.numberOfUnclusteredMolecules()), Double.toString(tmpEntry.meanSimilarityToClusterVector()),
+                    Double.toString(tmpEntry.overallSilhouette()), Double.toString(tmpEntry.overallNeighbourPurity()),
                     Boolean.toString(tmpEntry.isOverflow()), Boolean.toString(tmpEntry.isConverged())) + System.lineSeparator());
         }
         aWriter.flush();

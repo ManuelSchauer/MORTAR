@@ -31,9 +31,11 @@ import de.unijena.cheminf.mortar.gui.util.GuiUtil;
 import de.unijena.cheminf.mortar.gui.views.ClusteringResultView;
 import de.unijena.cheminf.mortar.gui.views.PcaView;
 import de.unijena.cheminf.mortar.message.Message;
+import de.unijena.cheminf.mortar.model.clustering.ClusterChemistryCheck;
 import de.unijena.cheminf.mortar.model.clustering.ClusterDescriptorStatistics;
 import de.unijena.cheminf.mortar.model.clustering.ClusterQuality;
 import de.unijena.cheminf.mortar.model.clustering.ClusterStability;
+import de.unijena.cheminf.mortar.model.clustering.ClusteringParameters;
 import de.unijena.cheminf.mortar.model.clustering.ClusteringRunResult;
 import de.unijena.cheminf.mortar.model.clustering.ClusteringService;
 import de.unijena.cheminf.mortar.model.clustering.DiverseSubsetSelector;
@@ -42,6 +44,7 @@ import de.unijena.cheminf.mortar.model.clustering.PrincipalComponentAnalysis;
 import de.unijena.cheminf.mortar.model.clustering.SimilaritySearch;
 import de.unijena.cheminf.mortar.model.clustering.TrainTestSplitter;
 import de.unijena.cheminf.mortar.model.data.MoleculeDataModel;
+import de.unijena.cheminf.mortar.model.descriptor.Descriptor;
 import de.unijena.cheminf.mortar.model.fragmentation.FragmentationService;
 import de.unijena.cheminf.mortar.model.io.Exporter;
 import de.unijena.cheminf.mortar.model.settings.SettingsContainer;
@@ -132,6 +135,10 @@ public class ClusteringResultViewController {
      * Number of molecules proposed in the dialog for selecting molecules from a cluster.
      */
     private static final int CLUSTER_MOLECULE_SELECTION_NUMBER_DEFAULT = 10;
+    /**
+     * Width of the column with the most frequent scaffold in the quality window.
+     */
+    private static final double SCAFFOLD_COLUMN_WIDTH = 220.0;
     //</editor-fold>
     //
     //<editor-fold desc="private final class variables" defaultstate="collapsed">
@@ -910,6 +917,14 @@ public class ClusteringResultViewController {
         TableColumn<ClusterQuality.ClusterQualityEntry, Double> tmpStabilityColumn = ClusteringResultView.createNumberColumn(
                 Message.get("ClusterQuality.stabilityColumn.header"), anEntry -> this.view.getStabilityResult() == null ? Double.NaN
                         : this.view.getStabilityResult().getClusterJaccardIndex(anEntry.clusterIndex()), "%.2f");
+        //values of the optional chemical check, "-" until it was run
+        TableColumn<ClusterQuality.ClusterQualityEntry, String> tmpScaffoldColumn = new TableColumn<>(Message.get("ClusterQuality.scaffoldColumn.header"));
+        tmpScaffoldColumn.setCellValueFactory(aCellData -> {
+            ClusterChemistryCheck.ChemistryCheckResult tmpResult = this.view.getChemistryCheckResult();
+            String tmpScaffold = tmpResult == null ? null : tmpResult.getMostFrequentScaffold(aCellData.getValue().clusterIndex());
+            return new ReadOnlyStringWrapper(tmpScaffold == null ? "-"
+                    : tmpScaffold.isEmpty() ? Message.get("ClusterQuality.acyclicScaffold.text") : tmpScaffold);
+        });
         List<TableColumn<ClusterQuality.ClusterQualityEntry, ?>> tmpColumns = List.of(tmpClusterColumn, tmpSizeColumn,
                 ClusteringResultView.createNumberColumn(Message.get("ClusterQuality.silhouetteColumn.header"),
                         ClusterQuality.ClusterQualityEntry::silhouette, "%+.3f"),
@@ -917,6 +932,9 @@ public class ClusteringResultViewController {
                 tmpNeighbourCountColumn,
                 ClusteringResultView.createNumberColumn(Message.get("ClusterQuality.purityColumn.header"),
                         anEntry -> 100.0 * anEntry.neighbourPurity(), "%.0f %%"),
+                //a large cluster has a high purity by chance alone
+                ClusteringResultView.createNumberColumn(Message.get("ClusterQuality.randomPurityColumn.header"),
+                        anEntry -> 100.0 * anEntry.randomNeighbourPurity(), "%.0f %%"),
                 ClusteringResultView.createNumberColumn(Message.get("ClusterQuality.withinColumn.header"),
                         ClusterQuality.ClusterQualityEntry::meanDistanceWithinCluster, "%.3f"),
                 tmpNearestColumn,
@@ -927,11 +945,26 @@ public class ClusteringResultViewController {
                         anEntry -> 100.0 * anEntry.contactShareWithMostContacts(), "%.0f %%"),
                 ClusteringResultView.createNumberColumn(Message.get("ClusterQuality.cohesionColumn.header"),
                         ClusterQuality.ClusterQualityEntry::meanSimilarityToOwnCentre, "%.3f"),
-                tmpStabilityColumn);
+                tmpStabilityColumn,
+                ClusteringResultView.createNumberColumn(Message.get("ClusterQuality.tanimotoColumn.header"),
+                        anEntry -> this.view.getChemistryCheckResult() == null ? Double.NaN
+                                : this.view.getChemistryCheckResult().getMeanTanimoto(anEntry.clusterIndex()), "%.2f"),
+                ClusteringResultView.createNumberColumn(Message.get("ClusterQuality.randomTanimotoColumn.header"),
+                        anEntry -> this.view.getChemistryCheckResult() == null ? Double.NaN
+                                : this.view.getChemistryCheckResult().getRandomMeanTanimoto(anEntry.clusterIndex()), "%.2f"),
+                ClusteringResultView.createNumberColumn(Message.get("ClusterQuality.scaffoldShareColumn.header"),
+                        anEntry -> this.view.getChemistryCheckResult() == null ? Double.NaN
+                                : 100.0 * this.view.getChemistryCheckResult().getScaffoldShare(anEntry.clusterIndex()), "%.0f %%"),
+                ClusteringResultView.createNumberColumn(Message.get("ClusterQuality.randomScaffoldShareColumn.header"),
+                        anEntry -> this.view.getChemistryCheckResult() == null ? Double.NaN
+                                : 100.0 * this.view.getChemistryCheckResult().getRandomScaffoldShare(anEntry.clusterIndex()), "%.0f %%"),
+                tmpScaffoldColumn);
         for (TableColumn<ClusterQuality.ClusterQualityEntry, ?> tmpColumn : tmpColumns) {
             ClusteringResultView.setFixedWidthForHeader(tmpColumn, tmpColumn.getText());
             tmpQualityTable.getColumns().add(tmpColumn);
         }
+        //the scaffold SMILES need more room than the header
+        tmpScaffoldColumn.setPrefWidth(ClusteringResultViewController.SCAFFOLD_COLUMN_WIDTH);
         //distances of the selected cluster to all other clusters
         TableView<ClusterQuality.ClusterDistance> tmpDistanceTable = new TableView<>();
         tmpDistanceTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
@@ -978,21 +1011,39 @@ public class ClusteringResultViewController {
                 + (tmpQuality.isSampled() ? " " + String.format(Message.get("ClusterQuality.sampled.text"), tmpQuality.getNumberOfEvaluatedMolecules()) : ""));
         tmpOverallLabel.setStyle("-fx-font-weight: bold;");
         tmpOverallLabel.setWrapText(true);
+        //random baseline as reference for the overall values
+        Label tmpRandomLabel = new Label(String.format(Locale.getDefault(), Message.get("ClusterQuality.random.text"),
+                ClusterQuality.NUMBER_OF_RANDOM_ASSIGNMENTS, tmpQuality.getRandomOverallSilhouette(),
+                tmpQuality.getRandomOverallSilhouetteDeviation(), 100.0 * tmpQuality.getRandomOverallNeighbourPurity(),
+                100.0 * tmpQuality.getRandomOverallNeighbourPurityDeviation()));
+        tmpRandomLabel.setWrapText(true);
         Label tmpStabilityLabel = new Label(this.view.getStabilityResult() == null ? Message.get("ClusterQuality.stability.notChecked.text")
-                : String.format(Locale.getDefault(), Message.get("ClusterQuality.stability.text"),
-                        this.view.getStabilityResult().meanAdjustedRandIndex(), this.view.getStabilityResult().numberOfRuns()));
-        Button tmpStabilityButton = new Button(String.format(Message.get("ClusterQuality.stabilityButton.text"), ClusterStability.NUMBER_OF_RUNS_DEFAULT));
+                : ClusteringResultViewController.formatStabilityText(this.view.getStabilityResult()));
+        tmpStabilityLabel.setWrapText(true);
+        Button tmpStabilityButton = new Button(Message.get("ClusterQuality.stabilityButton.text"));
         tmpStabilityButton.setTooltip(GuiUtil.createTooltip(Message.get("ClusterQuality.stabilityButton.tooltip")));
         tmpStabilityButton.setMinWidth(Region.USE_PREF_SIZE);
         tmpStabilityButton.disableProperty().bind(this.clusteringViewController.isClusteringRunningProperty());
         tmpStabilityButton.setOnAction(event -> this.checkClusterStability(tmpQualityTable, tmpStabilityLabel));
+        //optional chemical check with a fingerprint independent of the features and the scaffolds
+        Label tmpChemistryLabel = new Label(this.view.getChemistryCheckResult() == null ? Message.get("ClusterQuality.chemistry.notChecked.text")
+                : this.formatChemistryCheckText(this.view.getChemistryCheckResult()));
+        tmpChemistryLabel.setWrapText(true);
+        Button tmpChemistryButton = new Button(Message.get("ClusterQuality.chemistryButton.text"));
+        tmpChemistryButton.setTooltip(GuiUtil.createTooltip(Message.get("ClusterQuality.chemistryButton.tooltip")));
+        tmpChemistryButton.setMinWidth(Region.USE_PREF_SIZE);
+        tmpChemistryButton.disableProperty().bind(this.clusteringViewController.isClusteringRunningProperty());
+        tmpChemistryButton.setOnAction(event -> this.checkClusterChemistry(tmpQualityTable, tmpChemistryLabel));
         Button tmpExportButton = new Button(Message.get("ClusterQuality.exportButton.text"));
         tmpExportButton.setMinWidth(Region.USE_PREF_SIZE);
         Label tmpHintLabel = new Label(Message.get("ClusterQuality.hint.text"));
         tmpHintLabel.setWrapText(true);
         HBox tmpStabilityBox = new HBox(GuiDefinitions.GUI_SPACING_VALUE, tmpStabilityButton, tmpStabilityLabel);
         tmpStabilityBox.setAlignment(Pos.CENTER_LEFT);
-        VBox tmpTopBox = new VBox(GuiDefinitions.GUI_SPACING_VALUE, tmpOverallLabel, tmpStabilityBox, tmpHintLabel);
+        HBox tmpChemistryBox = new HBox(GuiDefinitions.GUI_SPACING_VALUE, tmpChemistryButton, tmpChemistryLabel);
+        tmpChemistryBox.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(tmpChemistryLabel, Priority.ALWAYS);
+        VBox tmpTopBox = new VBox(GuiDefinitions.GUI_SPACING_VALUE, tmpOverallLabel, tmpRandomLabel, tmpStabilityBox, tmpChemistryBox, tmpHintLabel);
         tmpTopBox.setPadding(new Insets(GuiDefinitions.GUI_INSETS_VALUE));
         VBox tmpDistanceBox = new VBox(GuiDefinitions.GUI_SPACING_VALUE, tmpDistanceLabel, tmpDistanceTable);
         tmpDistanceBox.setPadding(new Insets(GuiDefinitions.GUI_INSETS_VALUE));
@@ -1021,7 +1072,8 @@ public class ClusteringResultViewController {
                     this.runResult.parameters().fragmentationName());
             if (tmpDirectory != null) {
                 ClusteringViewController.showExportOutcome(tmpExporter.exportClusterQualityCsvFile(tmpDirectory, this.runResult, tmpQuality,
-                        this.view.getStabilityResult(), this.settingsContainer.getCsvExportSeparatorSettingCharacter()));
+                        this.view.getStabilityResult(), this.view.getChemistryCheckResult(),
+                        this.settingsContainer.getCsvExportSeparatorSettingCharacter()));
             }
         });
         tmpStage.show();
@@ -1038,23 +1090,194 @@ public class ClusteringResultViewController {
         if (this.clusteringViewController.isClusteringRunning()) {
             return;
         }
+        //mode and number of runs
+        ComboBox<ClusterStability.StabilityMode> tmpModeComboBox = new ComboBox<>(FXCollections.observableArrayList(ClusterStability.StabilityMode.values()));
+        tmpModeComboBox.setConverter(new StringConverter<>() {
+            @Override
+            public String toString(ClusterStability.StabilityMode aMode) {
+                return aMode == null ? "" : String.format(Message.get("ClusterStability.mode." + aMode.name()), 100.0 * ClusterStability.SUBSAMPLE_FRACTION);
+            }
+            @Override
+            public ClusterStability.StabilityMode fromString(String aString) {
+                return null;
+            }
+        });
+        tmpModeComboBox.setValue(this.view.getStabilityResult() == null ? ClusterStability.StabilityMode.SEEDS : this.view.getStabilityResult().mode());
+        Spinner<Integer> tmpRunsSpinner = new Spinner<>(1, ClusterStability.MAXIMUM_NUMBER_OF_RUNS, ClusterStability.NUMBER_OF_RUNS_DEFAULT);
+        tmpRunsSpinner.setEditable(true);
+        Label tmpHintLabel = new Label(String.format(Message.get("ClusterStability.dialog.hint.text"), 100.0 * ClusterStability.SUBSAMPLE_FRACTION));
+        tmpHintLabel.setWrapText(true);
+        tmpHintLabel.setMaxWidth(480);
+        GridPane tmpGrid = new GridPane();
+        tmpGrid.setHgap(GuiDefinitions.GUI_SPACING_VALUE);
+        tmpGrid.setVgap(GuiDefinitions.GUI_SPACING_VALUE);
+        tmpGrid.addRow(0, new Label(Message.get("ClusterStability.mode.label")), tmpModeComboBox);
+        tmpGrid.addRow(1, new Label(Message.get("ClusterStability.runs.label")), tmpRunsSpinner);
+        tmpGrid.add(tmpHintLabel, 0, 2, 2, 1);
+        Dialog<ButtonType> tmpDialog = new Dialog<>();
+        tmpDialog.initOwner(this.getFocusedStage());
+        tmpDialog.setTitle(Message.get("ClusterStability.dialog.title"));
+        tmpDialog.setHeaderText(Message.get("ClusterQuality.stabilityButton.tooltip"));
+        tmpDialog.getDialogPane().setContent(tmpGrid);
+        tmpDialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+        if (tmpDialog.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) {
+            return;
+        }
+        ClusterStability.StabilityMode tmpMode = tmpModeComboBox.getValue();
+        int tmpNumberOfRuns;
+        try {
+            //a typed value is only taken over by the spinner with enter, so it is read from the editor
+            tmpNumberOfRuns = Integer.parseInt(tmpRunsSpinner.getEditor().getText().trim());
+        } catch (NumberFormatException anException) {
+            tmpNumberOfRuns = tmpRunsSpinner.getValue();
+        }
+        int tmpFinalNumberOfRuns = Math.max(1, Math.min(ClusterStability.MAXIMUM_NUMBER_OF_RUNS, tmpNumberOfRuns));
         Task<ClusterStability.StabilityResult> tmpTask = new Task<>() {
             @Override
             protected ClusterStability.StabilityResult call() throws Exception {
-                return ClusterStability.check(ClusteringResultViewController.this.runResult, ClusterStability.NUMBER_OF_RUNS_DEFAULT,
+                return ClusterStability.check(ClusteringResultViewController.this.runResult, tmpMode, tmpFinalNumberOfRuns,
                         this::isCancelled, (aDone, aTotal) -> this.updateProgress(aDone, aTotal));
             }
         };
+        String tmpPreviousText = aStabilityLabel.getText();
         aStabilityLabel.setText(Message.get("ClusterQuality.stability.running.text"));
         this.clusteringViewController.startBackgroundTask(tmpTask, Message.get("Status.stability"),
                 Message.get("ClusterQuality.stabilityButton.tooltip"), Message.get("MainViewController.ClusteringError.Header"),
                 aResult -> {
                     this.view.setStabilityResult(aResult);
-                    aStabilityLabel.setText(String.format(Locale.getDefault(), Message.get("ClusterQuality.stability.text"),
-                            aResult.meanAdjustedRandIndex(), aResult.numberOfRuns()));
+                    aStabilityLabel.setText(ClusteringResultViewController.formatStabilityText(aResult));
                     aQualityTable.refresh();
                 },
-                () -> aStabilityLabel.setText(Message.get("ClusterQuality.stability.notChecked.text")));
+                //a cancelled or failed check keeps the previous result
+                () -> aStabilityLabel.setText(tmpPreviousText));
+    }
+    //
+    /**
+     * Returns the text of the overall value of the given stability check, naming its mode.
+     *
+     * @param aResult result of the stability check
+     * @return text for the quality window
+     */
+    private static String formatStabilityText(ClusterStability.StabilityResult aResult) {
+        return String.format(Locale.getDefault(), Message.get("ClusterQuality.stability." + aResult.mode().name() + ".text"),
+                aResult.meanAdjustedRandIndex(), aResult.numberOfRuns(), 100.0 * ClusterStability.SUBSAMPLE_FRACTION);
+    }
+    //
+    /**
+     * Asks for the fingerprint of the chemical check and runs the check in the background (see
+     * {@link ClusterChemistryCheck}); its result is shown in the given quality table and label and kept in the result
+     * view.
+     *
+     * @param aQualityTable quality table whose chemistry columns are updated
+     * @param aChemistryLabel label that shows the overall values
+     */
+    private void checkClusterChemistry(TableView<ClusterQuality.ClusterQualityEntry> aQualityTable, Label aChemistryLabel) {
+        if (this.clusteringViewController.isClusteringRunning()) {
+            return;
+        }
+        Descriptor tmpFingerprint = this.chooseChemistryCheckFingerprint();
+        if (tmpFingerprint == null) {
+            return;
+        }
+        Task<ClusterChemistryCheck.ChemistryCheckResult> tmpTask = new Task<>() {
+            @Override
+            protected ClusterChemistryCheck.ChemistryCheckResult call() throws Exception {
+                return ClusterChemistryCheck.check(ClusteringResultViewController.this.runResult, tmpFingerprint,
+                        ClusterChemistryCheck.NUMBER_OF_RANDOM_RUNS_DEFAULT, this::isCancelled,
+                        (aDone, aTotal) -> this.updateProgress(aDone, aTotal));
+            }
+        };
+        String tmpPreviousText = aChemistryLabel.getText();
+        aChemistryLabel.setText(Message.get("ClusterQuality.chemistry.running.text"));
+        this.clusteringViewController.startBackgroundTask(tmpTask, Message.get("Status.chemistryCheck"),
+                Message.get("ClusterChemistryCheck.dialog.title"), Message.get("ClusterQuality.chemistry.error.header"),
+                aResult -> {
+                    this.view.setChemistryCheckResult(aResult);
+                    aChemistryLabel.setText(this.formatChemistryCheckText(aResult));
+                    aQualityTable.refresh();
+                },
+                //a cancelled or failed check keeps the previous result
+                () -> aChemistryLabel.setText(tmpPreviousText));
+    }
+    //
+    /**
+     * Opens the dialog for the fingerprint of the chemical check: a choice of the bit fingerprints, preset to one that
+     * was not used for the clustering, a hint why an independent fingerprint is better and a warning if the chosen one
+     * was used for the clustering or is related to a fingerprint used for it.
+     *
+     * @return chosen fingerprint or null if the dialog was cancelled
+     */
+    private Descriptor chooseChemistryCheckFingerprint() {
+        ClusteringParameters tmpParameters = this.runResult.parameters();
+        ComboBox<Descriptor> tmpComboBox = new ComboBox<>(FXCollections.observableArrayList(ClusterChemistryCheck.getBitFingerprints()));
+        tmpComboBox.setConverter(new StringConverter<>() {
+            @Override
+            public String toString(Descriptor aDescriptor) {
+                return aDescriptor == null ? "" : aDescriptor.getName();
+            }
+            @Override
+            public Descriptor fromString(String aString) {
+                return null;
+            }
+        });
+        Label tmpHintLabel = new Label(Message.get("ClusterChemistryCheck.hint.text"));
+        tmpHintLabel.setWrapText(true);
+        tmpHintLabel.setMaxWidth(480);
+        Label tmpIndependenceLabel = new Label();
+        tmpIndependenceLabel.setWrapText(true);
+        tmpIndependenceLabel.setMaxWidth(480);
+        //the warning names the problem of the chosen fingerprint
+        Runnable tmpUpdateIndependence = () -> {
+            Descriptor tmpFingerprint = tmpComboBox.getValue();
+            if (tmpFingerprint == null) {
+                tmpIndependenceLabel.setText("");
+                return;
+            }
+            ClusterChemistryCheck.Independence tmpIndependence = ClusterChemistryCheck.getIndependence(tmpFingerprint, tmpParameters);
+            tmpIndependenceLabel.setText(String.format(Message.get("ClusterChemistryCheck." + tmpIndependence.name().toLowerCase(Locale.ROOT) + ".text"),
+                    tmpFingerprint.getName()));
+            tmpIndependenceLabel.setStyle(tmpIndependence == ClusterChemistryCheck.Independence.INDEPENDENT ? "" : "-fx-text-fill: darkorange;");
+        };
+        tmpComboBox.valueProperty().addListener((anObservable, anOldValue, aNewValue) -> tmpUpdateIndependence.run());
+        tmpComboBox.setValue(ClusterChemistryCheck.getDefaultFingerprint(tmpParameters));
+        GridPane tmpGrid = new GridPane();
+        tmpGrid.setHgap(GuiDefinitions.GUI_SPACING_VALUE);
+        tmpGrid.setVgap(GuiDefinitions.GUI_SPACING_VALUE);
+        tmpGrid.addRow(0, new Label(Message.get("ClusterChemistryCheck.fingerprint.label")), tmpComboBox);
+        tmpGrid.add(tmpIndependenceLabel, 0, 1, 2, 1);
+        tmpGrid.add(tmpHintLabel, 0, 2, 2, 1);
+        Dialog<ButtonType> tmpDialog = new Dialog<>();
+        tmpDialog.initOwner(this.getFocusedStage());
+        tmpDialog.setTitle(Message.get("ClusterChemistryCheck.dialog.title"));
+        tmpDialog.setHeaderText(Message.get("ClusterChemistryCheck.dialog.header"));
+        tmpDialog.getDialogPane().setContent(tmpGrid);
+        tmpDialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+        if (tmpDialog.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) {
+            return null;
+        }
+        return tmpComboBox.getValue();
+    }
+    //
+    /**
+     * Returns the text of the overall values of the given chemical check, with a note if the fingerprint was not
+     * independent of the features and the number of molecules left out.
+     *
+     * @param aResult result of the chemical check
+     * @return text for the quality window
+     */
+    private String formatChemistryCheckText(ClusterChemistryCheck.ChemistryCheckResult aResult) {
+        String tmpText = String.format(Locale.getDefault(), Message.get("ClusterQuality.chemistry.text"),
+                aResult.fingerprint().getName(), aResult.overallMeanTanimoto(), aResult.overallRandomMeanTanimoto(),
+                aResult.overallRandomMeanTanimotoDeviation(), 100.0 * aResult.overallScaffoldShare(),
+                100.0 * aResult.overallRandomScaffoldShare(), 100.0 * aResult.overallRandomScaffoldShareDeviation(),
+                aResult.numberOfRandomRuns());
+        if (ClusterChemistryCheck.getIndependence(aResult.fingerprint(), this.runResult.parameters()) != ClusterChemistryCheck.Independence.INDEPENDENT) {
+            tmpText += " " + Message.get("ClusterQuality.chemistry.notIndependent.text");
+        }
+        if (aResult.numberOfFailedMolecules() > 0) {
+            tmpText += " " + String.format(Message.get("ClusterQuality.chemistry.failed.text"), aResult.numberOfFailedMolecules());
+        }
+        return tmpText;
     }
     //
     /**

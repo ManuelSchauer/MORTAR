@@ -147,6 +147,33 @@ public class VigilanceScanView extends BorderPane {
             tmpSingletonSeries.getData().add(new XYChart.Data<>(tmpEntry.vigilance(), tmpEntry.numberOfSingletons()));
         }
         tmpChart.getData().addAll(List.of(tmpClusterSeries, tmpSingletonSeries));
+        //second chart: silhouette and neighbour purity against the vigilance, to see the trade-off between cluster size
+        // and quality
+        NumberAxis tmpQualityXAxis = new NumberAxis();
+        tmpQualityXAxis.setLabel(Message.get("VigilanceScan.chart.xAxis.label"));
+        tmpQualityXAxis.setForceZeroInRange(false);
+        NumberAxis tmpQualityYAxis = new NumberAxis();
+        tmpQualityYAxis.setLabel(Message.get("VigilanceScan.qualityChart.yAxis.label"));
+        LineChart<Number, Number> tmpQualityChart = new LineChart<>(tmpQualityXAxis, tmpQualityYAxis);
+        tmpQualityChart.setTitle(Message.get("VigilanceScan.qualityChart.title"));
+        tmpQualityChart.setAnimated(false);
+        XYChart.Series<Number, Number> tmpSilhouetteSeries = new XYChart.Series<>();
+        tmpSilhouetteSeries.setName(Message.get("VigilanceScan.silhouetteColumn.header"));
+        XYChart.Series<Number, Number> tmpPuritySeries = new XYChart.Series<>();
+        tmpPuritySeries.setName(Message.get("VigilanceScan.purityColumn.header"));
+        for (VigilanceScan.ScanEntry tmpEntry : anEntryList) {
+            //a clustering with only one cluster has no silhouette
+            if (!Double.isNaN(tmpEntry.overallSilhouette())) {
+                tmpSilhouetteSeries.getData().add(new XYChart.Data<>(tmpEntry.vigilance(), tmpEntry.overallSilhouette()));
+            }
+            if (!Double.isNaN(tmpEntry.overallNeighbourPurity())) {
+                tmpPuritySeries.getData().add(new XYChart.Data<>(tmpEntry.vigilance(), tmpEntry.overallNeighbourPurity()));
+            }
+        }
+        tmpQualityChart.getData().addAll(List.of(tmpSilhouetteSeries, tmpPuritySeries));
+        HBox tmpChartBox = new HBox(tmpChart, tmpQualityChart);
+        HBox.setHgrow(tmpChart, Priority.ALWAYS);
+        HBox.setHgrow(tmpQualityChart, Priority.ALWAYS);
         //table with all values
         this.scanTableView = new TableView<>(FXCollections.observableArrayList(anEntryList));
         this.scanTableView.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
@@ -158,11 +185,15 @@ public class VigilanceScanView extends BorderPane {
                 VigilanceScanView.createIntegerColumn("VigilanceScan.unclusteredColumn.header", VigilanceScan.ScanEntry::numberOfUnclusteredMolecules),
                 VigilanceScanView.createColumn("VigilanceScan.similarityColumn.header",
                         anEntry -> String.format(Locale.getDefault(), "%.3f", anEntry.meanSimilarityToClusterVector())),
+                ClusteringResultView.createNumberColumn(Message.get("VigilanceScan.silhouetteColumn.header"),
+                        VigilanceScan.ScanEntry::overallSilhouette, "%+.3f"),
+                ClusteringResultView.createNumberColumn(Message.get("VigilanceScan.purityColumn.header"),
+                        anEntry -> 100.0 * anEntry.overallNeighbourPurity(), "%.0f %%"),
                 VigilanceScanView.createColumn("VigilanceScan.overflowColumn.header",
                         anEntry -> anEntry.isOverflow() ? Message.get("VigilanceScan.yes.text") : ""),
                 VigilanceScanView.createColumn("VigilanceScan.convergedColumn.header",
                         anEntry -> anEntry.isConverged() ? Message.get("VigilanceScan.yes.text") : Message.get("VigilanceScan.no.text"))));
-        SplitPane tmpSplitPane = new SplitPane(tmpChart, this.scanTableView);
+        SplitPane tmpSplitPane = new SplitPane(tmpChartBox, this.scanTableView);
         tmpSplitPane.setOrientation(Orientation.VERTICAL);
         tmpSplitPane.setDividerPositions(0.5);
         this.setCenter(tmpSplitPane);

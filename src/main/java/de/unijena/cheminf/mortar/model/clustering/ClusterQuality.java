@@ -59,7 +59,16 @@ import java.util.stream.IntStream;
  *     <li>Mean distance between clusters (average linkage): mean distance of all pairs of molecules of two clusters.</li>
  * </ul>
  * In addition, the mean similarity of the molecules to their own cluster vector (the cohesion as seen by ART-2A) and the
- * distances between the cluster vectors are given. Molecules that could not be clustered are not considered. For more
+ * distances between the cluster vectors are given.
+ * <p>
+ * Random baseline: silhouette and neighbour purity are also calculated for {@link #NUMBER_OF_RANDOM_ASSIGNMENTS} random
+ * assignments, in which the cluster labels are shuffled among the clustered molecules, so that the clusters keep their
+ * sizes. Because the molecules and their distances stay the same, the baseline needs no further distance calculation.
+ * In the chemical space, the silhouette is often low in absolute terms; compared with the baseline, it shows how much
+ * better than chance the clusters are. The random neighbour purity of a cluster grows with its size (a cluster with half
+ * of the molecules gets about 50 % by chance), so it is given per cluster, too. The same single pass over the distances
+ * also evaluates other assignments of the same molecules, e.g. the clusterings of a vigilance scan, see
+ * {@link #getOverallValues(ClusteringRunResult, List, BooleanSupplier)}. Molecules that could not be clustered are not considered. For more
  * than {@link #MAXIMUM_NUMBER_OF_QUERY_MOLECULES} clustered molecules, the per-molecule values are calculated for a
  * stratified random sample of the molecules (the same share of every cluster, at least one molecule), compared with all
  * molecules; the result tells whether it was sampled. With only one cluster, the values that need another cluster are
@@ -89,11 +98,13 @@ public class ClusterQuality {
      * @param mostContactsClusterIndex other cluster in which most of the nearest neighbours of the molecules lie that are
      *                                 not in this cluster, -1 if all neighbours are in this cluster
      * @param contactShareWithMostContacts share of all nearest neighbours of the molecules that lie in that cluster
+     * @param randomNeighbourPurity mean neighbour purity of a cluster of the same size in the random assignments, NaN for
+     *                              a single molecule
      */
     public record ClusterQualityEntry(int clusterIndex, int size, double meanSimilarityToOwnCentre, double meanDistanceWithinCluster,
                                       double silhouette, int numberOfNegativeSilhouettes, int numberOfNeighbours, double neighbourPurity,
                                       int nearestClusterIndex, double meanDistanceToNearestCluster, int mostContactsClusterIndex,
-                                      double contactShareWithMostContacts) {
+                                      double contactShareWithMostContacts, double randomNeighbourPurity) {
     }
     //
     /**
@@ -119,6 +130,10 @@ public class ClusterQuality {
      * Maximum number of molecules whose per-molecule values are calculated; above, a stratified sample is used.
      */
     public static final int MAXIMUM_NUMBER_OF_QUERY_MOLECULES = 5000;
+    /**
+     * Number of random assignments of the baseline.
+     */
+    public static final int NUMBER_OF_RANDOM_ASSIGNMENTS = 10;
     //</editor-fold>
     //
     //<editor-fold desc="private static final class constants" defaultstate="collapsed">
@@ -157,6 +172,22 @@ public class ClusterQuality {
      * Mean neighbour purity of all evaluated molecules.
      */
     private final double overallNeighbourPurity;
+    /**
+     * Mean of the overall silhouettes of the random assignments.
+     */
+    private final double randomOverallSilhouette;
+    /**
+     * Standard deviation of the overall silhouettes of the random assignments.
+     */
+    private final double randomOverallSilhouetteDeviation;
+    /**
+     * Mean of the overall neighbour purities of the random assignments.
+     */
+    private final double randomOverallNeighbourPurity;
+    /**
+     * Standard deviation of the overall neighbour purities of the random assignments.
+     */
+    private final double randomOverallNeighbourPurityDeviation;
     /**
      * Number of molecules whose values were calculated.
      */
@@ -217,15 +248,21 @@ public class ClusterQuality {
         int[] tmpQueryRows = ClusterQuality.selectQueryRows(tmpClusteredRows, tmpLabels, tmpSizes);
         this.isSampled = tmpQueryRows.length < tmpClusteredRows.length;
         this.numberOfEvaluatedMolecules = tmpQueryRows.length;
-        //per query molecule: mean distance to every cluster and the clusters of its nearest neighbours
+        //random assignments of the baseline: the labels are shuffled among the clustered molecules, the sizes stay
+        int[][] tmpRandomLabels = new int[ClusterQuality.NUMBER_OF_RANDOM_ASSIGNMENTS][];
+        int[][] tmpRandomSizes = new int[ClusterQuality.NUMBER_OF_RANDOM_ASSIGNMENTS][];
+        for (int r = 0; r < tmpRandomLabels.length; r++) {
+            tmpRandomLabels[r] = ClusterQuality.shuffleLabels(tmpLabels, tmpClusteredRows, new Random(ClusterQuality.SAMPLE_SEED + r + 1));
+            tmpRandomSizes[r] = tmpSizes;
+        }
+        //per query molecule: mean distance to every cluster, the clusters of its nearest neighbours and the values of the
+        // random assignments
         MoleculeValues[] tmpValues = IntStream.range(0, tmpQueryRows.length).parallel().mapToObj(q -> {
             if (anIsCancelledSupplier.getAsBoolean()) {
                 throw new CancellationException("The calculation of the cluster quality was cancelled.");
             }
-            //k depends on the size of the own cluster, so that a perfectly separated small cluster reaches 100 %
-            int tmpRow = tmpQueryRows[q];
-            return ClusterQuality.calculateMoleculeValues(tmpRow, tmpClusteredRows, tmpLabels, tmpSizes, tmpVectors,
-                    tmpSearch, tmpClusterCount, ClusterQuality.getNumberOfNeighbours(tmpSizes[tmpLabels[tmpRow]]));
+            return ClusterQuality.calculateMoleculeValues(tmpQueryRows[q], tmpClusteredRows, tmpLabels, tmpSizes, tmpVectors,
+                    tmpSearch, tmpClusterCount, tmpRandomLabels, tmpRandomSizes);
         }).toArray(MoleculeValues[]::new);
         //aggregation per cluster
         double[] tmpOwnSimilaritySums = new double[tmpClusterCount];
@@ -277,6 +314,29 @@ public class ClusterQuality {
             }
         }
         this.overallSilhouette = tmpSilhouetteCount == 0 ? Double.NaN : tmpOverallSilhouetteSum / tmpSilhouetteCount;
+        //random baseline: overall values of every random assignment, purity per cluster over all random assignments
+        double[][] tmpRandomOverallValues = ClusterQuality.aggregateOverallValues(tmpValues, tmpQueryRows, tmpRandomLabels, tmpClusterCount > 1);
+        double[] tmpRandomPuritySums = new double[tmpClusterCount];
+        int[] tmpRandomPurityCounts = new int[tmpClusterCount];
+        for (int q = 0; q < tmpQueryRows.length; q++) {
+            for (int r = 0; r < tmpRandomLabels.length; r++) {
+                double tmpPurity = tmpValues[q].purities()[r];
+                if (!Double.isNaN(tmpPurity)) {
+                    tmpRandomPuritySums[tmpRandomLabels[r][tmpQueryRows[q]]] += tmpPurity;
+                    tmpRandomPurityCounts[tmpRandomLabels[r][tmpQueryRows[q]]]++;
+                }
+            }
+        }
+        double[] tmpRandomSilhouettes = new double[tmpRandomOverallValues.length];
+        double[] tmpRandomPurities = new double[tmpRandomOverallValues.length];
+        for (int r = 0; r < tmpRandomOverallValues.length; r++) {
+            tmpRandomSilhouettes[r] = tmpRandomOverallValues[r][0];
+            tmpRandomPurities[r] = tmpRandomOverallValues[r][1];
+        }
+        this.randomOverallSilhouette = ClusterQuality.getMean(tmpRandomSilhouettes);
+        this.randomOverallSilhouetteDeviation = ClusterQuality.getStandardDeviation(tmpRandomSilhouettes);
+        this.randomOverallNeighbourPurity = ClusterQuality.getMean(tmpRandomPurities);
+        this.randomOverallNeighbourPurityDeviation = ClusterQuality.getStandardDeviation(tmpRandomPurities);
         //molecules of single-molecule clusters have no neighbours and are left out
         this.overallNeighbourPurity = tmpPurityCount == 0 ? Double.NaN : tmpOverallPuritySum / tmpPurityCount;
         //mean distances between clusters, averaged over both directions (equal without sampling)
@@ -322,7 +382,8 @@ public class ClusterQuality {
                     tmpNearest,
                     tmpNearest < 0 ? Double.NaN : this.meanDistances[k][tmpNearest],
                     tmpMostContacts,
-                    tmpMostContacts < 0 ? 0.0 : this.contactShares[k][tmpMostContacts]));
+                    tmpMostContacts < 0 ? 0.0 : this.contactShares[k][tmpMostContacts],
+                    tmpRandomPurityCounts[k] == 0 ? Double.NaN : tmpRandomPuritySums[k] / tmpRandomPurityCounts[k]));
         }
     }
     //</editor-fold>
@@ -365,6 +426,42 @@ public class ClusterQuality {
      */
     public double getOverallNeighbourPurity() {
         return this.overallNeighbourPurity;
+    }
+    //
+    /**
+     * Returns the mean of the overall silhouettes of the random assignments with the same cluster sizes.
+     *
+     * @return random overall silhouette, NaN if there are fewer than two clusters
+     */
+    public double getRandomOverallSilhouette() {
+        return this.randomOverallSilhouette;
+    }
+    //
+    /**
+     * Returns the standard deviation of the overall silhouettes of the random assignments.
+     *
+     * @return standard deviation of the random overall silhouette
+     */
+    public double getRandomOverallSilhouetteDeviation() {
+        return this.randomOverallSilhouetteDeviation;
+    }
+    //
+    /**
+     * Returns the mean of the overall neighbour purities of the random assignments with the same cluster sizes.
+     *
+     * @return random overall neighbour purity in [0, 1]
+     */
+    public double getRandomOverallNeighbourPurity() {
+        return this.randomOverallNeighbourPurity;
+    }
+    //
+    /**
+     * Returns the standard deviation of the overall neighbour purities of the random assignments.
+     *
+     * @return standard deviation of the random overall neighbour purity
+     */
+    public double getRandomOverallNeighbourPurityDeviation() {
+        return this.randomOverallNeighbourPurityDeviation;
     }
     //
     /**
@@ -472,6 +569,74 @@ public class ClusterQuality {
     public static int getNumberOfNeighbours(int aClusterSize) {
         return Math.max(0, Math.min(ClusterQuality.NUMBER_OF_NEIGHBOURS, aClusterSize - 1));
     }
+    //
+    /**
+     * Returns the overall silhouette and neighbour purity of other assignments of the molecules of the given result to
+     * clusters, e.g. of the clusterings of a vigilance scan, which share the processed features of the result. All
+     * assignments are evaluated in one pass over the distances, in the space of the result, on the molecules clustered in
+     * the result (the same sample as the quality of the result for large data sets); a molecule that is not clustered
+     * in an assignment is left out for it.
+     *
+     * @param aRunResult clustering result whose features and molecules the assignments share
+     * @param aLabelArrayList cluster labels of every assignment, one per molecule of the result, -1 for not clustered
+     * @param anIsCancelledSupplier returns true if the calculation should be stopped
+     * @return per assignment the overall silhouette (NaN with fewer than two clusters) and the overall neighbour purity
+     * @throws NullPointerException if a parameter is null
+     * @throws IllegalArgumentException if a label array does not have one label per molecule
+     * @throws CancellationException if the calculation was cancelled
+     */
+    public static double[][] getOverallValues(ClusteringRunResult aRunResult, List<int[]> aLabelArrayList, BooleanSupplier anIsCancelledSupplier)
+            throws NullPointerException, IllegalArgumentException, CancellationException {
+        Objects.requireNonNull(aRunResult, "Given clustering run result is null.");
+        Objects.requireNonNull(aLabelArrayList, "Given label array list is null.");
+        Objects.requireNonNull(anIsCancelledSupplier, "Given cancellation supplier is null.");
+        int[] tmpLabels = aRunResult.clusteringResult().clusterLabels();
+        int tmpClusterCount = aRunResult.clusteringResult().numberOfClusters();
+        int[] tmpClusteredRows = IntStream.range(0, tmpLabels.length).filter(i -> tmpLabels[i] >= 0).toArray();
+        int[] tmpSizes = new int[tmpClusterCount];
+        for (int tmpRow : tmpClusteredRows) {
+            tmpSizes[tmpLabels[tmpRow]]++;
+        }
+        //sizes of the clusters of every assignment, counted on the molecules of the comparison
+        int[][] tmpAssignmentLabels = new int[aLabelArrayList.size()][];
+        int[][] tmpAssignmentSizes = new int[aLabelArrayList.size()][];
+        boolean[] tmpHasSeveralClusters = new boolean[aLabelArrayList.size()];
+        for (int a = 0; a < tmpAssignmentLabels.length; a++) {
+            int[] tmpAssignment = aLabelArrayList.get(a);
+            if (tmpAssignment.length != tmpLabels.length) {
+                throw new IllegalArgumentException("A label array does not have one label per molecule.");
+            }
+            int tmpMaximum = Arrays.stream(tmpAssignment).max().orElse(-1);
+            int[] tmpAssignmentSize = new int[tmpMaximum + 1];
+            for (int tmpRow : tmpClusteredRows) {
+                if (tmpAssignment[tmpRow] >= 0) {
+                    tmpAssignmentSize[tmpAssignment[tmpRow]]++;
+                }
+            }
+            tmpAssignmentLabels[a] = tmpAssignment;
+            tmpAssignmentSizes[a] = tmpAssignmentSize;
+            tmpHasSeveralClusters[a] = Arrays.stream(tmpAssignmentSize).filter(aSize -> aSize > 0).count() > 1;
+        }
+        SimilaritySearch tmpSearch = new SimilaritySearch(aRunResult);
+        float[][] tmpVectors = new float[tmpLabels.length][];
+        for (int tmpRow : tmpClusteredRows) {
+            tmpVectors[tmpRow] = tmpSearch.getKernelVectorOfRow(tmpRow);
+        }
+        int[] tmpQueryRows = ClusterQuality.selectQueryRows(tmpClusteredRows, tmpLabels, tmpSizes);
+        MoleculeValues[] tmpValues = IntStream.range(0, tmpQueryRows.length).parallel().mapToObj(q -> {
+            if (anIsCancelledSupplier.getAsBoolean()) {
+                throw new CancellationException("The calculation of the cluster quality was cancelled.");
+            }
+            return ClusterQuality.calculateMoleculeValues(tmpQueryRows[q], tmpClusteredRows, tmpLabels, tmpSizes, tmpVectors,
+                    tmpSearch, tmpClusterCount, tmpAssignmentLabels, tmpAssignmentSizes);
+        }).toArray(MoleculeValues[]::new);
+        double[][] tmpOverallValues = new double[tmpAssignmentLabels.length][];
+        for (int a = 0; a < tmpAssignmentLabels.length; a++) {
+            tmpOverallValues[a] = ClusterQuality.aggregateOverallValues(tmpValues, tmpQueryRows, new int[][] {tmpAssignmentLabels[a]},
+                    tmpHasSeveralClusters[a], a)[0];
+        }
+        return tmpOverallValues;
+    }
     //</editor-fold>
     //
     //<editor-fold desc="private records and static methods" defaultstate="collapsed">
@@ -481,8 +646,11 @@ public class ClusterQuality {
      * @param meanDistances mean distance to the molecules of every cluster (for the own cluster without the molecule
      *                      itself), NaN for a cluster without other molecules
      * @param neighbourLabels clusters of the nearest neighbours
+     * @param silhouettes silhouette of the molecule in every additional assignment, NaN if it is not clustered there
+     * @param purities neighbour purity of the molecule in every additional assignment, NaN if it is not clustered there
+     *                 or has no neighbours
      */
-    private record MoleculeValues(double[] meanDistances, int[] neighbourLabels) {
+    private record MoleculeValues(double[] meanDistances, int[] neighbourLabels, double[] silhouettes, double[] purities) {
     }
     //
     /**
@@ -522,7 +690,9 @@ public class ClusterQuality {
     //
     /**
      * Calculates the distances of one molecule to all clustered molecules: the mean distance to every cluster and the
-     * clusters of its nearest neighbours.
+     * clusters of its nearest neighbours, and from the same distances its silhouette and neighbour purity in every given
+     * additional assignment (e.g. a random one). The nearest neighbours do not depend on the assignment; every assignment
+     * uses k = min({@link #NUMBER_OF_NEIGHBOURS}, size of the molecule's cluster in it - 1) of them.
      *
      * @param aRow row index of the molecule
      * @param aClusteredRows row indices of all clustered molecules
@@ -531,15 +701,21 @@ public class ClusterQuality {
      * @param aVectors kernel vectors by row index (null for not clustered molecules)
      * @param aSearch similarity search providing the similarity of the kernel
      * @param aClusterCount number of clusters
-     * @param aNeighbourCount number of nearest neighbours of the molecule, depending on the size of its cluster
+     * @param anAssignmentLabels cluster labels of every additional assignment, -1 for not clustered
+     * @param anAssignmentSizes cluster sizes of every additional assignment
      * @return values of the molecule
      */
     private static MoleculeValues calculateMoleculeValues(int aRow, int[] aClusteredRows, int[] aLabels, int[] aSizes, float[][] aVectors,
-                                                          SimilaritySearch aSearch, int aClusterCount, int aNeighbourCount) {
+                                                          SimilaritySearch aSearch, int aClusterCount, int[][] anAssignmentLabels,
+                                                          int[][] anAssignmentSizes) {
         double[] tmpDistanceSums = new double[aClusterCount];
-        //nearest neighbours, sorted ascending by distance
-        double[] tmpNeighbourDistances = new double[aNeighbourCount];
-        int[] tmpNeighbourLabels = new int[aNeighbourCount];
+        double[][] tmpAssignmentDistanceSums = new double[anAssignmentLabels.length][];
+        for (int a = 0; a < anAssignmentLabels.length; a++) {
+            tmpAssignmentDistanceSums[a] = new double[anAssignmentSizes[a].length];
+        }
+        //nearest neighbours of all assignments, sorted ascending by distance
+        double[] tmpNeighbourDistances = new double[ClusterQuality.NUMBER_OF_NEIGHBOURS];
+        int[] tmpNeighbourRows = new int[ClusterQuality.NUMBER_OF_NEIGHBOURS];
         Arrays.fill(tmpNeighbourDistances, Double.POSITIVE_INFINITY);
         int tmpFound = 0;
         float[] tmpVector = aVectors[aRow];
@@ -548,27 +724,181 @@ public class ClusterQuality {
                 continue;
             }
             double tmpDistance = 1.0 - aSearch.getSimilarity(tmpVector, aVectors[tmpOther]);
-            int tmpLabel = aLabels[tmpOther];
-            tmpDistanceSums[tmpLabel] += tmpDistance;
-            if (aNeighbourCount > 0 && tmpDistance < tmpNeighbourDistances[aNeighbourCount - 1]) {
-                int tmpPosition = Math.min(tmpFound, aNeighbourCount - 1);
+            tmpDistanceSums[aLabels[tmpOther]] += tmpDistance;
+            for (int a = 0; a < anAssignmentLabels.length; a++) {
+                int tmpLabel = anAssignmentLabels[a][tmpOther];
+                if (tmpLabel >= 0) {
+                    tmpAssignmentDistanceSums[a][tmpLabel] += tmpDistance;
+                }
+            }
+            if (tmpDistance < tmpNeighbourDistances[ClusterQuality.NUMBER_OF_NEIGHBOURS - 1]) {
+                int tmpPosition = Math.min(tmpFound, ClusterQuality.NUMBER_OF_NEIGHBOURS - 1);
                 while (tmpPosition > 0 && tmpNeighbourDistances[tmpPosition - 1] > tmpDistance) {
                     tmpNeighbourDistances[tmpPosition] = tmpNeighbourDistances[tmpPosition - 1];
-                    tmpNeighbourLabels[tmpPosition] = tmpNeighbourLabels[tmpPosition - 1];
+                    tmpNeighbourRows[tmpPosition] = tmpNeighbourRows[tmpPosition - 1];
                     tmpPosition--;
                 }
                 tmpNeighbourDistances[tmpPosition] = tmpDistance;
-                tmpNeighbourLabels[tmpPosition] = tmpLabel;
-                tmpFound = Math.min(tmpFound + 1, aNeighbourCount);
+                tmpNeighbourRows[tmpPosition] = tmpOther;
+                tmpFound = Math.min(tmpFound + 1, ClusterQuality.NUMBER_OF_NEIGHBOURS);
             }
         }
+        //k depends on the size of the own cluster, so that a perfectly separated small cluster reaches 100 %
         int tmpOwn = aLabels[aRow];
-        double[] tmpMeanDistances = new double[aClusterCount];
-        for (int k = 0; k < aClusterCount; k++) {
-            int tmpOthers = k == tmpOwn ? aSizes[k] - 1 : aSizes[k];
-            tmpMeanDistances[k] = tmpOthers <= 0 ? Double.NaN : tmpDistanceSums[k] / tmpOthers;
+        int tmpNeighbourCount = Math.min(tmpFound, ClusterQuality.getNumberOfNeighbours(aSizes[tmpOwn]));
+        int[] tmpNeighbourLabels = new int[tmpNeighbourCount];
+        for (int n = 0; n < tmpNeighbourCount; n++) {
+            tmpNeighbourLabels[n] = aLabels[tmpNeighbourRows[n]];
         }
-        return new MoleculeValues(tmpMeanDistances, Arrays.copyOf(tmpNeighbourLabels, tmpFound));
+        double[] tmpMeanDistances = ClusterQuality.getMeanDistances(tmpDistanceSums, tmpOwn, aSizes);
+        //the additional assignments
+        double[] tmpSilhouettes = new double[anAssignmentLabels.length];
+        double[] tmpPurities = new double[anAssignmentLabels.length];
+        for (int a = 0; a < anAssignmentLabels.length; a++) {
+            int tmpAssignmentOwn = anAssignmentLabels[a][aRow];
+            if (tmpAssignmentOwn < 0) {
+                tmpSilhouettes[a] = Double.NaN;
+                tmpPurities[a] = Double.NaN;
+                continue;
+            }
+            int[] tmpAssignmentSizes = anAssignmentSizes[a];
+            tmpSilhouettes[a] = ClusterQuality.getMoleculeSilhouette(
+                    ClusterQuality.getMeanDistances(tmpAssignmentDistanceSums[a], tmpAssignmentOwn, tmpAssignmentSizes),
+                    tmpAssignmentOwn, tmpAssignmentSizes);
+            //the first k neighbours that are clustered in the assignment
+            int tmpK = ClusterQuality.getNumberOfNeighbours(tmpAssignmentSizes[tmpAssignmentOwn]);
+            int tmpUsed = 0;
+            int tmpSame = 0;
+            for (int n = 0; n < tmpFound && tmpUsed < tmpK; n++) {
+                int tmpLabel = anAssignmentLabels[a][tmpNeighbourRows[n]];
+                if (tmpLabel >= 0) {
+                    tmpUsed++;
+                    if (tmpLabel == tmpAssignmentOwn) {
+                        tmpSame++;
+                    }
+                }
+            }
+            tmpPurities[a] = tmpUsed == 0 ? Double.NaN : (double) tmpSame / tmpUsed;
+        }
+        return new MoleculeValues(tmpMeanDistances, tmpNeighbourLabels, tmpSilhouettes, tmpPurities);
+    }
+    //
+    /**
+     * Returns the mean distance of a molecule to every cluster from the sums of its distances.
+     *
+     * @param aDistanceSums sum of the distances to the molecules of every cluster
+     * @param anOwnCluster own cluster of the molecule, whose molecule count excludes the molecule itself
+     * @param aSizes cluster sizes
+     * @return mean distance to every cluster, NaN for a cluster without other molecules
+     */
+    private static double[] getMeanDistances(double[] aDistanceSums, int anOwnCluster, int[] aSizes) {
+        double[] tmpMeanDistances = new double[aDistanceSums.length];
+        for (int k = 0; k < aDistanceSums.length; k++) {
+            int tmpOthers = k == anOwnCluster ? aSizes[k] - 1 : aSizes[k];
+            tmpMeanDistances[k] = tmpOthers <= 0 ? Double.NaN : aDistanceSums[k] / tmpOthers;
+        }
+        return tmpMeanDistances;
+    }
+    //
+    /**
+     * Returns the overall silhouette and neighbour purity of every additional assignment from the values of the
+     * evaluated molecules: the means over the molecules clustered in the assignment.
+     *
+     * @param aValues values of the evaluated molecules
+     * @param aQueryRows row indices of the evaluated molecules
+     * @param anAssignmentLabels cluster labels of the assignments
+     * @param anIsSilhouetteDefined false if the assignments have fewer than two clusters (silhouette NaN)
+     * @return per assignment the overall silhouette and the overall neighbour purity
+     */
+    private static double[][] aggregateOverallValues(MoleculeValues[] aValues, int[] aQueryRows, int[][] anAssignmentLabels,
+                                                     boolean anIsSilhouetteDefined) {
+        return ClusterQuality.aggregateOverallValues(aValues, aQueryRows, anAssignmentLabels, anIsSilhouetteDefined, 0);
+    }
+    //
+    /**
+     * Returns the overall silhouette and neighbour purity of the given assignments, whose values are stored in the
+     * molecule values from the given offset on.
+     *
+     * @param aValues values of the evaluated molecules
+     * @param aQueryRows row indices of the evaluated molecules
+     * @param anAssignmentLabels cluster labels of the assignments
+     * @param anIsSilhouetteDefined false if the assignments have fewer than two clusters (silhouette NaN)
+     * @param anOffset index of the first assignment in the arrays of the molecule values
+     * @return per assignment the overall silhouette and the overall neighbour purity
+     */
+    private static double[][] aggregateOverallValues(MoleculeValues[] aValues, int[] aQueryRows, int[][] anAssignmentLabels,
+                                                     boolean anIsSilhouetteDefined, int anOffset) {
+        double[][] tmpOverallValues = new double[anAssignmentLabels.length][2];
+        for (int a = 0; a < anAssignmentLabels.length; a++) {
+            double tmpSilhouetteSum = 0.0;
+            int tmpSilhouetteCount = 0;
+            double tmpPuritySum = 0.0;
+            int tmpPurityCount = 0;
+            for (int q = 0; q < aQueryRows.length; q++) {
+                if (anAssignmentLabels[a][aQueryRows[q]] < 0) {
+                    continue;
+                }
+                double tmpSilhouette = aValues[q].silhouettes()[anOffset + a];
+                if (!Double.isNaN(tmpSilhouette)) {
+                    tmpSilhouetteSum += tmpSilhouette;
+                    tmpSilhouetteCount++;
+                }
+                double tmpPurity = aValues[q].purities()[anOffset + a];
+                if (!Double.isNaN(tmpPurity)) {
+                    tmpPuritySum += tmpPurity;
+                    tmpPurityCount++;
+                }
+            }
+            tmpOverallValues[a][0] = !anIsSilhouetteDefined || tmpSilhouetteCount == 0 ? Double.NaN : tmpSilhouetteSum / tmpSilhouetteCount;
+            tmpOverallValues[a][1] = tmpPurityCount == 0 ? Double.NaN : tmpPuritySum / tmpPurityCount;
+        }
+        return tmpOverallValues;
+    }
+    //
+    /**
+     * Returns a copy of the given labels in which the labels of the clustered molecules are shuffled, so that every
+     * cluster keeps its size.
+     *
+     * @param aLabels cluster labels
+     * @param aClusteredRows row indices of the clustered molecules
+     * @param aRandom random generator
+     * @return shuffled labels
+     */
+    private static int[] shuffleLabels(int[] aLabels, int[] aClusteredRows, Random aRandom) {
+        int[] tmpShuffled = aLabels.clone();
+        //Fisher-Yates shuffle of the labels of the clustered rows
+        for (int k = aClusteredRows.length - 1; k > 0; k--) {
+            int tmpOther = aRandom.nextInt(k + 1);
+            int tmpLabel = tmpShuffled[aClusteredRows[k]];
+            tmpShuffled[aClusteredRows[k]] = tmpShuffled[aClusteredRows[tmpOther]];
+            tmpShuffled[aClusteredRows[tmpOther]] = tmpLabel;
+        }
+        return tmpShuffled;
+    }
+    //
+    /**
+     * Returns the mean of the given values, ignoring NaN.
+     *
+     * @param aValues values
+     * @return mean, NaN if there is no value
+     */
+    private static double getMean(double[] aValues) {
+        return Arrays.stream(aValues).filter(aValue -> !Double.isNaN(aValue)).average().orElse(Double.NaN);
+    }
+    //
+    /**
+     * Returns the standard deviation (population) of the given values, ignoring NaN.
+     *
+     * @param aValues values
+     * @return standard deviation, NaN if there is no value
+     */
+    private static double getStandardDeviation(double[] aValues) {
+        double tmpMean = ClusterQuality.getMean(aValues);
+        if (Double.isNaN(tmpMean)) {
+            return Double.NaN;
+        }
+        return Math.sqrt(Arrays.stream(aValues).filter(aValue -> !Double.isNaN(aValue))
+                .map(aValue -> (aValue - tmpMean) * (aValue - tmpMean)).average().orElse(0.0));
     }
     //
     /**

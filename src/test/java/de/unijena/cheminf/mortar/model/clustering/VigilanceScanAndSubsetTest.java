@@ -88,6 +88,10 @@ class VigilanceScanAndSubsetTest {
         }
         Assertions.assertTrue(tmpEntries.get(2).numberOfClusters() >= tmpEntries.get(0).numberOfClusters());
         Assertions.assertArrayEquals(tmpBase.clusteringResult().clusterLabels(), tmpEntries.get(1).runResult().clusteringResult().clusterLabels());
+        //the entry with the vigilance of the base has its silhouette and neighbour purity
+        ClusterQuality tmpQuality = new ClusterQuality(tmpBase);
+        Assertions.assertEquals(tmpQuality.getOverallSilhouette(), tmpEntries.get(1).overallSilhouette(), 1.0e-12);
+        Assertions.assertEquals(tmpQuality.getOverallNeighbourPurity(), tmpEntries.get(1).overallNeighbourPurity(), 1.0e-12);
         Assertions.assertThrows(CancellationException.class, () -> VigilanceScan.scan(tmpBase, tmpValues, () -> true, (aDone, aTotal) -> { }));
     }
     //
@@ -170,6 +174,45 @@ class VigilanceScanAndSubsetTest {
                 DiverseSubsetSelector.SelectionMode.DIVERSE).size());
         Assertions.assertThrows(IllegalArgumentException.class, () -> DiverseSubsetSelector.selectFromCluster(tmpRunResult,
                 tmpRunResult.clusteringResult().numberOfClusters(), 1, DiverseSubsetSelector.SelectionMode.TYPICAL));
+    }
+    //
+    /**
+     * Tests that the parallel scan gives the same clusterings, silhouettes and order as the sequential one, reports its
+     * progress for every clustering, and that the target search with both ends clustered at the same time finds the
+     * same best entry.
+     *
+     * @throws Exception if the pipeline fails
+     */
+    @Test
+    void testParallelScanEqualsSequentialScan() throws Exception {
+        ClusteringRunResult tmpBase = SimilaritySearchTest.createRunResult();
+        ClusteringParameters tmpParameters = tmpBase.parameters();
+        ClusteringParameters tmpParallelParameters = new ClusteringParameters(tmpParameters.fragmentationName(),
+                tmpParameters.isCountFingerprint(), tmpParameters.minimumFragmentMoleculeFrequency(),
+                tmpParameters.maximumNumberOfFragmentFeatures(), tmpParameters.descriptors(), tmpParameters.electronDonationModelOption(),
+                tmpParameters.cycleFinderOption(), tmpParameters.countTransformation(), tmpParameters.continuousTransformation(),
+                tmpParameters.maximumNaNFraction(), tmpParameters.isCorrelationFilterEnabled(), tmpParameters.correlationThreshold(),
+                tmpParameters.correlationMethod(), tmpParameters.algorithm(), tmpParameters.vigilance(), tmpParameters.maximumNumberOfClusters(),
+                tmpParameters.maximumNumberOfEpochs(), tmpParameters.convergenceThreshold(), tmpParameters.learningParameter(),
+                tmpParameters.offsetForContrastEnhancement(), tmpParameters.randomSeed(), tmpParameters.circularFingerprintSize(), true,
+                tmpParameters.isFragmentFingerprintUsed());
+        ClusteringRunResult tmpParallelBase = new ClusteringRunResult(tmpParallelParameters, tmpBase.molecules(), tmpBase.rawMatrix(),
+                tmpBase.transformedMatrix(), tmpBase.processedMatrix(), tmpBase.removedFeatures(), tmpBase.clusteringResult());
+        float[] tmpValues = VigilanceScan.getVigilanceValues(0.1, 0.9, 0.1);
+        List<VigilanceScan.ScanEntry> tmpSequential = VigilanceScan.scan(tmpBase, tmpValues, () -> false, (aDone, aTotal) -> { });
+        List<Integer> tmpProgress = java.util.Collections.synchronizedList(new ArrayList<>());
+        List<VigilanceScan.ScanEntry> tmpParallel = VigilanceScan.scan(tmpParallelBase, tmpValues, () -> false,
+                (aDone, aTotal) -> tmpProgress.add(aDone));
+        Assertions.assertEquals(tmpValues.length + 1, tmpProgress.size());
+        for (int v = 0; v < tmpValues.length; v++) {
+            Assertions.assertEquals(tmpSequential.get(v).vigilance(), tmpParallel.get(v).vigilance());
+            Assertions.assertArrayEquals(tmpSequential.get(v).runResult().clusteringResult().clusterLabels(),
+                    tmpParallel.get(v).runResult().clusteringResult().clusterLabels());
+            Assertions.assertEquals(tmpSequential.get(v).overallSilhouette(), tmpParallel.get(v).overallSilhouette(), 1.0e-12);
+        }
+        //the target search clusters both ends at the same time and finds the same best entry
+        Assertions.assertEquals(VigilanceScan.searchForNumberOfClusters(tmpBase, 3, () -> false, (aDone, aTotal) -> { }).bestEntry().vigilance(),
+                VigilanceScan.searchForNumberOfClusters(tmpParallelBase, 3, () -> false, (aDone, aTotal) -> { }).bestEntry().vigilance());
     }
     //
     /**

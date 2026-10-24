@@ -27,6 +27,7 @@ package de.unijena.cheminf.mortar.gui.views;
 
 import de.unijena.cheminf.mortar.gui.util.GuiDefinitions;
 import de.unijena.cheminf.mortar.message.Message;
+import de.unijena.cheminf.mortar.model.clustering.ClusterChemistryCheck;
 import de.unijena.cheminf.mortar.model.clustering.ClusterDescriptorStatistics;
 import de.unijena.cheminf.mortar.model.clustering.ClusterProfiler;
 import de.unijena.cheminf.mortar.model.clustering.ClusterQuality;
@@ -264,6 +265,10 @@ public class ClusteringResultView extends BorderPane {
      * Result of the optional stability check, null if it was not run.
      */
     private ClusterStability.StabilityResult stabilityResult;
+    /**
+     * Result of the optional chemical check, null if it was not run.
+     */
+    private ClusterChemistryCheck.ChemistryCheckResult chemistryCheckResult;
     //</editor-fold>
     //
     //<editor-fold desc="Constructor" defaultstate="collapsed">
@@ -676,6 +681,24 @@ public class ClusteringResultView extends BorderPane {
      */
     public void setStabilityResult(ClusterStability.StabilityResult aStabilityResult) {
         this.stabilityResult = aStabilityResult;
+    }
+    //
+    /**
+     * Returns the result of the optional chemical check with an independent fingerprint and the scaffolds.
+     *
+     * @return chemical check result, null if the check was not run
+     */
+    public ClusterChemistryCheck.ChemistryCheckResult getChemistryCheckResult() {
+        return this.chemistryCheckResult;
+    }
+    //
+    /**
+     * Sets the result of the optional chemical check, so that it is shown again when the quality window is reopened.
+     *
+     * @param aChemistryCheckResult chemical check result
+     */
+    public void setChemistryCheckResult(ClusterChemistryCheck.ChemistryCheckResult aChemistryCheckResult) {
+        this.chemistryCheckResult = aChemistryCheckResult;
     }
     //
     /**

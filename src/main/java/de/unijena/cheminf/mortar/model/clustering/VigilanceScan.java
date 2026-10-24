@@ -34,8 +34,11 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
+import java.util.stream.IntStream;
 
 /**
  * Vigilance scan: clusters the processed feature matrix of an existing clustering run again for a series of vigilance
@@ -63,13 +66,16 @@ public final class VigilanceScan {
      * @param numberOfUnclusteredMolecules number of molecules that could not be clustered
      * @param meanSimilarityToClusterVector mean similarity of the clustered molecules to their cluster vector (compactness
      *                                      of the clusters, 1 = every molecule equals its cluster vector)
+     * @param overallSilhouette mean silhouette of the molecules (see {@link ClusterQuality}), NaN with fewer than two
+     *                          clusters
+     * @param overallNeighbourPurity mean neighbour purity of the molecules (see {@link ClusterQuality})
      * @param isOverflow true if the maximum number of clusters was reached
      * @param isConverged true if the clustering converged
      * @param runResult complete clustering result with this vigilance, e.g. to show it as result tab
      */
     public record ScanEntry(float vigilance, int numberOfClusters, int numberOfSingletons, int largestClusterSize,
-                            int numberOfUnclusteredMolecules, double meanSimilarityToClusterVector, boolean isOverflow,
-                            boolean isConverged, ClusteringRunResult runResult) {
+                            int numberOfUnclusteredMolecules, double meanSimilarityToClusterVector, double overallSilhouette,
+                            double overallNeighbourPurity, boolean isOverflow, boolean isConverged, ClusteringRunResult runResult) {
     }
     //
     /**
@@ -144,7 +150,9 @@ public final class VigilanceScan {
     //
     /**
      * Clusters the processed matrix of the given run with every given vigilance value; the other parameters of the run
-     * are kept.
+     * are kept. The clusterings are independent of each other and run in parallel if the parallel calculation of the run
+     * is switched on; the result does not depend on it. The silhouette and neighbour purity of all clusterings are
+     * calculated at the end in one pass over the distances of the molecules (see {@link ClusterQuality#getOverallValues}).
      *
      * @param aRunResult clustering run whose features and parameters are used
      * @param aVigilanceValues vigilance values, each in (0,1)
@@ -160,16 +168,28 @@ public final class VigilanceScan {
             throws NullPointerException, CancellationException, Exception {
         Objects.requireNonNull(aRunResult, "Given clustering run result is null.");
         Objects.requireNonNull(aVigilanceValues, "Given vigilance values are null.");
-        List<ScanEntry> tmpEntries = new ArrayList<>(aVigilanceValues.length);
-        for (int v = 0; v < aVigilanceValues.length; v++) {
-            if (anIsCancelledSupplier.getAsBoolean()) {
-                throw new CancellationException("Vigilance scan was cancelled.");
-            }
-            aProgressConsumer.accept(v, aVigilanceValues.length);
-            tmpEntries.add(VigilanceScan.clusterWithVigilance(aRunResult, aVigilanceValues[v]));
+        ScanEntry[] tmpEntries = new ScanEntry[aVigilanceValues.length];
+        AtomicInteger tmpFinishedCount = new AtomicInteger();
+        aProgressConsumer.accept(0, aVigilanceValues.length);
+        IntStream tmpIndices = IntStream.range(0, aVigilanceValues.length);
+        try {
+            (aRunResult.parameters().isParallelCalculation() ? tmpIndices.parallel() : tmpIndices).forEach(v -> {
+                if (anIsCancelledSupplier.getAsBoolean()) {
+                    throw new CancellationException("Vigilance scan was cancelled.");
+                }
+                try {
+                    tmpEntries[v] = VigilanceScan.clusterWithVigilance(aRunResult, aVigilanceValues[v]);
+                } catch (Exception anException) {
+                    throw new CompletionException(anException);
+                }
+                aProgressConsumer.accept(tmpFinishedCount.incrementAndGet(), aVigilanceValues.length);
+            });
+        } catch (CompletionException anException) {
+            //the exception of a clustering, wrapped to leave the stream
+            throw anException.getCause() instanceof Exception tmpCause ? tmpCause : anException;
         }
-        aProgressConsumer.accept(aVigilanceValues.length, aVigilanceValues.length);
-        return tmpEntries;
+        //the last clustering has already reported the end of the progress
+        return VigilanceScan.addQuality(aRunResult, List.of(tmpEntries), anIsCancelledSupplier);
     }
     //
     /**
@@ -223,7 +243,12 @@ public final class VigilanceScan {
         TreeMap<Integer, ScanEntry> tmpEntryOfGridPointMap = new TreeMap<>();
         int tmpLower = 1;
         int tmpUpper = VigilanceScan.SEARCH_GRID_STEPS - 1;
-        //both ends first; if the target lies outside, the search ends at the corresponding end
+        //both ends first, at the same time if the calculation is parallel; if the target lies outside, the search ends at
+        // the corresponding end
+        if (aRunResult.parameters().isParallelCalculation()) {
+            VigilanceScan.evaluateGridPointsInParallel(aRunResult, new int[] {tmpLower, tmpUpper}, tmpEntryOfGridPointMap,
+                    anIsCancelledSupplier, aProgressConsumer);
+        }
         if (VigilanceScan.evaluateGridPoint(aRunResult, tmpLower, tmpEntryOfGridPointMap, anIsCancelledSupplier, aProgressConsumer)
                 .numberOfClusters() < aTargetNumberOfClusters
                 && VigilanceScan.evaluateGridPoint(aRunResult, tmpUpper, tmpEntryOfGridPointMap, anIsCancelledSupplier, aProgressConsumer)
@@ -242,8 +267,10 @@ public final class VigilanceScan {
                 }
             }
         }
+        //silhouette and neighbour purity of all clusterings of the search in one pass
+        List<ScanEntry> tmpEntries = VigilanceScan.addQuality(aRunResult, new ArrayList<>(tmpEntryOfGridPointMap.values()),
+                anIsCancelledSupplier);
         aProgressConsumer.accept(VigilanceScan.MAXIMUM_NUMBER_OF_SEARCH_STEPS, VigilanceScan.MAXIMUM_NUMBER_OF_SEARCH_STEPS);
-        List<ScanEntry> tmpEntries = new ArrayList<>(tmpEntryOfGridPointMap.values());
         ScanEntry tmpBest = tmpEntries.stream().min(Comparator
                 .comparingInt((ScanEntry anEntry) -> Math.abs(anEntry.numberOfClusters() - aTargetNumberOfClusters))
                 .thenComparingInt(ScanEntry::numberOfSingletons)
@@ -280,6 +307,43 @@ public final class VigilanceScan {
         tmpEntry = VigilanceScan.clusterWithVigilance(aRunResult, (float) aGridPoint / VigilanceScan.SEARCH_GRID_STEPS);
         anEntryOfGridPointMap.put(aGridPoint, tmpEntry);
         return tmpEntry;
+    }
+    //
+    /**
+     * Clusters the given grid points of the target search at the same time and stores their entries, see
+     * {@link #evaluateGridPoint}.
+     *
+     * @param aRunResult clustering run whose features and parameters are used
+     * @param aGridPoints grid points between 1 and SEARCH_GRID_STEPS - 1
+     * @param anEntryOfGridPointMap entries of the grid points clustered so far (IS CHANGED)
+     * @param anIsCancelledSupplier returns true if the search should be stopped
+     * @param aProgressConsumer receives the number of finished clusterings and the maximum number
+     * @throws CancellationException if the search was cancelled
+     * @throws Exception if a clustering fails
+     */
+    private static void evaluateGridPointsInParallel(ClusteringRunResult aRunResult, int[] aGridPoints, Map<Integer, ScanEntry> anEntryOfGridPointMap,
+                                                     BooleanSupplier anIsCancelledSupplier, BiConsumer<Integer, Integer> aProgressConsumer)
+            throws CancellationException, Exception {
+        if (anIsCancelledSupplier.getAsBoolean()) {
+            throw new CancellationException("Vigilance search was cancelled.");
+        }
+        aProgressConsumer.accept(anEntryOfGridPointMap.size(), VigilanceScan.MAXIMUM_NUMBER_OF_SEARCH_STEPS);
+        ScanEntry[] tmpEntries = new ScanEntry[aGridPoints.length];
+        try {
+            IntStream.range(0, aGridPoints.length).parallel().forEach(g -> {
+                try {
+                    tmpEntries[g] = VigilanceScan.clusterWithVigilance(aRunResult, (float) aGridPoints[g] / VigilanceScan.SEARCH_GRID_STEPS);
+                } catch (Exception anException) {
+                    throw new CompletionException(anException);
+                }
+            });
+        } catch (CompletionException anException) {
+            throw anException.getCause() instanceof Exception tmpCause ? tmpCause : anException;
+        }
+        //the map is only changed in this thread
+        for (int g = 0; g < aGridPoints.length; g++) {
+            anEntryOfGridPointMap.put(aGridPoints[g], tmpEntries[g]);
+        }
     }
     //
     /**
@@ -333,9 +397,37 @@ public final class VigilanceScan {
                 tmpClustered++;
             }
         }
+        //silhouette and neighbour purity are added for all entries at once, see addQuality
         return new ScanEntry(tmpResult.vigilance(), tmpResult.numberOfClusters(), tmpSingletons, tmpLargest,
                 tmpResult.getNumberOfUnclusteredRows(), tmpClustered == 0 ? Double.NaN : tmpSimilaritySum / tmpClustered,
-                tmpResult.isOverflow(), tmpResult.isConverged(), aRunResult);
+                Double.NaN, Double.NaN, tmpResult.isOverflow(), tmpResult.isConverged(), aRunResult);
+    }
+    //
+    /**
+     * Returns copies of the given entries with their overall silhouette and neighbour purity, calculated for all
+     * entries in one pass over the distances of the molecules of the given run, whose features they share.
+     *
+     * @param aRunResult clustering run whose features the entries share
+     * @param anEntryList entries without quality
+     * @param anIsCancelledSupplier returns true if the calculation should be stopped
+     * @return entries with quality, in the same order
+     * @throws CancellationException if the calculation was cancelled
+     */
+    private static List<ScanEntry> addQuality(ClusteringRunResult aRunResult, List<ScanEntry> anEntryList, BooleanSupplier anIsCancelledSupplier)
+            throws CancellationException {
+        List<int[]> tmpLabelArrays = new ArrayList<>(anEntryList.size());
+        for (ScanEntry tmpEntry : anEntryList) {
+            tmpLabelArrays.add(tmpEntry.runResult().clusteringResult().clusterLabels());
+        }
+        double[][] tmpValues = ClusterQuality.getOverallValues(aRunResult, tmpLabelArrays, anIsCancelledSupplier);
+        List<ScanEntry> tmpEntries = new ArrayList<>(anEntryList.size());
+        for (int i = 0; i < anEntryList.size(); i++) {
+            ScanEntry tmpEntry = anEntryList.get(i);
+            tmpEntries.add(new ScanEntry(tmpEntry.vigilance(), tmpEntry.numberOfClusters(), tmpEntry.numberOfSingletons(),
+                    tmpEntry.largestClusterSize(), tmpEntry.numberOfUnclusteredMolecules(), tmpEntry.meanSimilarityToClusterVector(),
+                    tmpValues[i][0], tmpValues[i][1], tmpEntry.isOverflow(), tmpEntry.isConverged(), tmpEntry.runResult()));
+        }
+        return tmpEntries;
     }
     //
     /**

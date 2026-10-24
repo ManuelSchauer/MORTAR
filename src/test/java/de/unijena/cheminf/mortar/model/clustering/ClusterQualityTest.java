@@ -133,6 +133,33 @@ class ClusterQualityTest {
     }
     //
     /**
+     * Tests the random baseline and the evaluation of other assignments: the separated clusters are clearly better than
+     * the random assignments with the same sizes; the result's own labels (also renumbered) give exactly its overall
+     * values; a single cluster has no silhouette, and a label array of the wrong length is refused.
+     */
+    @Test
+    void testRandomBaselineAndOtherAssignments() {
+        ClusteringRunResult tmpRunResult = ClusterQualityTest.createRunResult();
+        ClusterQuality tmpQuality = new ClusterQuality(tmpRunResult);
+        Assertions.assertTrue(tmpQuality.getRandomOverallSilhouette() < tmpQuality.getOverallSilhouette());
+        Assertions.assertTrue(tmpQuality.getRandomOverallNeighbourPurity() < tmpQuality.getOverallNeighbourPurity());
+        Assertions.assertTrue(tmpQuality.getRandomOverallSilhouetteDeviation() >= 0.0);
+        for (ClusterQuality.ClusterQualityEntry tmpEntry : tmpQuality.getEntries()) {
+            Assertions.assertTrue(tmpEntry.randomNeighbourPurity() >= 0.0 && tmpEntry.randomNeighbourPurity() < 1.0);
+        }
+        int[] tmpLabels = tmpRunResult.clusteringResult().clusterLabels();
+        double[][] tmpValues = ClusterQuality.getOverallValues(tmpRunResult,
+                List.of(tmpLabels, new int[] {1, 1, 1, 0, 0, 0}, new int[] {0, 0, 0, 0, 0, 0}), () -> false);
+        Assertions.assertEquals(tmpQuality.getOverallSilhouette(), tmpValues[0][0], 1.0e-12);
+        Assertions.assertEquals(tmpQuality.getOverallNeighbourPurity(), tmpValues[0][1], 1.0e-12);
+        Assertions.assertEquals(tmpQuality.getOverallSilhouette(), tmpValues[1][0], 1.0e-12);
+        Assertions.assertTrue(Double.isNaN(tmpValues[2][0]));
+        Assertions.assertEquals(1.0, tmpValues[2][1], 1.0e-12);
+        Assertions.assertThrows(IllegalArgumentException.class, () -> ClusterQuality.getOverallValues(tmpRunResult,
+                List.of(new int[] {0, 1}), () -> false));
+    }
+    //
+    /**
      * Tests the quality of a clustering result of the pipeline: one entry per cluster with consistent sizes and values
      * in their ranges.
      *
@@ -176,7 +203,20 @@ class ClusterQualityTest {
             Assertions.assertTrue(tmpJaccard >= 0.0 && tmpJaccard <= 1.0);
         }
         Assertions.assertTrue(tmpResult.meanAdjustedRandIndex() <= 1.0 + 1.0e-12);
+        Assertions.assertEquals(ClusterStability.StabilityMode.SEEDS, tmpResult.mode());
         Assertions.assertThrows(java.util.concurrent.CancellationException.class,
                 () -> ClusterStability.check(tmpRunResult, 3, () -> true, (aDone, aTotal) -> { }));
+        //subsamples of 80 % of the molecules: values in range or NaN for a cluster that was in no subsample
+        ClusterStability.StabilityResult tmpSubsampleResult = ClusterStability.check(tmpRunResult, ClusterStability.StabilityMode.SUBSAMPLES,
+                4, () -> false, (aDone, aTotal) -> { });
+        Assertions.assertEquals(ClusterStability.StabilityMode.SUBSAMPLES, tmpSubsampleResult.mode());
+        Assertions.assertEquals(4, tmpSubsampleResult.numberOfRuns());
+        for (double tmpJaccard : tmpSubsampleResult.clusterJaccardIndices()) {
+            Assertions.assertTrue(Double.isNaN(tmpJaccard) || (tmpJaccard >= 0.0 && tmpJaccard <= 1.0));
+        }
+        Assertions.assertTrue(tmpSubsampleResult.meanAdjustedRandIndex() <= 1.0 + 1.0e-12);
+        //same seeds, same subsamples
+        Assertions.assertArrayEquals(tmpSubsampleResult.clusterJaccardIndices(), ClusterStability.check(tmpRunResult,
+                ClusterStability.StabilityMode.SUBSAMPLES, 4, () -> false, (aDone, aTotal) -> { }).clusterJaccardIndices());
     }
 }
