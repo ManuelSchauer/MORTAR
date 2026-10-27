@@ -26,11 +26,16 @@
 package de.unijena.cheminf.mortar.model.util;
 
 import de.unijena.cheminf.mortar.model.data.MoleculeDataModel;
+import de.unijena.cheminf.mortar.model.fragmentation.algorithm.IMoleculeFragmenter;
 import de.unijena.cheminf.mortar.model.io.Importer;
 
 import org.openscience.cdk.CDKConstants;
+import org.openscience.cdk.aromaticity.Aromaticity;
+import org.openscience.cdk.aromaticity.ElectronDonation;
 import org.openscience.cdk.aromaticity.Kekulization;
 import org.openscience.cdk.exception.CDKException;
+import org.openscience.cdk.graph.CycleFinder;
+import org.openscience.cdk.graph.Cycles;
 import org.openscience.cdk.interfaces.IAtom;
 import org.openscience.cdk.interfaces.IAtomContainer;
 import org.openscience.cdk.interfaces.IElement;
@@ -182,6 +187,49 @@ public final class ChemUtil {
         return tmpAtomContainer;
     }
 
+    /**
+     * Creates a CDK aromaticity model from the given MORTAR electron donation model option and cycle finder option.
+     * The mapping is identical to the one used by the fragmenters (e.g. ErtlFunctionalGroupsFinderFragmenter), i.e.
+     * every cycle finder option except CDK_AROMATIC_SET is combined with the CDK aromatic set as auxiliary cycle finder
+     * to be able to process molecules with very complex ring systems.
+     * MORTAR's default is ElectronDonationModelOption.DAYLIGHT combined with CycleFinderOption.CDK_AROMATIC_SET.
+     *
+     * @param anElectronDonationModelOption the electron donation model option to use
+     * @param aCycleFinderOption the cycle finder option to use
+     * @return a new aromaticity model instance
+     * @throws NullPointerException if one of the given options is null
+     */
+    public static Aromaticity createAromaticityModel(
+            IMoleculeFragmenter.ElectronDonationModelOption anElectronDonationModelOption,
+            IMoleculeFragmenter.CycleFinderOption aCycleFinderOption)
+            throws NullPointerException {
+        Objects.requireNonNull(anElectronDonationModelOption, "Given electron donation model option is null.");
+        Objects.requireNonNull(aCycleFinderOption, "Given cycle finder option is null.");
+        ElectronDonation tmpElectronDonation = switch (anElectronDonationModelOption) {
+            case CDK -> Aromaticity.Model.CDK_AtomTypes;
+            case DAYLIGHT -> Aromaticity.Model.Daylight;
+            case CDK_ALLOWING_EXOCYCLIC -> ElectronDonation.cdkAllowingExocyclic();
+            case CDK_1X -> Aromaticity.Model.CDK_1x;
+            case CDK_2X -> Aromaticity.Model.CDK_2x;
+            case MDL -> Aromaticity.Model.Mdl;
+            case OPEN_SMILES -> Aromaticity.Model.OpenSmiles;
+            case PI_BONDS -> Aromaticity.Model.PiBonds;
+        };
+        //auxiliary cycle finder for molecules where the primary cycle finder fails, as used in the fragmenters
+        CycleFinder tmpAuxiliaryCycleFinder = Cycles.cdkAromaticSet();
+        CycleFinder tmpCycleFinder = switch (aCycleFinderOption) {
+            case ALL -> Cycles.or(Cycles.all(), tmpAuxiliaryCycleFinder);
+            case MCB -> Cycles.or(Cycles.mcb(), tmpAuxiliaryCycleFinder);
+            case RELEVANT -> Cycles.or(Cycles.relevant(), tmpAuxiliaryCycleFinder);
+            case ESSENTIAL -> Cycles.or(Cycles.essential(), tmpAuxiliaryCycleFinder);
+            case EDGE_SHORT -> Cycles.or(Cycles.edgeShort(), tmpAuxiliaryCycleFinder);
+            case VERTEX_SHORT -> Cycles.or(Cycles.vertexShort(), tmpAuxiliaryCycleFinder);
+            case TRIPLET_SHORT -> Cycles.or(Cycles.tripletShort(), tmpAuxiliaryCycleFinder);
+            case CDK_AROMATIC_SET -> Cycles.cdkAromaticSet();
+        };
+        return new Aromaticity(tmpElectronDonation, tmpCycleFinder);
+    }
+    //
     /**
      * Call to {@link #parseSmilesToAtomContainer(String, boolean, boolean)} with kekulization and atom type perception
      * set to true.

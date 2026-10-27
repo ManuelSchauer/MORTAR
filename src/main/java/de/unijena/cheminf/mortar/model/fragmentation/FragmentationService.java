@@ -173,6 +173,25 @@ public class FragmentationService {
      * Logger.
      */
     private static final Logger LOGGER = Logger.getLogger(FragmentationService.class.getName());
+    /**
+     * Copies of the fragmenters (with their settings at the time of the fragmentation) of the single-algorithm
+     * fragmentations, keyed by fragmentation name; used to fragment further molecules exactly like the data set, e.g.
+     * a query molecule of the similarity search.
+     */
+    private final Map<String, IMoleculeFragmenter> fragmenterOfFragmentationMap = new ConcurrentHashMap<>();
+    /**
+     * Whether stereochemistry was regarded in the single-algorithm fragmentations, keyed by fragmentation name.
+     */
+    private final Map<String, Boolean> isStereoChemistryRegardedOfFragmentationMap = new ConcurrentHashMap<>();
+    /**
+     * Copies of the pipeline fragmenters (with their settings at the time of the fragmentation) of the pipeline
+     * fragmentations, keyed by fragmentation name; used to fragment further molecules like the data set.
+     */
+    private final Map<String, IMoleculeFragmenter[]> pipelineFragmentersOfFragmentationMap = new ConcurrentHashMap<>();
+    /**
+     * Value of the (deprecated) keep last fragment setting of the pipeline fragmentations, keyed by fragmentation name.
+     */
+    private final Map<String, Boolean> isKeepLastFragmentOfFragmentationMap = new ConcurrentHashMap<>();
     //</editor-fold>
     //
     //<editor-fold desc="private final class variables" defaultstate="collapsed">
@@ -290,6 +309,9 @@ public class FragmentationService {
         String tmpFragmentationName = this.createAndCheckFragmentationName(this.selectedFragmenter.getFragmentationAlgorithmDisplayName());
         this.existingFragmentations.add(tmpFragmentationName);
         this.currentFragmentationName = tmpFragmentationName;
+        //remember the fragmenter and its settings to be able to fragment further molecules in the same way
+        this.fragmenterOfFragmentationMap.put(tmpFragmentationName, this.selectedFragmenter.copy());
+        this.isStereoChemistryRegardedOfFragmentationMap.put(tmpFragmentationName, isStereoChemistryRegarded);
         this.fragments = this.startFragmentation(aListOfMolecules, aNumberOfTasks, this.selectedFragmenter, tmpFragmentationName, isStereoChemistryRegarded);
         FragmentationService.LOGGER.log(Level.INFO, "Number of different fragments extracted: {0}", this.fragments == null ? 0 : this.fragments.size());
     }
@@ -322,6 +344,14 @@ public class FragmentationService {
         String tmpPipelineFragmentationName = this.createAndCheckFragmentationName(this.pipeliningFragmentationName);
         this.existingFragmentations.add(tmpPipelineFragmentationName);
         this.currentFragmentationName = tmpPipelineFragmentationName;
+        //remember the pipeline and its settings to be able to fragment further molecules in the same way
+        IMoleculeFragmenter[] tmpPipelineCopies = new IMoleculeFragmenter[this.pipelineFragmenter.length];
+        for (int i = 0; i < this.pipelineFragmenter.length; i++) {
+            tmpPipelineCopies[i] = this.pipelineFragmenter[i].copy();
+        }
+        this.pipelineFragmentersOfFragmentationMap.put(tmpPipelineFragmentationName, tmpPipelineCopies);
+        this.isStereoChemistryRegardedOfFragmentationMap.put(tmpPipelineFragmentationName, isStereoChemistryRegarded);
+        this.isKeepLastFragmentOfFragmentationMap.put(tmpPipelineFragmentationName, isKeepLastFragmentSetting);
         List<MoleculeDataModel> tmpMolsToFragment = new ArrayList<>(aListOfMolecules);
         for (int i = 0; i < this.pipelineFragmenter.length; i++) {
             this.fragments.clear();
@@ -618,6 +648,63 @@ public class FragmentationService {
     }
     //
     /**
+     * Returns whether further molecules can be fragmented like the given fragmentation, which is the case for the
+     * single-algorithm and pipeline fragmentations of this session.
+     *
+     * @param aFragmentationName fragmentation name
+     * @return true if {@link #fragmentSingleMolecule(MoleculeDataModel, String)} is possible
+     */
+    public boolean canFragmentSingleMolecule(String aFragmentationName) {
+        return aFragmentationName != null && (this.fragmenterOfFragmentationMap.containsKey(aFragmentationName)
+                || this.pipelineFragmentersOfFragmentationMap.containsKey(aFragmentationName));
+    }
+    //
+    /**
+     * Fragments the given molecule with copies of the fragmenter or pipeline fragmenters (and their settings) of the
+     * given fragmentation, like the molecules of that fragmentation. The fragments and fragment frequencies are set in
+     * the molecule under the fragmentation name; the fragments of the fragmentation itself are not changed.
+     * <p>
+     * A pipeline is run on the single molecule by a separate, temporary service instance, so that the state of this
+     * service is not changed. Note: in a pipeline, a parent fragment without child fragments is only kept if it was also
+     * produced by the current step for any molecule of the run; therefore, in rare cases, the fragments of a molecule
+     * fragmented alone can differ from those it gets as part of the whole data set.
+     *
+     * @param aMolecule molecule to fragment, e.g. a query of the similarity search that is not part of the data set
+     * @param aFragmentationName name of a single-algorithm or pipeline fragmentation of this session
+     * @throws NullPointerException if a parameter is null
+     * @throws IllegalArgumentException if the fragmentation cannot be reproduced (unknown or from an earlier session)
+     * @throws Exception if the fragmentation fails
+     */
+    public void fragmentSingleMolecule(MoleculeDataModel aMolecule, String aFragmentationName)
+            throws NullPointerException, IllegalArgumentException, Exception {
+        Objects.requireNonNull(aMolecule, "Given molecule is null.");
+        if (!this.canFragmentSingleMolecule(aFragmentationName)) {
+            throw new IllegalArgumentException("The fragmentation " + aFragmentationName + " cannot be applied to further molecules.");
+        }
+        if (this.pipelineFragmentersOfFragmentationMap.containsKey(aFragmentationName)) {
+            //a temporary service instance runs the unchanged pipeline logic on the single molecule
+            IMoleculeFragmenter[] tmpStoredCopies = this.pipelineFragmentersOfFragmentationMap.get(aFragmentationName);
+            IMoleculeFragmenter[] tmpPipeline = new IMoleculeFragmenter[tmpStoredCopies.length];
+            for (int i = 0; i < tmpStoredCopies.length; i++) {
+                tmpPipeline[i] = tmpStoredCopies[i].copy();
+            }
+            FragmentationService tmpTemporaryService = new FragmentationService();
+            tmpTemporaryService.setPipelineFragmenter(tmpPipeline);
+            //the temporary service has no fragmentations yet, so the name is used unchanged
+            tmpTemporaryService.setPipeliningFragmentationName(aFragmentationName);
+            tmpTemporaryService.startPipelineFragmentation(List.of(aMolecule), 1,
+                    this.isStereoChemistryRegardedOfFragmentationMap.get(aFragmentationName),
+                    this.isKeepLastFragmentOfFragmentationMap.get(aFragmentationName));
+            return;
+        }
+        //a separate fragments map, so that the fragments of the data set are not changed
+        FragmentationTask tmpTask = new FragmentationTask(List.of(aMolecule),
+                this.fragmenterOfFragmentationMap.get(aFragmentationName).copy(), new ConcurrentHashMap<>(),
+                aFragmentationName, this.isStereoChemistryRegardedOfFragmentationMap.get(aFragmentationName));
+        tmpTask.call();
+    }
+    //
+    /**
      * Persists settings of the fragmenters in preference container files in a subfolder of the settings directory. The settings of the
      * fragmenters are translated to matching preference objects. If a single setting or several cannot be persisted, it
      * is only logged in the log file. But if persisting a whole fragmenter fails, a warning is given to the user. The
@@ -863,6 +950,10 @@ public class FragmentationService {
      * Clears all cached variables like existingFragmentations and fragments.
      */
     public void clearCache() {
+        this.fragmenterOfFragmentationMap.clear();
+        this.isStereoChemistryRegardedOfFragmentationMap.clear();
+        this.pipelineFragmentersOfFragmentationMap.clear();
+        this.isKeepLastFragmentOfFragmentationMap.clear();
         this.existingFragmentations = new LinkedList<>();
         this.fragments = null;
         this.currentFragmentationName = null;

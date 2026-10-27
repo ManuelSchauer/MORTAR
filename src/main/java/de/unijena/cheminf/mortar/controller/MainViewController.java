@@ -36,6 +36,8 @@ import de.unijena.cheminf.mortar.gui.views.ItemizationDataTableView;
 import de.unijena.cheminf.mortar.gui.views.MainView;
 import de.unijena.cheminf.mortar.gui.views.MoleculesDataTableView;
 import de.unijena.cheminf.mortar.message.Message;
+import de.unijena.cheminf.mortar.model.clustering.ClusteringRunResult;
+import de.unijena.cheminf.mortar.model.clustering.ClusteringService;
 import de.unijena.cheminf.mortar.model.data.FragmentDataModel;
 import de.unijena.cheminf.mortar.model.data.MoleculeDataModel;
 import de.unijena.cheminf.mortar.model.fragmentation.FragmentationService;
@@ -188,6 +190,14 @@ public class MainViewController {
      */
     private Task<List<String>> exportTask;
     /**
+     * Service for the clustering of the molecules, holds the clustering settings.
+     */
+    private final ClusteringService clusteringService;
+    /**
+     * Controller of the clustering: clustering bars, start, vigilance scan, descriptor calculation and result tabs.
+     */
+    private final ClusteringViewController clusteringViewController;
+    /**
      * BooleanProperty whether import is running.
      */
     private final BooleanProperty isImportRunningProperty;
@@ -245,6 +255,8 @@ public class MainViewController {
         this.fragmentationService.reloadActiveFragmenterAndPipeline();
         this.viewToolsManager = new ViewToolsManager(this.configuration, this.settingsContainer);
         this.viewToolsManager.reloadViewToolsSettings();
+        this.clusteringService = new ClusteringService();
+        this.clusteringService.reloadClusteringSettings();
         //<editor-fold desc="show MainView inside primaryStage" defaultstate="collapsed">
         this.mainTabPane = new TabPane();
         this.mainView.getMainCenterPane().getChildren().add(this.mainTabPane);
@@ -266,6 +278,9 @@ public class MainViewController {
         this.isExportRunningProperty = new SimpleBooleanProperty(false);
         this.mapOfFragmentDataModelLists = new HashMap<>(CollectionUtil.calculateInitialHashCollectionCapacity(5));
         this.threadList = new CopyOnWriteArrayList<>();
+        this.clusteringViewController = new ClusteringViewController(this.primaryStage, this.mainTabPane, this.configuration,
+                this.settingsContainer, this.clusteringService, this.fragmentationService, this.viewToolsManager,
+                this.moleculeDataModelList, this.mapOfFragmentDataModelLists, this::updateStatusBar, this::exportClusteringData);
         this.addListener();
         this.addFragmentationAlgorithmCheckMenuItems();
         this.primaryStage.show();
@@ -328,6 +343,25 @@ public class MainViewController {
                 EventType.ROOT,
                 anEvent -> this.openFragmentationSettingsView()
         );
+        //<editor-fold desc="clustering">
+        this.mainView.getMainMenuBar().getClusteringSettingsMenuItem().addEventHandler(
+                EventType.ROOT,
+                anEvent -> this.clusteringViewController.openClusteringSettingsView()
+        );
+        this.mainView.getMainMenuBar().getStartClusteringMenuItem().addEventHandler(
+                EventType.ROOT,
+                anEvent -> this.clusteringViewController.startClustering()
+        );
+        this.mainView.getMainMenuBar().getCancelClusteringMenuItem().addEventHandler(
+                EventType.ROOT,
+                anEvent -> this.clusteringViewController.interruptClustering()
+        );
+        this.mainView.getMainMenuBar().getCancelClusteringMenuItem().visibleProperty().bind(
+                this.clusteringViewController.isClusteringRunningProperty());
+        //the start menu item is disabled while a clustering is running and as long as there is no fragmentation
+        this.clusteringViewController.isClusteringRunningProperty().addListener((anObservable, anOldValue, aNewValue) ->
+                this.mainView.getMainMenuBar().getStartClusteringMenuItem().setDisable(aNewValue || this.mapOfFragmentDataModelLists.isEmpty()));
+        //</editor-fold>
         this.mainView.getMainMenuBar().getGlobalSettingsMenuItem().addEventHandler(
                 EventType.ROOT,
                 anEvent -> this.openGlobalSettingsView()
@@ -356,9 +390,13 @@ public class MainViewController {
         this.primaryStage.addEventFilter(WindowEvent.WINDOW_CLOSE_REQUEST, (this::closeWindowEvent));
         this.mainView.getMainMenuBar().getAboutViewMenuItem().setOnAction(actionEvent -> new AboutViewController(this.primaryStage, this.configuration));
         this.scene.addEventFilter(KeyEvent.KEY_PRESSED, keyEvent -> {
-            GridTabForTableView tmpGrid = ((GridTabForTableView) this.mainTabPane.getSelectionModel().getSelectedItem());
-            if (tmpGrid == null) {
+            Tab tmpSelectedTab = this.mainTabPane.getSelectionModel().getSelectedItem();
+            if (tmpSelectedTab == null) {
                 keyEvent.consume();
+                return;
+            }
+            //clustering result tabs have no pagination; the key event is left to their table
+            if (!(tmpSelectedTab instanceof GridTabForTableView tmpGrid)) {
                 return;
             }
             if (GuiDefinitions.KEY_CODE_LAST_PAGE.match(keyEvent) || keyEvent.getCode() == KeyCode.END) {
@@ -382,8 +420,12 @@ public class MainViewController {
             if (newValue == null) {
                 return;
             }
-            this.mainView.getMainMenuBar().getHistogramViewerMenuItem().setDisable(newValue.getId().equals(TabNames.MOLECULES.toString()));
-            this.mainView.getMainMenuBar().getOverviewViewMenuItem().setDisable(newValue.getId().equals(TabNames.ITEMIZATION.toString()));
+            //a clustering result tab has its own overview button and no histogram
+            boolean tmpIsClusteringTab = TabNames.CLUSTERING.toString().equals(newValue.getId());
+            this.mainView.getMainMenuBar().getHistogramViewerMenuItem().setDisable(tmpIsClusteringTab
+                    || TabNames.MOLECULES.toString().equals(newValue.getId()));
+            this.mainView.getMainMenuBar().getOverviewViewMenuItem().setDisable(tmpIsClusteringTab
+                    || TabNames.ITEMIZATION.toString().equals(newValue.getId()));
         }));
         this.mainView.getMainCenterPane().setOnDragOver(aDragEvent -> {
             if (aDragEvent.getGestureSource() != this.mainView.getMainCenterPane() && aDragEvent.getDragboard().hasFiles()){
@@ -423,8 +465,12 @@ public class MainViewController {
         this.viewToolsManager.persistViewToolsSettings();
         this.fragmentationService.persistFragmenterSettings();
         this.fragmentationService.persistSelectedFragmenterAndPipeline();
+        this.clusteringService.persistClusteringSettings();
         if (this.isFragmentationRunning) {
             this.interruptFragmentation();
+        }
+        if (this.clusteringViewController.isClusteringRunning()) {
+            this.clusteringViewController.interruptClustering();
         }
         MainViewController.LOGGER.info(BasicDefinitions.MORTAR_SESSION_END);
         Platform.exit();
@@ -596,6 +642,16 @@ public class MainViewController {
      * @param anExportType Enum to specify what type of file to export
      */
     private void exportFile(Exporter.ExportTypes anExportType) {
+        //a clustering result tab has no fragments or items, its data is exported via the button in the tab
+        if (!(this.mainTabPane.getSelectionModel().getSelectedItem() instanceof GridTabForTableView)) {
+            GuiUtil.guiMessageAlert(
+                    Alert.AlertType.INFORMATION,
+                    Message.get("Exporter.MessageAlert.NoDataAvailable.title"),
+                    Message.get("Exporter.MessageAlert.NoDataAvailable.header"),
+                    null
+            );
+            return;
+        }
         if ((this.mainTabPane.getSelectionModel().getSelectedItem()).getId().equals(TabNames.MOLECULES.toString())) {
             GuiUtil.guiConfirmationAlert(Message.get("Exporter.confirmationAlert.moleculesTabSelected.title"),
                     Message.get("Exporter.confirmationAlert.moleculesTabSelected.header"),
@@ -839,6 +895,10 @@ public class MainViewController {
         Platform.runLater(() -> {
             if (tmpSettingsViewController.hasRowsPerPageChanged()) {
                 for (Tab tmpTab : this.mainTabPane.getTabs()) {
+                    //clustering result tabs have no pagination
+                    if (!(tmpTab instanceof GridTabForTableView)) {
+                        continue;
+                    }
                     // type of generic not given because it does not matter here, only the size of the items list
                     TableView<?> tmpTableView = ((GridTabForTableView) tmpTab).getTableView();
                     int tmpListSize = ((IDataTableView) tmpTableView).getItemsList().size();
@@ -1049,6 +1109,8 @@ public class MainViewController {
         tmpOpenOverviewViewButton.setOnAction(event -> this.openOverviewView(OverviewViewController.DataSources.MOLECULES_TAB));
         this.moleculesDataTableView.addTableViewHeightListener(this.settingsContainer);
         this.moleculesDataTableView.getCopyMenuItem().setOnAction(event -> GuiUtil.copySelectedTableViewCellsToClipboard(this.moleculesDataTableView));
+        //descriptor calculation without fragmentation, similarity search and descriptor values of the selected molecule
+        this.clusteringViewController.addClusteringControlsToMoleculesTab(tmpMoleculesTab, this.moleculesDataTableView);
         this.moleculesDataTableView.setOnKeyPressed(event -> {
             if (GuiDefinitions.KEY_CODE_COPY.match(event)) {
                 GuiUtil.copySelectedTableViewCellsToClipboard(this.moleculesDataTableView);
@@ -1169,6 +1231,7 @@ public class MainViewController {
                         this.updateStatusBar(this.fragmentationThread, Message.get("Status.finished"));
                         this.mainView.getMainMenuBar().getExportMenu().setDisable(false);
                         this.mainView.getMainMenuBar().getHistogramViewerMenuItem().setDisable(false);
+                        this.mainView.getMainMenuBar().getStartClusteringMenuItem().setDisable(false);
                         this.fragmentationButton.setDisable(false);
                         this.cancelFragmentationButton.setVisible(false);
                         this.isFragmentationRunning = false;
@@ -1221,6 +1284,62 @@ public class MainViewController {
         }
     }
     //
+    //<editor-fold desc="clustering export" defaultstate="collapsed">
+    /**
+     * Exports the data of the given clustering run as CSV files into a directory chosen by the user, with the export
+     * task of this controller; called by the export button of a clustering result tab.
+     *
+     * @param aRunResult result of the clustering run
+     * @param aClusterIndices indices of the marked clusters to export; empty for all molecules
+     */
+    private void exportClusteringData(ClusteringRunResult aRunResult, Set<Integer> aClusterIndices) {
+        Exporter tmpExporter = new Exporter(this.settingsContainer);
+        if (this.isExportRunningProperty.get()) {
+            this.interruptExport();
+        }
+        //returns null if the directory chooser dialog was cancelled
+        File tmpDirectory = tmpExporter.openFileChooserForExportFileOrDir(this.primaryStage,
+                Exporter.ExportTypes.CLUSTERING_CSV_FILES, aRunResult.parameters().fragmentationName());
+        if (tmpDirectory == null) {
+            return;
+        }
+        char tmpSeparator = this.settingsContainer.getCsvExportSeparatorSettingCharacter();
+        this.exportTask = new Task<>() {
+            @Override
+            protected List<String> call() {
+                return tmpExporter.exportClusteringCsvFiles(tmpDirectory, aRunResult, aClusterIndices, tmpSeparator);
+            }
+        };
+        this.exportTask.setOnSucceeded(event -> {
+            this.isExportRunningProperty.setValue(false);
+            this.updateStatusBar(this.exporterThread, Message.get("Status.finished"));
+            List<String> tmpFailedFiles = this.exportTask.getValue();
+            if (tmpFailedFiles == null || !tmpFailedFiles.isEmpty()) {
+                GuiUtil.guiMessageAlert(Alert.AlertType.WARNING,
+                        Message.get("Exporter.FragmentsTab.ExportNotPossible.title"),
+                        Message.get("Exporter.FragmentsTab.ExportNotPossible.header"),
+                        tmpFailedFiles == null ? null : String.join("\n", tmpFailedFiles));
+            }
+        });
+        this.exportTask.setOnFailed(event -> {
+            this.isExportRunningProperty.setValue(false);
+            MainViewController.LOGGER.log(Level.WARNING, event.getSource().getException().toString(), event.getSource().getException());
+            this.updateStatusBar(this.exporterThread, Message.get("Status.failed"));
+            GuiUtil.guiMessageAlert(Alert.AlertType.WARNING,
+                    Message.get("Exporter.FragmentsTab.ExportNotPossible.title"),
+                    Message.get("Exporter.FragmentsTab.ExportNotPossible.header"),
+                    null);
+        });
+        this.exporterThread = new Thread(this.exportTask);
+        this.exporterThread.setName(ThreadType.EXPORT_THREAD.getThreadName());
+        this.exporterThread.setUncaughtExceptionHandler(LogUtil.getUncaughtExceptionHandler());
+        this.exporterThread.setPriority(Thread.currentThread().getPriority() - 2); //magic number
+        this.isExportRunningProperty.setValue(true);
+        this.updateStatusBar(this.exporterThread, Message.get("Status.exporting"));
+        this.exporterThread.start();
+    }
+    //</editor-fold>
+    //
     /**
      * Adds a tab for fragments and a tab for items (results of fragmentation).
      *
@@ -1265,6 +1384,7 @@ public class MainViewController {
         tmpExportButtonsHBox.setAlignment(Pos.CENTER_LEFT);
         tmpExportButtonsHBox.getChildren().addAll(tmpExportCsvButton, tmpExportPdfButton, tmpCancelExportButton);
         tmpFragmentsTab.addNodeToGridPane(tmpExportButtonsHBox, 0, 1, 1, 1);
+        tmpFragmentsTab.addNodeAsBottomRow(this.clusteringViewController.createClusteringBar(aFragmentationName));
         tmpExportPdfButton.setOnAction(event -> this.exportFile(Exporter.ExportTypes.FRAGMENT_PDF_FILE));
         tmpExportCsvButton.setOnAction(event -> this.exportFile(Exporter.ExportTypes.FRAGMENT_CSV_FILE));
         tmpCancelExportButton.setOnAction(event -> this.interruptExport());
@@ -1337,6 +1457,7 @@ public class MainViewController {
         tmpExportButtonsHBox.setAlignment(Pos.CENTER_LEFT);
         tmpExportButtonsHBox.getChildren().addAll(tmpItemizationExportCsvButton, tmpItemizationTabExportPDfButton, tmpCancelExportButton);
         tmpItemizationTab.addNodeToGridPane(tmpExportButtonsHBox, 0, 1, 1, 1);
+        tmpItemizationTab.addNodeAsBottomRow(this.clusteringViewController.createClusteringBar(aFragmentationName));
         HBox tmpViewButtonsHBox = new HBox();
         tmpViewButtonsHBox.setPadding(new Insets(GuiDefinitions.GUI_INSETS_VALUE, GuiDefinitions.GUI_INSETS_VALUE, GuiDefinitions.GUI_INSETS_VALUE, GuiDefinitions.GUI_INSETS_VALUE));
         tmpViewButtonsHBox.setSpacing(GuiDefinitions.GUI_SPACING_VALUE);
@@ -1372,6 +1493,9 @@ public class MainViewController {
      * Clears the gui and all collections.
      */
     private void clearGuiAndCollections() {
+        //removing all tabs does not fire their closed events, so the clustering data is discarded here
+        this.clusteringViewController.clear();
+        this.mainView.getMainMenuBar().getStartClusteringMenuItem().setDisable(true);
         this.moleculeDataModelList.clear();
         this.mapOfFragmentDataModelLists.clear();
         this.moleculesDataTableView = null;
@@ -1385,9 +1509,14 @@ public class MainViewController {
      * @return List {@literal <}MoleculeDataModel{@literal >}
      */
     private List<MoleculeDataModel> getItemsListOfSelectedFragmentationByTabId(TabNames aTabName) {
+        //only table tabs belong to a fragmentation, clustering result tabs are skipped
+        if (!(this.mainTabPane.getSelectionModel().getSelectedItem() instanceof GridTabForTableView tmpSelectedGridTab)) {
+            return new ArrayList<>();
+        }
         GridTabForTableView tmpSelectedTab =  (GridTabForTableView) (this.mainTabPane.getTabs().stream().filter(tab ->
-                ((GridTabForTableView) this.mainTabPane.getSelectionModel().getSelectedItem()).getFragmentationNameOutOfTitle()
-                        .equals(((GridTabForTableView) tab).getFragmentationNameOutOfTitle()) && tab.getId().equals(aTabName.name())
+                tab instanceof GridTabForTableView tmpGridTab
+                        && tmpSelectedGridTab.getFragmentationNameOutOfTitle().equals(tmpGridTab.getFragmentationNameOutOfTitle())
+                        && aTabName.name().equals(tab.getId())
         ).findFirst().orElse(null));
         if (tmpSelectedTab == null) {
             return new ArrayList<>();
@@ -1437,6 +1566,7 @@ public class MainViewController {
             case FRAGMENTATION_THREAD -> Message.get("Status.running");
             case IMPORT_THREAD -> Message.get("Status.importing");
             case EXPORT_THREAD -> Message.get("Status.exporting");
+            case CLUSTERING_THREAD -> Message.get("Status.clustering");
             default -> "Could not find message";
         };
     }
@@ -1451,6 +1581,10 @@ public class MainViewController {
          * enum value for fragmentation thread
          */
         FRAGMENTATION_THREAD("Fragmentation_Thread"),
+        /**
+         * enum value for clustering thread
+         */
+        CLUSTERING_THREAD("Clustering_Thread"),
         /**
          * enum value for import thread
          */
