@@ -193,6 +193,32 @@ class BiosynfoniFragmenterTest {
     }
     //
     /**
+     * Tests that the intra-substructure overlap filter selects the matches along chains and rings, so that they are
+     * packed as densely as in the reference implementation. The expected counts are taken from the reference
+     * implementation, where they do not depend on the input atom order. Each molecule is given in two different atom
+     * orders to check that the result does not depend on it.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    void intraSubstructureOverlapFilterDensePackingTest() throws Exception {
+        SmilesParser tmpSmiPar = new SmilesParser(SilentChemObjectBuilder.getInstance());
+        BiosynfoniFragmenter tmpFragmenter = new BiosynfoniFragmenter();
+        tmpFragmenter.setIntraSubstructureOverlapFilterSetting(true);
+        //p-benzoquinone, three disjoint ethyl units in the six-membered ring
+        for (String tmpSmiles : new String[] {"O=C1C=CC(=O)C=C1", "C1=CC(=O)C=CC1=O"}) {
+            Map<String, Integer> tmpCounts = BiosynfoniFragmenterTest.countPerLabel(tmpFragmenter.fragmentMolecule(tmpSmiPar.parseSmiles(tmpSmiles)));
+            Assertions.assertEquals(3, tmpCounts.get(BiosynfoniFragmenter.BiosynfoniKey.D_ETHYL.getLabel()), tmpSmiles);
+            Assertions.assertEquals(2, tmpCounts.get(BiosynfoniFragmenter.BiosynfoniKey.D2_ACETYL.getLabel()), tmpSmiles);
+        }
+        //thiophene 1,1-dioxide, two disjoint ethyl units in the chain of four carbon atoms
+        for (String tmpSmiles : new String[] {"O=S1(=O)C=CC=C1", "C1=CS(=O)(=O)C=C1"}) {
+            Map<String, Integer> tmpCounts = BiosynfoniFragmenterTest.countPerLabel(tmpFragmenter.fragmentMolecule(tmpSmiPar.parseSmiles(tmpSmiles)));
+            Assertions.assertEquals(2, tmpCounts.get(BiosynfoniFragmenter.BiosynfoniKey.D_ETHYL.getLabel()), tmpSmiles);
+        }
+    }
+    //
+    /**
      * Tests the matched substructures option: for all overlap filter combinations, the number of fragments per key
      * equals the one of the representative structures option, every fragment has as many atoms as the SMARTS pattern
      * of its key matches, carries the label of its key, and can be converted to a valid SMILES code that MORTAR can

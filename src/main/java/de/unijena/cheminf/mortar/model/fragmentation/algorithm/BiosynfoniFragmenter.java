@@ -49,6 +49,8 @@ import org.openscience.cdk.interfaces.IBond;
 import org.openscience.cdk.interfaces.IChemObjectBuilder;
 import org.openscience.cdk.silent.SilentChemObjectBuilder;
 import org.openscience.cdk.smarts.SmartsPattern;
+import org.openscience.cdk.smiles.SmiFlavor;
+import org.openscience.cdk.smiles.SmilesGenerator;
 import org.openscience.cdk.smiles.SmilesParser;
 
 import java.util.ArrayList;
@@ -62,10 +64,10 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Wrapper class that makes the substructure definitions of the Biosynfoni fingerprint
+ * Fragmentation algorithm based on the substructure definitions of the Biosynfoni fingerprint, version "full_1103"
  * (<a href="https://doi.org/10.1186/s13321-025-01081-6">Biosynfoni paper (Journal of Cheminformatics, 2025)</a>,
- * <a href="https://github.com/lucinamay/biosynfoni">original Python implementation</a>) available as a
- * fragmentation algorithm in MORTAR. Biosynfoni is a biosynthesis-informed, interpretable fingerprint for natural
+ * <a href="https://github.com/lucinamay/biosynfoni">original Python implementation</a>; see below for the differences
+ * to the reference implementation). Biosynfoni is a biosynthesis-informed, interpretable fingerprint for natural
  * products that consists of 39 SMARTS patterns describing biosynthetically relevant building blocks, e.g. cofactors,
  * amino acids, sugars, shikimate-derived phenyl units, isoprene and acetyl units, functional groups, and carbon rings.
  * <br>
@@ -96,13 +98,34 @@ import java.util.logging.Logger;
  * <br>As in the reference implementation, two optional overlap filters are available as settings:
  * <ul>
  *   <li><b>Intra-substructure overlap filter</b>: prevents multiple matches of the same SMARTS pattern from sharing
- *   atoms. To make the result independent of the input atom order, matches are processed in the order of the
- *   canonical atom ranks of their atoms.</li>
+ *   atoms. Matches are accepted greedily, as in the reference implementation. To make the result independent of the
+ *   input atom order, in contrast to the reference implementation, matches are processed in the order of the
+ *   canonical atom ranks of their atoms, i.e. their positions in the unique SMILES code of the molecule.</li>
  *   <li><b>Inter-substructure overlap filter</b>: prevents matches of a SMARTS pattern from sharing atoms with
  *   accepted matches of SMARTS patterns that come earlier in the predefined key order.</li>
  * </ul>
  * Prior to matching, ring perception and Daylight aromaticity detection are applied to a copy of the input molecule
  * (see {@link SmartsPattern#prepare(IAtomContainer)}).
+ * <br>
+ * <br><b>Differences to the reference implementation</b> (Python, RDKit, version "full_1103"):
+ * <ul>
+ *   <li><b>Revised phenyl SMARTS patterns</b>: 37 of the 39 SMARTS patterns are identical to the reference
+ *   implementation. In the patterns of the phenyl-C3 and phenyl-C2 units, the side chain carbon atoms must not be part
+ *   of any six-membered ring, while the reference implementation only excludes atoms whose smallest ring is
+ *   six-membered (see {@link BiosynfoniKey#D_PHENYL_C3}). This follows the intention of the original patterns not to
+ *   detect phenyl units in fused ring systems, e.g. it is no longer relevant whether a six-membered ring is
+ *   additionally fused to a five-membered ring, as in aryltetralin lignans.</li>
+ *   <li><b>Intra-substructure overlap filter</b>: the reference implementation selects the matches greedily in the
+ *   order in which RDKit finds them, so that its counts depend on the input atom order of the molecule. Here, the
+ *   matches are selected in a canonical order (see above), so the counts do not depend on the input atom order but can
+ *   differ from the reference implementation where both select different but equally valid sets of non-overlapping
+ *   matches.</li>
+ *   <li><b>Cheminformatics toolkit</b>: the substructure matching is done with the CDK instead of RDKit. RDKit converts
+ *   nitro groups into their charge-separated form, whose negatively charged oxygen atom is then matched as hydroxyl
+ *   group, and removes explicit hydrogen atoms, which are counted by the SMARTS primitives D and h. MORTAR suppresses
+ *   explicit hydrogen atoms when importing molecules, so the latter only matters if the fragmenter is used directly
+ *   with molecules containing explicit hydrogen atoms.</li>
+ * </ul>
  *
  * @author Manuel Schauer
  * @version 1.0.0.0
@@ -204,13 +227,17 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
                 "C1CCNC1"),
         //phenyls from the shikimate pathway
         /**
-         * Phenyl ring attached to a three-carbon side chain.
+         * Phenyl ring attached to a three-carbon side chain. The side chain carbon atoms after the first one must not be
+         * part of any six-membered ring. This is a revision of the original pattern, which excludes them via
+         * "[#6;!$([r6])]" only if their smallest ring is six-membered, so that, e.g., carbon atoms in a six-membered ring
+         * fused to a five-membered ring are not excluded there.
          */
         D_PHENYL_C3("d_phenylC3_9_strict",
                 "[#6;R1]~1~[#6;R1]~[#6;R1]~[#6;R1]~[#6;R1]~[#6;R1]~1~[#6]~[#6!$(*1*****1)]~[#6!$(*1*****1)]",
                 "CCCc1ccccc1"),
         /**
-         * Phenyl ring attached to a two-carbon side chain.
+         * Phenyl ring attached to a two-carbon side chain. The second side chain carbon atom must not be part of any
+         * six-membered ring, see the revision of the pattern described at {@link #D_PHENYL_C3}.
          */
         D_PHENYL_C2("d_phenylC2_8_strict",
                 "[#6;R1]~1~[#6;R1]~[#6;R1]~[#6;R1]~[#6;R1]~[#6;R1]~1~[#6]~[#6!$(*1*****1)]",
@@ -1004,14 +1031,25 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
     }
 
     /**
-     * Computes the canonical rank of every atom using the CDK canonical labelling, which yields a unique, input order
-     * independent numbering of the atoms. The atom index is only used as a formal tie-breaker for the sorting and does
-     * not take effect because the canonical labels are distinct.
+     * Computes the canonical rank of every atom as its position in the unique (canonical) SMILES code of the molecule.
+     * This numbering does not depend on the input atom order. Because the SMILES code is written by a depth-first
+     * traversal along the bonds, neighbouring atoms get close ranks, so that the intra-substructure overlap filter
+     * selects the matches along chains and rings. This packs the matches as densely as the reference implementation,
+     * which processes the matches in the order of the (SMILES-based) input atom indices, but without depending on the
+     * input atom order. Should the SMILES code not be creatable, e.g. for unset bond orders, the ranks of the CDK
+     * canonical labelling are used instead, which are input order independent as well.
      *
      * @param aMolecule the molecule
      * @return canonical rank of every atom, indexed by atom index
      */
     private static int[] getCanonicalRanks(IAtomContainer aMolecule) {
+        int[] tmpSmilesOrder = new int[aMolecule.getAtomCount()];
+        try {
+            new SmilesGenerator(SmiFlavor.Unique).create(aMolecule, tmpSmilesOrder);
+            return tmpSmilesOrder;
+        } catch (CDKException anException) {
+            BiosynfoniFragmenter.LOGGER.log(Level.FINE, "Unique SMILES order not available, canonical labels are used instead.", anException);
+        }
         long[] tmpLabels = Canon.label(aMolecule, GraphUtil.toAdjList(aMolecule));
         Integer[] tmpIndices = new Integer[tmpLabels.length];
         for (int i = 0; i < tmpLabels.length; i++) {

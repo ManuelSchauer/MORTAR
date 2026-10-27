@@ -36,12 +36,13 @@
 MORTAR ('MOlecule fRagmenTation fRamework') is a free and open-source graphical desktop application that supports 
 molecular <i>in silico</i> fragmentation and substructure analysis. The Java/JavaFX rich client offers extensive graphical 
 functions for visualizing the fragmentation results of individual compounds or entire compound sets. 
-In addition to five currently integrated methods for fragmentation and substructure analysis -
+In addition to seven currently integrated methods for fragmentation and substructure analysis -
 <a href="https://github.com/JonasSchaub/ErtlFunctionalGroupsFinder">ErtlFunctionalGroupsFinder</a>, 
 <a href="https://github.com/JonasSchaub/SugarRemoval">Sugar Removal Utility</a> (with the <a href="https://github.com/cdk/cdk/pull/1225">Sugar Detection Utility</a> extension), 
 <a href="https://github.com/cdk/cdk-scaffold">CDK-Scaffold</a>, <a href="https://gitlab.com/glycoinfo/molwurcs">MolWURCS</a>,
- Circular Fragmentation analogous to HOSE codes or Morgan Fingerprints, and 
-<a href="https://github.com/cdk/cdk/blob/main/tool/fragment/src/main/java/org/openscience/cdk/fragment/ExhaustiveFragmenter.java">Exhaustive Fragmentation</a> - 
+ Circular Fragmentation analogous to HOSE codes or Morgan Fingerprints, 
+<a href="https://github.com/cdk/cdk/blob/main/tool/fragment/src/main/java/org/openscience/cdk/fragment/ExhaustiveFragmenter.java">Exhaustive Fragmentation</a>, and 
+the biosynthetic building blocks of natural products defined by <a href="https://github.com/lucinamay/biosynfoni">Biosynfoni</a> - 
 MORTAR allows straightforward integration of
 additional fragmentation algorithms to support the development of new methods at an early stage. 
 All cheminformatics functionalities are implemented based on the <a href="https://github.com/cdk/cdk">Chemistry Development Kit (CDK)</a>.<br>
@@ -270,6 +271,10 @@ fragmentation (Baensch et al. 2023)</a>).
 * [W. Bremser, Hose — a novel substructure code, Analytica Chimica Acta, Volume 103, Issue 4, 1978, Pages 355-365, ISSN 0003-2670, https://doi.org/10.1016/S0003-2670(01)83100-7.](https://doi.org/10.1016/S0003-2670(01)83100-7)
 * [Rogers, D.; Hahn, M. Extended-Connectivity Fingerprints. J. Chem. Inf. Model. 2010, 50, 742–754, doi:10.1021/ci100050t.](https://doi.org/10.1021/ci100050t)
 * [Faulon, J.-L.; Visco, D.P.; Pophale, R.S. The Signature Molecular Descriptor. 1. Using Extended Valence Sequences in QSAR and QSPR Studies. J. Chem. Inf. Comput. Sci. 2003, 43, 707–720, doi:10.1021/ci020345w.](https://doi.org/10.1021/ci020345w)
+
+**Biosynfoni**
+* [Nollen, L.-M., Meijer, D., Sorokina, M., van der Hooft, J.J.J. Biosynfoni: a biosynthesis-informed and interpretable lightweight molecular fingerprint. J Cheminform 17, 136 (2025). https://doi.org/10.1186/s13321-025-01081-6](https://doi.org/10.1186/s13321-025-01081-6)
+* [Biosynfoni on GitHub](https://github.com/lucinamay/biosynfoni)
 
 **Chemistry Development Kit (CDK)**
 * [Chemistry Development Kit on GitHub](https://cdk.github.io/)
