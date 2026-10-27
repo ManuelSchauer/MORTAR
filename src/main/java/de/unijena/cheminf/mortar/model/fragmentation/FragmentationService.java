@@ -208,14 +208,14 @@ public class FragmentationService {
     private final IMoleculeFragmenter cdkCircularF;
     //
     /**
-     * Biosynfoni fragmenter.
-     */
-    private final IMoleculeFragmenter biosynfoniF;
-    //
-    /**
      * Exhaustive fragmenter.
      */
     private final IMoleculeFragmenter cdkEF;
+    //
+    /**
+     * Biosynfoni fragmenter.
+     */
+    private final IMoleculeFragmenter biosynfoniF;
     //
     /**
      * Property of display name of selected fragmenter.
@@ -240,10 +240,10 @@ public class FragmentationService {
         this.fragmenters[3] = this.molWURCSF;
         this.cdkCircularF = new CDKCircularFragmenter();
         this.fragmenters[4] = this.cdkCircularF;
-        this.biosynfoniF = new BiosynfoniFragmenter();
-        this.fragmenters[5] = this.biosynfoniF;
         this.cdkEF = new CDKExhaustiveFragmenter();
         this.fragmenters[5] = this.cdkEF;
+        this.biosynfoniF = new BiosynfoniFragmenter();
+        this.fragmenters[6] = this.biosynfoniF;
         //
         this.selectedFragmenterDisplayNameProperty = new SimpleStringProperty();
         try {
