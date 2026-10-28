@@ -109,22 +109,24 @@ import java.util.logging.Logger;
  * <br>
  * <br><b>Differences to the reference implementation</b> (Python, RDKit, version "full_1103"):
  * <ul>
- *   <li><b>Revised phenyl SMARTS patterns</b>: 37 of the 39 SMARTS patterns are identical to the reference
- *   implementation. In the patterns of the phenyl-C3 and phenyl-C2 units, the side chain carbon atoms must not be part
- *   of any six-membered ring, while the reference implementation only excludes atoms whose smallest ring is
- *   six-membered (see {@link BiosynfoniKey#D_PHENYL_C3}). This follows the intention of the original patterns not to
- *   detect phenyl units in fused ring systems, e.g. it is no longer relevant whether a six-membered ring is
- *   additionally fused to a five-membered ring, as in aryltetralin lignans.</li>
+ *   <li><b>Revised SMARTS patterns</b>: 36 of the 39 SMARTS patterns are identical to the reference implementation.
+ *   In the patterns of the phenyl-C3 and phenyl-C2 units, the side chain carbon atoms must not be part of any
+ *   six-membered ring, while the reference implementation only excludes atoms whose smallest ring is six-membered (see
+ *   {@link BiosynfoniKey#D_PHENYL_C3}). This follows the intention of the original patterns not to detect phenyl units
+ *   in fused ring systems, e.g. it is no longer relevant whether a six-membered ring is additionally fused to a
+ *   five-membered ring, as in aryltetralin lignans. The hydroxyl pattern does not match the oxygen atoms of nitro
+ *   groups, nitrate esters, and N-oxides (see {@link BiosynfoniKey#O_HYDROXYL}), which the reference implementation
+ *   matches as hydroxyl groups in their charge-separated form. Like this, both notations of these groups give the
+ *   same result. The revised patterns are the same as in the BiosynfoniFingerprinter of the CDK.</li>
  *   <li><b>Intra-substructure overlap filter</b>: the reference implementation selects the matches greedily in the
  *   order in which RDKit finds them, so that its counts depend on the input atom order of the molecule. Here, the
  *   matches are selected in a canonical order (see above), so the counts do not depend on the input atom order but can
  *   differ from the reference implementation where both select different but equally valid sets of non-overlapping
  *   matches.</li>
- *   <li><b>Cheminformatics toolkit</b>: the substructure matching is done with the CDK instead of RDKit. RDKit converts
- *   nitro groups into their charge-separated form, whose negatively charged oxygen atom is then matched as hydroxyl
- *   group, and removes explicit hydrogen atoms, which are counted by the SMARTS primitives D and h. MORTAR suppresses
- *   explicit hydrogen atoms when importing molecules, so the latter only matters if the fragmenter is used directly
- *   with molecules containing explicit hydrogen atoms.</li>
+ *   <li><b>Cheminformatics toolkit</b>: the substructure matching is done with the CDK instead of RDKit. RDKit removes
+ *   explicit hydrogen atoms, which are counted by the SMARTS primitives D and h. MORTAR suppresses explicit hydrogen
+ *   atoms when importing molecules, so this only matters if the fragmenter is used directly with molecules containing
+ *   explicit hydrogen atoms.</li>
  * </ul>
  *
  * @author Manuel Schauer
@@ -189,17 +191,17 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
                 "C(~[#8])~C(~[#8])~C(~[#8])~C(~[#8])~C(~[#8])",
                 "OCC(O)C(O)C(O)C=O"),
         /**
-         * Pyranose, six-membered sugar ring containing one oxygen atom.
+         * Pyranose, six-membered sugar ring containing one oxygen atom. Represented by glucopyranose.
          */
         S_PYRANOSE_C5O4("s_pyranose_C5O4",
                 "C~1~[#8]~C~C(~[#8])~C(~[#8])~C(~[#8])~1",
-                "C1OCC(O)C(O)C1O"),
+                "OCC1OC(O)C(O)C(O)C1O"),
         /**
-         * Furanose, five-membered sugar ring containing one oxygen atom.
+         * Furanose, five-membered sugar ring containing one oxygen atom. Represented by ribofuranose.
          */
         S_FURANOSE_C4O3("s_furanose_C4O3",
                 "C~1~[#8]~C~C(~[#8])~C(~[#8])~1",
-                "C1OCC(O)C1O"),
+                "OCC1OC(O)C(O)C1O"),
         //nitrogen-containing building blocks
         /**
          * Indole scaffold with a two-carbon side chain terminating in a nitrogen atom (tryptamine-like).
@@ -230,43 +232,45 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
          * Phenyl ring attached to a three-carbon side chain. The side chain carbon atoms after the first one must not be
          * part of any six-membered ring. This is a revision of the original pattern, which excludes them via
          * "[#6;!$([r6])]" only if their smallest ring is six-membered, so that, e.g., carbon atoms in a six-membered ring
-         * fused to a five-membered ring are not excluded there.
+         * fused to a five-membered ring are not excluded there. Represented by trans-cinnamic acid, the precursor
+         * of the phenylpropanoids (C6-C3 units).
          */
         D_PHENYL_C3("d_phenylC3_9_strict",
                 "[#6;R1]~1~[#6;R1]~[#6;R1]~[#6;R1]~[#6;R1]~[#6;R1]~1~[#6]~[#6!$(*1*****1)]~[#6!$(*1*****1)]",
-                "CCCc1ccccc1"),
+                "OC(=O)/C=C/c1ccccc1"),
         /**
          * Phenyl ring attached to a two-carbon side chain. The second side chain carbon atom must not be part of any
-         * six-membered ring, see the revision of the pattern described at {@link #D_PHENYL_C3}.
+         * six-membered ring, see the revision of the pattern described at {@link #D_PHENYL_C3}. Represented by
+         * phenylacetic acid (C6-C2 unit).
          */
         D_PHENYL_C2("d_phenylC2_8_strict",
                 "[#6;R1]~1~[#6;R1]~[#6;R1]~[#6;R1]~[#6;R1]~[#6;R1]~1~[#6]~[#6!$(*1*****1)]",
-                "CCc1ccccc1"),
+                "OC(=O)Cc1ccccc1"),
         /**
-         * Phenyl ring attached to a single carbon atom.
+         * Phenyl ring attached to a single carbon atom. Represented by benzoic acid (C6-C1 unit).
          */
         D_PHENYL_C1("d_phenylC1_7_strict",
                 "[#6;R1]~1~[#6;R1]~[#6;R1]~[#6;R1]~[#6;R1]~[#6;R1]~1~[#6]",
-                "Cc1ccccc1"),
+                "OC(=O)c1ccccc1"),
         //carbon chains
         /**
-         * Isoprene unit, branched five-carbon motif.
+         * Isoprene unit, branched five-carbon motif. Represented by isoprene (2-methylbuta-1,3-diene).
          */
         D_ISOPRENE("d_isoprene_5",
                 "[#6]~[#6](~[#6])~[#6]~[#6]",
-                "CCC(C)C"),
+                "C=CC(C)=C"),
         /**
-         * Acetyl unit, two-carbon chain connected to an oxygen atom.
+         * Acetyl unit, two-carbon chain connected to an oxygen atom. Represented by acetic acid.
          */
         D2_ACETYL("d2_acetyl_C2O1",
                 "[#6]~[#6]~[#8]",
-                "CCO"),
+                "CC(=O)O"),
         /**
-         * Methylmalonyl unit, three-carbon motif terminating in a methyl carbon.
+         * Methylmalonyl unit, three-carbon motif terminating in a methyl carbon. Represented by methylmalonic acid.
          */
         D2_METHYLMALONYL("d2_methylmalonyl_C3",
                 "[#6]~[#6][C;D1;h3]",
-                "CCC"),
+                "CC(C(=O)O)C(=O)O"),
         /**
          * Ethyl unit, two connected carbon atoms.
          */
@@ -282,17 +286,17 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
                 "*C"),
         //phosphorus- and sulfur-containing groups
         /**
-         * Phosphorus atom bonded to an oxygen atom.
+         * Phosphorus atom bonded to an oxygen atom. Represented by phosphoric acid.
          */
         PHOSPHATE("phosphate_2",
                 "P~O",
-                "OP"),
+                "OP(=O)(O)O"),
         /**
-         * Sulfur atom bonded to an oxygen atom.
+         * Sulfur atom bonded to an oxygen atom. Represented by methanesulfonic acid.
          */
         SULFONATE("sulfonate_2",
                 "S~O",
-                "OS"),
+                "CS(=O)(=O)O"),
         //halides
         /**
          * Fluorine atom.
@@ -332,11 +336,21 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
                 "[O;D2;!h;!$(*C=O);X2;!R;!$(*P);!$(*S)]",
                 "COC"),
         /**
-         * Hydroxyl oxygen atom attached to a carbon or nitrogen atom, excluding carboxylic acids, phosphates, and
-         * sulfates.
+         * Hydroxyl oxygen atom (-OH) or deprotonated hydroxyl oxygen atom (-O<sup>-</sup>) attached to a carbon or
+         * nitrogen atom, excluding carboxylic acids, phosphates, and sulfates. This is a revision of the original
+         * pattern that additionally excludes the oxygen atoms of nitro groups, nitrate esters, and N-oxides: oxygen
+         * atoms bonded to a nitrogen atom that carries a further oxygen atom ("!$(*[#7]~[#8])", the rule of the original
+         * pattern for carboxylic acids, "!$(*C~O)", applied to nitrogen) and negatively charged oxygen atoms bonded to a
+         * positively charged nitrogen atom ("!$([#8-][#7+])"). These groups can be written in a pentavalent form
+         * ("N(=O)=O", "N=O"), whose doubly bonded oxygen atom is not matched anyway, or in a charge-separated form
+         * ("[N+](=O)[O-]", "[N+][O-]"), whose singly bonded "[O-]" would otherwise be matched as deprotonated hydroxyl
+         * group, so that the result depended on the notation of the same molecule. The reference implementation matches
+         * this "[O-]" because RDKit converts nitro groups and N-oxides into the charge-separated form. Hydroxylamines,
+         * oximes, and hydroxamic acids, whose uncharged nitrogen atom carries only one oxygen atom, are still matched.
+         * Revision taken from the BiosynfoniFingerprinter of the CDK.
          */
         O_HYDROXYL("o_hydroxyl_1",
-                "[#8;D1;h,!v2;$(*[#6,#7]);!$(*C~O);!$(P);!$(S)]",
+                "[#8;D1;h,!v2;$(*[#6,#7]);!$(*C~O);!$(*[#7]~[#8]);!$([#8-][#7+]);!$(P);!$(S)]",
                 "CO"),
         //carbon rings
         /**

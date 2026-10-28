@@ -219,6 +219,53 @@ class BiosynfoniFragmenterTest {
     }
     //
     /**
+     * Tests that nitro groups, nitrate esters, and N-oxides give the same fragments in their pentavalent and
+     * charge-separated notation for all overlap filter combinations, and that their oxygen atoms are not matched as
+     * hydroxyl group, while hydroxylamines (also deprotonated), oximes, hydroxamic acids, and deprotonated hydroxyl
+     * groups still are.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    void nitroGroupAndNOxideNotationTest() throws Exception {
+        SmilesParser tmpSmiPar = new SmilesParser(SilentChemObjectBuilder.getInstance());
+        String tmpHydroxylLabel = BiosynfoniFragmenter.BiosynfoniKey.O_HYDROXYL.getLabel();
+        //pentavalent and charge-separated notation of nitromethane, nitrobenzene, methyl nitrate, 4-nitrobenzyl alcohol,
+        // trimethylamine N-oxide, and pyridine N-oxide
+        String[][] tmpSmilesPairs = {
+                {"CN(=O)=O", "C[N+](=O)[O-]"},
+                {"c1ccccc1N(=O)=O", "c1ccccc1[N+](=O)[O-]"},
+                {"CON(=O)=O", "CO[N+](=O)[O-]"},
+                {"OCc1ccc(cc1)N(=O)=O", "OCc1ccc(cc1)[N+](=O)[O-]"},
+                {"CN(C)(C)=O", "C[N+](C)(C)[O-]"},
+                {"O=n1ccccc1", "[O-][n+]1ccccc1"}};
+        //only the alcohol group of 4-nitrobenzyl alcohol is a hydroxyl group
+        int[] tmpExpectedHydroxylCounts = {0, 0, 0, 1, 0, 0};
+        BiosynfoniFragmenter tmpFragmenter = new BiosynfoniFragmenter();
+        for (boolean tmpIsIntraFilterApplied : new boolean[] {false, true}) {
+            for (boolean tmpIsInterFilterApplied : new boolean[] {false, true}) {
+                tmpFragmenter.setIntraSubstructureOverlapFilterSetting(tmpIsIntraFilterApplied);
+                tmpFragmenter.setInterSubstructureOverlapFilterSetting(tmpIsInterFilterApplied);
+                for (int i = 0; i < tmpSmilesPairs.length; i++) {
+                    Map<String, Integer> tmpPentavalentCounts = BiosynfoniFragmenterTest.countPerLabel(
+                            tmpFragmenter.fragmentMolecule(tmpSmiPar.parseSmiles(tmpSmilesPairs[i][0])));
+                    Map<String, Integer> tmpChargeSeparatedCounts = BiosynfoniFragmenterTest.countPerLabel(
+                            tmpFragmenter.fragmentMolecule(tmpSmiPar.parseSmiles(tmpSmilesPairs[i][1])));
+                    Assertions.assertEquals(tmpPentavalentCounts, tmpChargeSeparatedCounts, tmpSmilesPairs[i][1]);
+                    Assertions.assertEquals(tmpExpectedHydroxylCounts[i], tmpChargeSeparatedCounts.getOrDefault(tmpHydroxylLabel, 0),
+                            tmpSmilesPairs[i][1]);
+                }
+            }
+        }
+        //N-methylhydroxylamine, deprotonated N,N-dimethylhydroxylamine, acetaldoxime, acetohydroxamic acid, and phenolate
+        tmpFragmenter.restoreDefaultSettings();
+        for (String tmpSmiles : new String[] {"CNO", "CN(C)[O-]", "CC=NO", "CC(=O)NO", "[O-]c1ccccc1"}) {
+            Map<String, Integer> tmpCounts = BiosynfoniFragmenterTest.countPerLabel(tmpFragmenter.fragmentMolecule(tmpSmiPar.parseSmiles(tmpSmiles)));
+            Assertions.assertEquals(1, tmpCounts.getOrDefault(tmpHydroxylLabel, 0), tmpSmiles);
+        }
+    }
+    //
+    /**
      * Tests the matched substructures option: for all overlap filter combinations, the number of fragments per key
      * equals the one of the representative structures option, every fragment has as many atoms as the SMARTS pattern
      * of its key matches, carries the label of its key, and can be converted to a valid SMILES code that MORTAR can
