@@ -47,13 +47,18 @@ import org.openscience.cdk.stereo.TetrahedralChirality;
 import org.openscience.cdk.tools.manipulator.AtomContainerManipulator;
 
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
 
@@ -67,6 +72,10 @@ import java.util.Set;
  *     order and is used only once, fragments are connected and contain no dangling bonds, carbon valences are not
  *     exceeded, linear chains respect the maximum chain length, and the result does not depend on the order in which
  *     atoms and bonds are stored in the input container.
+ * </p>
+ * <p>
+ *     Additionally, the fragments of all test molecules are compared to a reference file (see
+ *     {@link #referenceFragmentsTest()}), so that every change of the fragmentation results becomes visible.
  * </p>
  *
  * @author Maximilian Rottmann, Manuel Schauer
@@ -133,6 +142,14 @@ public class AlkylStructureFragmenterIntegrationTest {
      * Number of random atom/bond order permutations per molecule in the order invariance test.
      */
     private static final int PERMUTATION_COUNT = 5;
+    /**
+     * Name of the reference file with the recorded fragments of the test molecules (test resource of this package).
+     */
+    private static final String REFERENCE_FRAGMENTS_FILE_NAME = "ASF_Test_Reference_Fragments.txt";
+    /**
+     * Path (relative to the project directory) the actual results are written to if they differ from the reference file.
+     */
+    private static final String ACTUAL_REFERENCE_FRAGMENTS_FILE_PATH = "build/test-results/ASF_Test_Reference_Fragments_actual.txt";
 
     /**
      * Runs all molecules of the test SMILES list and the substructure library through all combinations of settings
@@ -309,155 +326,133 @@ public class AlkylStructureFragmenterIntegrationTest {
     }
 
     /**
-     * Differential test of the rule-based {@link AlkylStructureFragmenter} against the previous implementation
-     * ({@link LegacyAlkylStructureFragmenter}, test reference only): both are applied with all setting combinations to
-     * the hand-picked test molecules, the substructure library and the generated test molecules (see
-     * {@link AlkylTestMoleculeGenerator}), and their fragments (unique stereo SMILES) are compared.
+     * Regression test against a reference file: the fragments of the hand-picked test molecules, the substructure
+     * library and the overview set of the generated test molecules (see
+     * {@link AlkylTestMoleculeGenerator#generateOverviewSmiles()}) under all tested setting combinations (and without
+     * hydrogen saturation for the default settings) are compared to the fragments recorded in
+     * {@value #REFERENCE_FRAGMENTS_FILE_NAME}, so that every change of the fragmentation results becomes visible.
      * <p>
-     * Two differences were decided to be intended (see AlkylStructureFragmenterTest.specificTest10 and specificTest11);
-     * they are recognized structurally and counted, every other difference fails the test:
+     * If the test fails, the actual results are written to {@value #ACTUAL_REFERENCE_FRAGMENTS_FILE_PATH}. If the
+     * changes are intended (e.g. after a change of the fragmentation rules), review the differences and replace the
+     * reference file with this file.
      * </p>
-     * <ul>
-     *     <li>A: isolation and separation from rings active, molecule with a tertiary/quaternary carbon bonded to a ring:
-     *     the neighbors of this carbon are ordinary chain atoms (legacy cut off their first chain atom).</li>
-     *     <li>B: isolation active, separation from rings inactive, molecule with a tertiary/quaternary carbon bonded to a
-     *     ring and to a conjugated non-ring atom: the bond to the conjugated system is kept (legacy cut it).</li>
-     *     <li>C: the result of the previous version violates the invariants or chemistry rules (e.g. a cut double bond of an
-     *     allene or a cut conjugated bond to a single aromatic remnant atom), the result of the new version does not.</li>
-     * </ul>
      *
-     * @throws Exception if the test structures cannot be read
+     * @throws Exception if the test structures or the reference file cannot be read
      */
     @Test
-    public void differentialTest() throws Exception {
-        List<IAtomContainer> tmpMolecules = new ArrayList<>(this.loadTestMolecules());
-        tmpMolecules.addAll(AlkylTestMoleculeGenerator.generate());
+    public void referenceFragmentsTest() throws Exception {
+        List<String> tmpActualLines = this.createReferenceFragmentLines();
+        List<String> tmpExpectedLines = new ArrayList<>();
+        try (InputStream tmpStream = this.getClass().getResourceAsStream(AlkylStructureFragmenterIntegrationTest.REFERENCE_FRAGMENTS_FILE_NAME)) {
+            //a missing reference file fails the test below and the actual results are written for creating it
+            if (Objects.nonNull(tmpStream)) {
+                tmpExpectedLines.addAll(new String(tmpStream.readAllBytes(), StandardCharsets.UTF_8).lines().toList());
+            }
+        }
+        List<String> tmpExpectedContent = tmpExpectedLines.stream().filter(tmpLine -> !tmpLine.startsWith("#")).toList();
+        List<String> tmpActualContent = tmpActualLines.stream().filter(tmpLine -> !tmpLine.startsWith("#")).toList();
+        if (tmpExpectedContent.equals(tmpActualContent)) {
+            return;
+        }
+        Path tmpActualFile = Path.of(AlkylStructureFragmenterIntegrationTest.ACTUAL_REFERENCE_FRAGMENTS_FILE_PATH);
+        Files.createDirectories(tmpActualFile.getParent());
+        Files.write(tmpActualFile, tmpActualLines, StandardCharsets.UTF_8);
         List<String> tmpDifferences = new ArrayList<>();
-        Map<String, Integer> tmpIntendedDifferenceCounts = new HashMap<>();
-        for (AlkylStructureFragmenter tmpASF : this.createAllSettingCombinations()) {
-            LegacyAlkylStructureFragmenter tmpLegacyASF = new LegacyAlkylStructureFragmenter();
-            tmpLegacyASF.setFragmentSideChainsSetting(tmpASF.getFragmentSideChainsSetting());
-            tmpLegacyASF.setMaxChainLengthSetting(tmpASF.getMaxChainLengthSetting());
-            tmpLegacyASF.setIsolateTertQuatCarbonsSetting(tmpASF.getIsolateTertQuatCarbonSetting());
-            tmpLegacyASF.setSeparateTertQuatCarbonFromRingSetting(tmpASF.getSeparateTertQuatCarbonFromRingSetting());
-            for (IAtomContainer tmpMolecule : tmpMolecules) {
-                List<String> tmpNew = this.fragmentToSortedStereoSmiles(tmpASF, tmpMolecule);
-                List<String> tmpLegacy = this.fragmentToSortedStereoSmiles(tmpLegacyASF, tmpMolecule);
-                if (!tmpNew.equals(tmpLegacy)) {
-                    String tmpIntendedDifference = this.getIntendedDifference(tmpASF, tmpMolecule);
-                    if (tmpIntendedDifference == null && !this.checkInvariants(new LegacyAdapter(tmpASF), tmpMolecule).isEmpty()
-                            && this.checkInvariants(tmpASF, tmpMolecule).isEmpty()) {
-                        tmpIntendedDifference = "C (the previous version violates the fragmentation rules, the new one does not)";
-                    }
-                    if (tmpIntendedDifference != null) {
-                        tmpIntendedDifferenceCounts.merge(tmpIntendedDifference, 1, Integer::sum);
-                        continue;
-                    }
-                    tmpDifferences.add(String.format("%s [%s]: legacy %s vs. new %s", ChemUtil.createUniqueSmiles(tmpMolecule, true),
-                            this.describeSettings(tmpASF), tmpLegacy, tmpNew));
-                }
+        for (int i = 0; i < Math.max(tmpExpectedContent.size(), tmpActualContent.size()) && tmpDifferences.size() < 20; i++) {
+            String tmpExpected = i < tmpExpectedContent.size() ? tmpExpectedContent.get(i) : "<none>";
+            String tmpActual = i < tmpActualContent.size() ? tmpActualContent.get(i) : "<none>";
+            if (!tmpExpected.equals(tmpActual)) {
+                tmpDifferences.add(String.format("line %d:%n  expected: %s%n  actual:   %s", i + 1, tmpExpected, tmpActual));
             }
         }
-        tmpIntendedDifferenceCounts.forEach((tmpKey, tmpValue) -> System.out.println("INTENDED " + tmpKey + ": " + tmpValue));
-        tmpDifferences.forEach(tmpDifference -> System.out.println("DIFF " + tmpDifference));
-        Assertions.assertTrue(tmpDifferences.isEmpty(), () -> tmpDifferences.size() + " differences:\n"
-                + String.join("\n", tmpDifferences.subList(0, Math.min(tmpDifferences.size(), 200))));
+        Assertions.fail(String.format("Fragments differ from the reference file %s, actual results written to %s "
+                        + "(replace the reference file with it if the changes are intended). First differences:%n%s",
+                AlkylStructureFragmenterIntegrationTest.REFERENCE_FRAGMENTS_FILE_NAME, tmpActualFile.toAbsolutePath(),
+                String.join(System.lineSeparator(), tmpDifferences)));
     }
 
     /**
-     * Checks whether the given molecule and settings fall under one of the two intended differences to the previous
-     * implementation (see {@link #differentialTest()}).
+     * Creates the content of the reference file (see {@link #referenceFragmentsTest()}): for every test molecule a line
+     * "&gt; name TAB input SMILES", followed by one line per distinct result "TAB fragment SMILES TAB settings", where
+     * the fragments are the sorted unique stereo SMILES separated by spaces and the settings are all setting
+     * combinations producing this result, separated by "; ".
      *
-     * @param anASF configured fragmenter
-     * @param aMolecule molecule
-     * @return name of the intended difference, null if none applies
-     * @throws CloneNotSupportedException if cloning fails
+     * @return lines of the reference file, including the header comment lines starting with "#"
+     * @throws Exception if the test structures cannot be read
      */
-    private String getIntendedDifference(AlkylStructureFragmenter anASF, IAtomContainer aMolecule) throws CloneNotSupportedException {
-        if (!anASF.getIsolateTertQuatCarbonSetting()) {
-            return null;
+    private List<String> createReferenceFragmentLines() throws Exception {
+        List<IAtomContainer> tmpMolecules = this.loadTestMolecules();
+        for (Map.Entry<String, String> tmpEntry : AlkylTestMoleculeGenerator.generateOverviewSmiles().entrySet()) {
+            IAtomContainer tmpMolecule = AlkylTestMoleculeGenerator.parseAsInPipeline(tmpEntry.getValue());
+            Assertions.assertNotNull(tmpMolecule, tmpEntry.getKey());
+            tmpMolecule.setTitle(tmpEntry.getKey());
+            tmpMolecules.add(tmpMolecule);
         }
-        IAtomContainer tmpPrepared = AtomContainerManipulator.suppressHydrogens(aMolecule.clone());
-        AlkylStructureFragmenter.MoleculeClassification tmpClassification = anASF.classify(tmpPrepared);
-        for (int i = 0; i < tmpPrepared.getAtomCount(); i++) {
-            if (!tmpClassification.isTertQuatCarbonBondedToRing[i]) {
-                continue;
+        List<AlkylStructureFragmenter> tmpFragmenters = new ArrayList<>(this.createAllSettingCombinations());
+        AlkylStructureFragmenter tmpUnsaturatedASF = new AlkylStructureFragmenter();
+        tmpUnsaturatedASF.setFragmentSaturationSetting(IMoleculeFragmenter.FragmentSaturationOption.NO_SATURATION);
+        tmpFragmenters.add(tmpUnsaturatedASF);
+        List<String> tmpLines = new ArrayList<>();
+        tmpLines.add("# Reference fragments of the AlkylStructureFragmenter, see AlkylStructureFragmenterIntegrationTest.referenceFragmentsTest().");
+        tmpLines.add("# Per molecule: \"> name<TAB>input SMILES\", then one line per distinct result: \"<TAB>fragments<TAB>settings\".");
+        tmpLines.add("# Settings: chains=off (no dissection of linear chains), chains=<maximum chain lengths> or chains=any (all of");
+        tmpLines.add("# these), isolate = isolation of tertiary/quaternary carbons, separate = separation of tertiary/quaternary");
+        tmpLines.add("# carbons from rings, no-saturation = no hydrogen saturation. Lines starting with # are ignored by the test.");
+        int tmpLibraryIndex = 0;
+        for (IAtomContainer tmpMolecule : tmpMolecules) {
+            String tmpName = tmpMolecule.getTitle();
+            if (Objects.isNull(tmpName) || tmpName.isBlank()) {
+                tmpLibraryIndex++;
+                tmpName = "substructure library #" + tmpLibraryIndex;
             }
-            if (anASF.getSeparateTertQuatCarbonFromRingSetting()) {
-                return "A (neighbors of tertiary/quaternary carbons separated from rings are chain atoms)";
+            tmpLines.add("> " + tmpName + "\t" + this.createStereoSmilesWithFallback(tmpMolecule));
+            //result -> other settings -> chain settings producing the result
+            Map<String, Map<String, List<String>>> tmpSettingsByResult = new LinkedHashMap<>();
+            for (AlkylStructureFragmenter tmpASF : tmpFragmenters) {
+                String tmpResult = String.join(" ", this.fragmentToSortedStereoSmiles(tmpASF, tmpMolecule));
+                tmpSettingsByResult.computeIfAbsent(tmpResult, aKey -> new LinkedHashMap<>())
+                        .computeIfAbsent(this.describeNonChainSettings(tmpASF), aKey -> new ArrayList<>())
+                        .add(tmpASF.getFragmentSideChainsSetting() ? String.valueOf(tmpASF.getMaxChainLengthSetting()) : "off");
             }
-            for (IAtom tmpNeighbor : tmpPrepared.getAtom(i).neighbors()) {
-                int tmpNeighborIndex = tmpPrepared.indexOf(tmpNeighbor);
-                if (tmpClassification.isConjugatedAtom[tmpNeighborIndex] && !tmpClassification.isRingAtom[tmpNeighborIndex]) {
-                    return "B (tertiary/quaternary carbons kept at rings keep their bond to conjugated systems)";
-                }
-            }
+            tmpSettingsByResult.forEach((tmpResult, tmpSettings) -> tmpLines.add("\t" + tmpResult + "\t" + this.describeSettingGroups(tmpSettings)));
         }
-        return null;
-    }
-
-    /**
-     * Applies the previous implementation ({@link LegacyAlkylStructureFragmenter}) with the settings of a given new
-     * fragmenter, so that its results can be checked with {@link #checkInvariants(AlkylStructureFragmenter, IAtomContainer)}.
-     */
-    private static final class LegacyAdapter extends AlkylStructureFragmenter {
-        /**
-         * The previous implementation.
-         */
-        private final LegacyAlkylStructureFragmenter legacyFragmenter;
-
-        /**
-         * Constructor, takes over the settings of the given fragmenter.
-         *
-         * @param aFragmenter fragmenter whose settings are used
-         */
-        LegacyAdapter(AlkylStructureFragmenter aFragmenter) {
-            this.setFragmentSideChainsSetting(aFragmenter.getFragmentSideChainsSetting());
-            this.setMaxChainLengthSetting(aFragmenter.getMaxChainLengthSetting());
-            this.setIsolateTertQuatCarbonsSetting(aFragmenter.getIsolateTertQuatCarbonSetting());
-            this.setSeparateTertQuatCarbonFromRingSetting(aFragmenter.getSeparateTertQuatCarbonFromRingSetting());
-            this.setPreserveStereoChemistrySetting(aFragmenter.getPreserveStereoChemistrySetting());
-            this.legacyFragmenter = new LegacyAlkylStructureFragmenter();
-            this.legacyFragmenter.setFragmentSideChainsSetting(aFragmenter.getFragmentSideChainsSetting());
-            this.legacyFragmenter.setMaxChainLengthSetting(aFragmenter.getMaxChainLengthSetting());
-            this.legacyFragmenter.setIsolateTertQuatCarbonsSetting(aFragmenter.getIsolateTertQuatCarbonSetting());
-            this.legacyFragmenter.setSeparateTertQuatCarbonFromRingSetting(aFragmenter.getSeparateTertQuatCarbonFromRingSetting());
-            this.legacyFragmenter.setPreserveStereoChemistrySetting(aFragmenter.getPreserveStereoChemistrySetting());
-        }
-
-        @Override
-        public boolean shouldBeFiltered(IAtomContainer aMolecule) {
-            return this.legacyFragmenter.shouldBeFiltered(aMolecule);
-        }
-
-        @Override
-        public List<IAtomContainer> fragmentMolecule(IAtomContainer aMolecule) throws CloneNotSupportedException {
-            this.legacyFragmenter.shouldBeFiltered(aMolecule);
-            return this.legacyFragmenter.fragmentMolecule(aMolecule);
-        }
+        return tmpLines;
     }
 
     /**
      * Fragments a copy of the given molecule with the given fragmenter and returns the sorted unique stereo SMILES of
-     * the fragments, or the exception class name if the fragmentation fails.
+     * the fragments (see {@link #createStereoSmilesWithFallback(IAtomContainer)}), or the exception class name if the
+     * fragmentation fails.
      *
-     * @param aFragmenter fragmenter
+     * @param anASF configured fragmenter
      * @param aMolecule molecule to fragment
      * @return sorted fragment SMILES
      */
-    private List<String> fragmentToSortedStereoSmiles(IMoleculeFragmenter aFragmenter, IAtomContainer aMolecule) {
+    private List<String> fragmentToSortedStereoSmiles(AlkylStructureFragmenter anASF, IAtomContainer aMolecule) {
         try {
             IAtomContainer tmpCopy = aMolecule.clone();
-            aFragmenter.shouldBeFiltered(tmpCopy);
+            anASF.shouldBeFiltered(tmpCopy);
             List<String> tmpSmilesList = new ArrayList<>();
-            for (IAtomContainer tmpFragment : aFragmenter.fragmentMolecule(tmpCopy)) {
-                tmpSmilesList.add(ChemUtil.createUniqueSmiles(tmpFragment, true, true));
+            for (IAtomContainer tmpFragment : anASF.fragmentMolecule(tmpCopy)) {
+                tmpSmilesList.add(this.createStereoSmilesWithFallback(tmpFragment));
             }
             Collections.sort(tmpSmilesList);
             return tmpSmilesList;
         } catch (Exception anException) {
             return List.of(anException.getClass().getSimpleName());
         }
+    }
+
+    /**
+     * Creates the unique stereo SMILES of the given molecule or, if this fails (see known limitation in the class
+     * documentation of {@link AlkylStructureFragmenter}), the unique SMILES without stereo chemistry.
+     *
+     * @param aMolecule molecule
+     * @return unique SMILES
+     */
+    private String createStereoSmilesWithFallback(IAtomContainer aMolecule) {
+        String tmpSmiles = ChemUtil.createUniqueSmiles(aMolecule, true, true);
+        return Objects.nonNull(tmpSmiles) ? tmpSmiles : ChemUtil.createUniqueSmiles(aMolecule, false, true);
     }
 
     /**
@@ -1319,5 +1314,42 @@ public class AlkylStructureFragmenterIntegrationTest {
                 anASF.getFragmentSideChainsSetting(), anASF.getMaxChainLengthSetting(),
                 anASF.getIsolateTertQuatCarbonSetting(), anASF.getSeparateTertQuatCarbonFromRingSetting(),
                 anASF.getFragmentSaturationSetting());
+    }
+
+    /**
+     * Returns a short description of the settings of the given fragmenter except the chain settings for the reference
+     * file, e.g. " isolate" for the default settings.
+     *
+     * @param anASF configured fragmenter
+     * @return short settings description, starting with a space if not empty
+     */
+    private String describeNonChainSettings(AlkylStructureFragmenter anASF) {
+        StringBuilder tmpBuilder = new StringBuilder();
+        if (anASF.getIsolateTertQuatCarbonSetting()) {
+            tmpBuilder.append(" isolate");
+        }
+        if (anASF.getSeparateTertQuatCarbonFromRingSetting()) {
+            tmpBuilder.append(" separate");
+        }
+        if (anASF.getFragmentSaturationSetting() == IMoleculeFragmenter.FragmentSaturationOption.NO_SATURATION) {
+            tmpBuilder.append(" no-saturation");
+        }
+        return tmpBuilder.toString();
+    }
+
+    /**
+     * Describes groups of setting combinations for the reference file, e.g. "chains=any; chains=3,6 isolate", where
+     * "any" stands for all tested chain settings (no dissection and all tested maximum chain lengths).
+     *
+     * @param aChainSettingsByOtherSettings chain settings ("off" or maximum chain length) by the description of the
+     *                                      other settings (see {@link #describeNonChainSettings(AlkylStructureFragmenter)})
+     * @return description of the setting groups
+     */
+    private String describeSettingGroups(Map<String, List<String>> aChainSettingsByOtherSettings) {
+        List<String> tmpGroups = new ArrayList<>();
+        aChainSettingsByOtherSettings.forEach((tmpOtherSettings, tmpChainSettings) -> tmpGroups.add("chains="
+                + (tmpChainSettings.size() == AlkylStructureFragmenterIntegrationTest.MAX_CHAIN_LENGTHS.length + 1
+                        ? "any" : String.join(",", tmpChainSettings)) + tmpOtherSettings));
+        return String.join("; ", tmpGroups);
     }
 }

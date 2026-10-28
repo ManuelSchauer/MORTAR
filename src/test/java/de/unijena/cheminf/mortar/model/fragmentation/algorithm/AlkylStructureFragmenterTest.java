@@ -29,12 +29,10 @@ import de.unijena.cheminf.mortar.model.util.ChemUtil;
 
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
-import org.openscience.cdk.AtomContainerSet;
 import org.openscience.cdk.exception.CDKException;
 import org.openscience.cdk.exception.InvalidSmilesException;
 import org.openscience.cdk.interfaces.IAtom;
 import org.openscience.cdk.interfaces.IAtomContainer;
-import org.openscience.cdk.interfaces.IAtomContainerSet;
 import org.openscience.cdk.interfaces.IBond;
 import org.openscience.cdk.interfaces.IPseudoAtom;
 import org.openscience.cdk.io.iterator.IteratingSDFReader;
@@ -42,15 +40,9 @@ import org.openscience.cdk.silent.AtomContainer;
 import org.openscience.cdk.silent.SilentChemObjectBuilder;
 import org.openscience.cdk.smiles.SmilesParser;
 
-import java.io.File;
-import java.io.FileInputStream;
+import java.io.InputStream;
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -66,7 +58,7 @@ import java.util.Set;
  * Class to test the correct working of
  * {@link AlkylStructureFragmenter}.
  *
- * @author Maximilian Rottmann
+ * @author Maximilian Rottmann, Manuel Schauer
  * @version 1.0.0.0
  */
 public class AlkylStructureFragmenterTest {
@@ -84,46 +76,33 @@ public class AlkylStructureFragmenterTest {
     //
     //<editor-fold desc="Example Usage">
     /**
-     * Method to showcase the usage of the AlkylStructureFragmenter class.
-     * The molecules used in this 'test' are all molecules used in the tests below, complemented by various substructures
-     * the class will detect and return intact.
+     * Method to showcase the usage of the AlkylStructureFragmenter class on the structures of the substructure library:
+     * every structure is checked with the filter and preprocessing methods and fragmented with the default settings,
+     * the fragments contain all atoms of the structure. The resulting fragments themselves are checked against the
+     * reference file in AlkylStructureFragmenterIntegrationTest.referenceFragmentsTest().
+     *
+     * @throws Exception if the structures cannot be read or fragmented
      */
     @Test
     public void exampleUsageTest() throws Exception {
-        //get file reader with test structures file
-        URL tmpURL = this.getClass().getResource("ASF_Test_Substructure_Library.sdf");
-        Assertions.assertNotNull(tmpURL);
-        File tmpResourceFile = Paths.get(tmpURL.toURI()).toFile();
-        IteratingSDFReader tmpSDFReader = new IteratingSDFReader(new FileInputStream(tmpResourceFile),
-                SilentChemObjectBuilder.getInstance());
-        //read structures into AtomContainerSet
-        IAtomContainerSet tmpStructuresSet = new AtomContainerSet();
-        while (tmpSDFReader.hasNext()) {
-            tmpStructuresSet.addAtomContainer(tmpSDFReader.next());
-        }
-        //get file reader with test structures expected fragments file
-        URL tmpExpectedFragmentsURL = this.getClass().getResource("ASF_Test_Substructure_Library_Fragments_Strings");
-        Assertions.assertNotNull(tmpExpectedFragmentsURL);
-        List<String> tmpExpectedSMILESStringList = Files.readAllLines(
-                Path.of(tmpExpectedFragmentsURL.toURI()),
-                StandardCharsets.UTF_8);
-        //constructs an AlkylStructureFragmenter with default settings
-        AlkylStructureFragmenter tmpASF = new AlkylStructureFragmenter();
-        //generate fragments and add SMILES to fragment list
-        List<String> tmpFragmentsSMILESList = new ArrayList<>();
-        for (IAtomContainer tmpAC : tmpStructuresSet.atomContainers()) {
-            this.preprocessTestMolecule(tmpASF, tmpAC,
-                    false, false, true);
-            int tmpPreFragmentationCount = this.countAtoms(tmpAC);
-            List<IAtomContainer> tmpACList = tmpASF.fragmentMolecule(tmpAC);
-            if (this.checkChemicalFormula(tmpPreFragmentationCount, tmpACList)) {
-                tmpFragmentsSMILESList.addAll(this.generateSMILESFromACList(tmpACList, false));
+        //read the test structures
+        List<IAtomContainer> tmpStructures = new ArrayList<>();
+        try (InputStream tmpStream = this.getClass().getResourceAsStream("ASF_Test_Substructure_Library.sdf");
+             IteratingSDFReader tmpSDFReader = new IteratingSDFReader(tmpStream, SilentChemObjectBuilder.getInstance())) {
+            while (tmpSDFReader.hasNext()) {
+                tmpStructures.add(tmpSDFReader.next());
             }
         }
-        //check if match
-        boolean tmpTestSuccessful = this.compareListsIgnoringOrder(tmpExpectedSMILESStringList, tmpFragmentsSMILESList);
-        if (!tmpTestSuccessful) {
-            Assertions.fail();
+        Assertions.assertFalse(tmpStructures.isEmpty());
+        //constructs an AlkylStructureFragmenter with default settings
+        AlkylStructureFragmenter tmpASF = new AlkylStructureFragmenter();
+        for (IAtomContainer tmpStructure : tmpStructures) {
+            //the structures are pure hydrocarbons, so they are not filtered and need no preprocessing
+            this.preprocessTestMolecule(tmpASF, tmpStructure, false, false, true);
+            int tmpPreFragmentationCount = this.countAtoms(tmpStructure);
+            List<IAtomContainer> tmpFragments = tmpASF.fragmentMolecule(tmpStructure);
+            Assertions.assertFalse(tmpFragments.isEmpty());
+            Assertions.assertTrue(this.checkChemicalFormula(tmpPreFragmentationCount, tmpFragments));
         }
     }
     //</editor-fold>
@@ -274,7 +253,7 @@ public class AlkylStructureFragmenterTest {
     //</editor-fold>
     /**
      * Test that the returned fragments consist of new atom and bond instances: changing a fragment must not change the
-     * input molecule (formerly a test of the deep copy methods with butene, which used to make problems).
+     * input molecule.
      *
      * @throws Exception if SMILES cannot be parsed or fragmentation fails
      */
@@ -1183,8 +1162,7 @@ public class AlkylStructureFragmenterTest {
     /**
      * Tests tertiary/quaternary carbons that are bonded to a ring and separated from it (isolation and separation
      * settings active). The carbon is isolated like any other tertiary/quaternary carbon and its neighbors are treated as
-     * ordinary chain atoms, so an ethyl group is returned as ethane. (The previous implementation additionally cut the
-     * first chain atom of every neighbor and returned the ethyl group as two methanes.)
+     * ordinary chain atoms, so an ethyl group is returned as ethane.
      *
      * @throws InvalidSmilesException if SMILES cannot be parsed
      * @throws CloneNotSupportedException if cloning of the original molecule is not supported
@@ -1213,8 +1191,7 @@ public class AlkylStructureFragmenterTest {
     /**
      * Tests tertiary/quaternary carbons kept at a ring (default settings) that are bonded to a conjugated system. Like all
      * non-isolated tertiary/quaternary carbons (e.g. with the isolation setting deactivated), they keep their bond to
-     * the conjugated system, so ring, tertiary/quaternary carbon and conjugated system form one fragment. (The previous
-     * implementation cut this bond only in this setting combination, but kept it with isolation deactivated.)
+     * the conjugated system, so ring, tertiary/quaternary carbon and conjugated system form one fragment.
      *
      * @throws InvalidSmilesException if SMILES cannot be parsed
      * @throws CloneNotSupportedException if cloning of the original molecule is not supported
@@ -1639,10 +1616,9 @@ public class AlkylStructureFragmenterTest {
     //
     //<editor-fold desc="Null Atom Input">
     /**
-     * Test for the handling of molecules containing null atoms (formerly a test of the inner class MolecularArrays,
-     * which skipped null elements). Since the CDK does not allow the addition of null atoms to existing atom container
-     * instances, reflection is used in this test to manipulate the inner fields of the atom container. Such molecules
-     * are always filtered, independent of the setting for keeping non-fragmentable molecules.
+     * Test for the handling of molecules containing null atoms. Since the CDK does not allow the addition of null atoms
+     * to existing atom container instances, reflection is used in this test to manipulate the inner fields of the atom
+     * container. Such molecules are always filtered, independent of the setting for keeping non-fragmentable molecules.
      *
      * @throws InvalidSmilesException if parser cannot parse the given SMILES
      * @throws NoSuchFieldException if either the atoms or bonds field can not be found
