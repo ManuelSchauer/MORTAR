@@ -61,6 +61,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Integration tests for {@link AlkylStructureFragmenter}.
@@ -129,7 +130,7 @@ public class AlkylStructureFragmenterIntegrationTest {
     /**
      * Statistics of the stereo chemistry checks (see checkStereoChemistry()), collected over all tests of this class.
      */
-    private static final Map<String, Integer> STEREO_STATISTICS = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final Map<String, Integer> STEREO_STATISTICS = new ConcurrentHashMap<>();
     /**
      * Key of a test-only atom property holding the index of the atom in the unpermuted molecule.
      */
@@ -229,7 +230,7 @@ public class AlkylStructureFragmenterIntegrationTest {
         for (String tmpSmiles : tmpStereoSmiles) {
             tmpMolecules.add(tmpParser.parseSmiles(tmpSmiles));
         }
-        STEREO_STATISTICS.clear();
+        AlkylStructureFragmenterIntegrationTest.STEREO_STATISTICS.clear();
         List<String> tmpViolations = new ArrayList<>();
         for (AlkylStructureFragmenter tmpASF : this.createAllSettingCombinations()) {
             for (boolean tmpPreserveStereo : new boolean[]{true, false}) {
@@ -239,10 +240,10 @@ public class AlkylStructureFragmenterIntegrationTest {
                 }
             }
         }
-        STEREO_STATISTICS.forEach((tmpKey, tmpValue) -> System.out.println("STATISTICS " + tmpKey + ": " + tmpValue));
+        AlkylStructureFragmenterIntegrationTest.STEREO_STATISTICS.forEach((tmpKey, tmpValue) -> System.out.println("STATISTICS " + tmpKey + ": " + tmpValue));
         tmpViolations.forEach(System.out::println);
-        Assertions.assertTrue(STEREO_STATISTICS.getOrDefault("tetrahedral centers expected in fragments", 0) > 0);
-        Assertions.assertTrue(STEREO_STATISTICS.getOrDefault("double bond stereo expected in fragments", 0) > 0);
+        Assertions.assertTrue(AlkylStructureFragmenterIntegrationTest.STEREO_STATISTICS.getOrDefault("tetrahedral centers expected in fragments", 0) > 0);
+        Assertions.assertTrue(AlkylStructureFragmenterIntegrationTest.STEREO_STATISTICS.getOrDefault("double bond stereo expected in fragments", 0) > 0);
         Assertions.assertTrue(tmpViolations.isEmpty(), () -> tmpViolations.size() + " violations:\n"
                 + String.join("\n", tmpViolations.subList(0, Math.min(tmpViolations.size(), 200))));
     }
@@ -334,7 +335,9 @@ public class AlkylStructureFragmenterIntegrationTest {
      * <p>
      * If the test fails, the actual results are written to {@value #ACTUAL_REFERENCE_FRAGMENTS_FILE_PATH}. If the
      * changes are intended (e.g. after a change of the fragmentation rules), review the differences and replace the
-     * reference file with this file.
+     * reference file with this file. The fragments are recorded as unique SMILES of the CDK, so an update of the CDK
+     * that changes its canonical SMILES (e.g. atom order or stereo notation) also fails this test; after checking that
+     * only the notation of the fragments changed, the reference file can be replaced in the same way.
      * </p>
      *
      * @throws Exception if the test structures or the reference file cannot be read
@@ -349,8 +352,11 @@ public class AlkylStructureFragmenterIntegrationTest {
                 tmpExpectedLines.addAll(new String(tmpStream.readAllBytes(), StandardCharsets.UTF_8).lines().toList());
             }
         }
-        List<String> tmpExpectedContent = tmpExpectedLines.stream().filter(tmpLine -> !tmpLine.startsWith("#")).toList();
-        List<String> tmpActualContent = tmpActualLines.stream().filter(tmpLine -> !tmpLine.startsWith("#")).toList();
+        //comment lines are ignored, the content lines are compared with their line numbers in the files kept for messages
+        List<Integer> tmpExpectedLineNumbers = this.getContentLineNumbers(tmpExpectedLines);
+        List<Integer> tmpActualLineNumbers = this.getContentLineNumbers(tmpActualLines);
+        List<String> tmpExpectedContent = tmpExpectedLineNumbers.stream().map(tmpNumber -> tmpExpectedLines.get(tmpNumber - 1)).toList();
+        List<String> tmpActualContent = tmpActualLineNumbers.stream().map(tmpNumber -> tmpActualLines.get(tmpNumber - 1)).toList();
         if (tmpExpectedContent.equals(tmpActualContent)) {
             return;
         }
@@ -359,16 +365,34 @@ public class AlkylStructureFragmenterIntegrationTest {
         Files.write(tmpActualFile, tmpActualLines, StandardCharsets.UTF_8);
         List<String> tmpDifferences = new ArrayList<>();
         for (int i = 0; i < Math.max(tmpExpectedContent.size(), tmpActualContent.size()) && tmpDifferences.size() < 20; i++) {
-            String tmpExpected = i < tmpExpectedContent.size() ? tmpExpectedContent.get(i) : "<none>";
-            String tmpActual = i < tmpActualContent.size() ? tmpActualContent.get(i) : "<none>";
-            if (!tmpExpected.equals(tmpActual)) {
-                tmpDifferences.add(String.format("line %d:%n  expected: %s%n  actual:   %s", i + 1, tmpExpected, tmpActual));
+            String tmpExpected = i < tmpExpectedContent.size()
+                    ? String.format("(reference file line %d) %s", tmpExpectedLineNumbers.get(i), tmpExpectedContent.get(i)) : "<none>";
+            String tmpActual = i < tmpActualContent.size()
+                    ? String.format("(actual file line %d) %s", tmpActualLineNumbers.get(i), tmpActualContent.get(i)) : "<none>";
+            if (i >= tmpExpectedContent.size() || i >= tmpActualContent.size() || !tmpExpectedContent.get(i).equals(tmpActualContent.get(i))) {
+                tmpDifferences.add(String.format("expected %s%n  actual %s", tmpExpected, tmpActual));
             }
         }
         Assertions.fail(String.format("Fragments differ from the reference file %s, actual results written to %s "
                         + "(replace the reference file with it if the changes are intended). First differences:%n%s",
                 AlkylStructureFragmenterIntegrationTest.REFERENCE_FRAGMENTS_FILE_NAME, tmpActualFile.toAbsolutePath(),
                 String.join(System.lineSeparator(), tmpDifferences)));
+    }
+
+    /**
+     * Returns the (1-based) line numbers of the given lines that are no comment lines, i.e. do not start with "#".
+     *
+     * @param aLines lines of a reference file
+     * @return line numbers of the content lines
+     */
+    private List<Integer> getContentLineNumbers(List<String> aLines) {
+        List<Integer> tmpLineNumbers = new ArrayList<>(aLines.size());
+        for (int i = 0; i < aLines.size(); i++) {
+            if (!aLines.get(i).startsWith("#")) {
+                tmpLineNumbers.add(i + 1);
+            }
+        }
+        return tmpLineNumbers;
     }
 
     /**
@@ -652,16 +676,16 @@ public class AlkylStructureFragmenterIntegrationTest {
                             || aUsedBondKeys.contains(this.atomPairKey(tmpFocus, tmpCarrierIndex)));
                 }
                 if (!tmpIsComplete) {
-                    STEREO_STATISTICS.merge("tetrahedral centers with cut neighbors (not transferable)", 1, Integer::sum);
+                    AlkylStructureFragmenterIntegrationTest.STEREO_STATISTICS.merge("tetrahedral centers with cut neighbors (not transferable)", 1, Integer::sum);
                     continue;
                 }
                 IAtomContainer tmpFragment = aFragmentList.get(tmpFragmentIndex[tmpFocus]);
                 if (!this.isStereocenterInFragment(tmpFragment, tmpFocus)) {
                     //substituents became identical by fragmentation, the stereo element has to be removed
-                    STEREO_STATISTICS.merge("tetrahedral centers no longer stereocenters in fragment", 1, Integer::sum);
+                    AlkylStructureFragmenterIntegrationTest.STEREO_STATISTICS.merge("tetrahedral centers no longer stereocenters in fragment", 1, Integer::sum);
                     continue;
                 }
-                STEREO_STATISTICS.merge("tetrahedral centers expected in fragments", 1, Integer::sum);
+                AlkylStructureFragmenterIntegrationTest.STEREO_STATISTICS.merge("tetrahedral centers expected in fragments", 1, Integer::sum);
                 TetrahedralChirality tmpFragmentChirality = null;
                 for (IStereoElement tmpElement : tmpFragment.stereoElements()) {
                     if (tmpElement instanceof TetrahedralChirality tmpCandidate
@@ -684,7 +708,7 @@ public class AlkylStructureFragmenterIntegrationTest {
                 } else if ((tmpChirality.getConfigOrder() == tmpFragmentChirality.getConfigOrder()) != (tmpParity == 0)) {
                     tmpViolations.add(String.format("%s: configuration of stereo center %d inverted", aContext, tmpFocus));
                 } else {
-                    STEREO_STATISTICS.merge("tetrahedral centers transferred correctly", 1, Integer::sum);
+                    AlkylStructureFragmenterIntegrationTest.STEREO_STATISTICS.merge("tetrahedral centers transferred correctly", 1, Integer::sum);
                 }
             } else if (tmpInputElement instanceof DoubleBondStereochemistry tmpDoubleBondStereo) {
                 IBond tmpFocusBond = tmpDoubleBondStereo.getStereoBond();
@@ -700,15 +724,15 @@ public class AlkylStructureFragmenterIntegrationTest {
                     tmpIsComplete &= tmpSubstituents[i] >= 0 && aUsedBondKeys.contains(this.atomPairKey(tmpSideIndex, tmpSubstituents[i]));
                 }
                 if (!tmpIsComplete) {
-                    STEREO_STATISTICS.merge("double bond stereo with cut substituents (not transferable)", 1, Integer::sum);
+                    AlkylStructureFragmenterIntegrationTest.STEREO_STATISTICS.merge("double bond stereo with cut substituents (not transferable)", 1, Integer::sum);
                     continue;
                 }
                 IAtomContainer tmpFragment = aFragmentList.get(tmpFragmentIndex[tmpBegin]);
                 if (!this.isStereocenterInFragment(tmpFragment, tmpBegin) || !this.isStereocenterInFragment(tmpFragment, tmpEnd)) {
-                    STEREO_STATISTICS.merge("double bonds no longer stereogenic in fragment", 1, Integer::sum);
+                    AlkylStructureFragmenterIntegrationTest.STEREO_STATISTICS.merge("double bonds no longer stereogenic in fragment", 1, Integer::sum);
                     continue;
                 }
-                STEREO_STATISTICS.merge("double bond stereo expected in fragments", 1, Integer::sum);
+                AlkylStructureFragmenterIntegrationTest.STEREO_STATISTICS.merge("double bond stereo expected in fragments", 1, Integer::sum);
                 DoubleBondStereochemistry tmpFragmentStereo = null;
                 for (IStereoElement tmpElement : tmpFragment.stereoElements()) {
                     if (tmpElement instanceof DoubleBondStereochemistry tmpCandidate) {
@@ -739,10 +763,10 @@ public class AlkylStructureFragmenterIntegrationTest {
                 if ((tmpDoubleBondStereo.getConfigOrder() == tmpFragmentStereo.getConfigOrder()) != (tmpFlips % 2 == 0)) {
                     tmpViolations.add(String.format("%s: configuration of double bond %d=%d inverted", aContext, tmpBegin, tmpEnd));
                 } else {
-                    STEREO_STATISTICS.merge("double bond stereo transferred correctly", 1, Integer::sum);
+                    AlkylStructureFragmenterIntegrationTest.STEREO_STATISTICS.merge("double bond stereo transferred correctly", 1, Integer::sum);
                 }
             } else {
-                STEREO_STATISTICS.merge("other stereo element types (not transferred by design): " + tmpInputElement.getClass().getSimpleName(), 1, Integer::sum);
+                AlkylStructureFragmenterIntegrationTest.STEREO_STATISTICS.merge("other stereo element types (not transferred by design): " + tmpInputElement.getClass().getSimpleName(), 1, Integer::sum);
             }
         }
         for (IStereoElement tmpElement : tmpUnmatchedFragmentElements) {
@@ -908,12 +932,18 @@ public class AlkylStructureFragmenterIntegrationTest {
                 tmpIsConjugated[tmpEnd] = true;
             }
         }
-        for (IBond tmpBond : aMolecule.bonds()) {
-            int tmpBegin = aMolecule.indexOf(tmpBond.getBegin());
-            int tmpEnd = aMolecule.indexOf(tmpBond.getEnd());
-            if (tmpBond.getOrder() != IBond.Order.SINGLE && (tmpIsConjugated[tmpBegin] || tmpIsConjugated[tmpEnd])) {
-                tmpIsConjugated[tmpBegin] = true;
-                tmpIsConjugated[tmpEnd] = true;
+        //repeated until nothing changes, so that the result does not depend on the bond order (e.g. cumulated double bonds)
+        boolean tmpHasChanged = true;
+        while (tmpHasChanged) {
+            tmpHasChanged = false;
+            for (IBond tmpBond : aMolecule.bonds()) {
+                int tmpBegin = aMolecule.indexOf(tmpBond.getBegin());
+                int tmpEnd = aMolecule.indexOf(tmpBond.getEnd());
+                if (tmpBond.getOrder() != IBond.Order.SINGLE && tmpIsConjugated[tmpBegin] != tmpIsConjugated[tmpEnd]) {
+                    tmpIsConjugated[tmpBegin] = true;
+                    tmpIsConjugated[tmpEnd] = true;
+                    tmpHasChanged = true;
+                }
             }
         }
         //fragment index of every input atom

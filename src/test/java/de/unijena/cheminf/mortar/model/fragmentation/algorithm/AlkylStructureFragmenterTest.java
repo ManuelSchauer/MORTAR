@@ -137,7 +137,7 @@ public class AlkylStructureFragmenterTest {
         for (IAtomContainer tmpAC : tmpASF.fragmentMolecule(tmpTestAC)) {
             tmpActualFragmentList.add(ChemUtil.createUniqueSmiles(tmpAC, false));
         }
-        Assertions.assertTrue(this.compareListsIgnoringOrder(tmpActualFragmentList, tmpExpectedFragmentList));
+        this.assertSameElementsIgnoringOrder(tmpActualFragmentList, tmpExpectedFragmentList);
     }
     //<editor-fold desc="Classification Tests">
     /**
@@ -258,14 +258,13 @@ public class AlkylStructureFragmenterTest {
      * @throws Exception if SMILES cannot be parsed or fragmentation fails
      */
     @Test
-    public void deepCopyButeneTest() throws Exception {
+    public void fragmentsAreIndependentCopiesTest() throws Exception {
         AlkylStructureFragmenter tmpASF = new AlkylStructureFragmenter();
         SmilesParser tmpParser = new SmilesParser(SilentChemObjectBuilder.getInstance());
         IAtomContainer tmpButeneContainer = tmpParser.parseSmiles("C=CCC");
         String tmpButeneSMILES = ChemUtil.createUniqueSmiles(tmpButeneContainer, false);
         List<IAtomContainer> tmpFragments = tmpASF.fragmentMolecule(tmpButeneContainer);
-        Assertions.assertTrue(this.compareListsIgnoringOrder(this.generateSMILESFromACList(tmpFragments, false),
-                new ArrayList<>(List.of("C=C", "CC"))));
+        this.assertSameElementsIgnoringOrder(this.generateSMILESFromACList(tmpFragments, false), List.of("C=C", "CC"));
         for (IAtomContainer tmpFragment : tmpFragments) {
             for (IAtom tmpAtom : tmpFragment.atoms()) {
                 for (IAtom tmpInputAtom : tmpButeneContainer.atoms()) {
@@ -313,8 +312,7 @@ public class AlkylStructureFragmenterTest {
         tmpExpectedSMILESList.add("CCC");
         tmpExpectedSMILESList.add("*C(*)(*)*");
         tmpExpectedSMILESList.add("*C(*)*");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
         //alternate setting value
         tmpASF.setIsolateTertQuatCarbonsSetting(false);
         tmpFragmentsSMILESList.clear();
@@ -329,8 +327,7 @@ public class AlkylStructureFragmenterTest {
         tmpExpectedSMILESList.add("CC(C)(C)C");
         tmpExpectedSMILESList.add("CC(C)C");
         tmpExpectedSMILESList.add("C");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
     }
     /**
      * Method testing correct fragmentation with a basic example molecule.
@@ -359,8 +356,7 @@ public class AlkylStructureFragmenterTest {
         tmpExpectedSMILESList.add("C");
         tmpExpectedSMILESList.add("C");
         tmpExpectedSMILESList.add("C=C");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
         //test structure: C=CCC
         tmpTestStructureAC = tmpParser.parseSmiles("C=CCC");
         Assertions.assertFalse(tmpASF.shouldBeFiltered(tmpTestStructureAC));
@@ -377,8 +373,7 @@ public class AlkylStructureFragmenterTest {
         tmpExpectedSMILESList.clear();
         tmpExpectedSMILESList.add("CC");
         tmpExpectedSMILESList.add("C=C");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
         //test structure: CC#CC
         tmpTestStructureAC = tmpParser.parseSmiles("CC#CC");
         Assertions.assertFalse(tmpASF.shouldBeFiltered(tmpTestStructureAC));
@@ -396,8 +391,7 @@ public class AlkylStructureFragmenterTest {
         tmpExpectedSMILESList.add("C");
         tmpExpectedSMILESList.add("C");
         tmpExpectedSMILESList.add("C#C");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
         //test structure: CC#CC
         tmpTestStructureAC = tmpParser.parseSmiles("C1=CCCCC1");
         Assertions.assertFalse(tmpASF.shouldBeFiltered(tmpTestStructureAC));
@@ -413,8 +407,7 @@ public class AlkylStructureFragmenterTest {
         }
         tmpExpectedSMILESList.clear();
         tmpExpectedSMILESList.add("C1=CCCCC1");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
     }
     /**
      * Method testing correct fragmentation with a basic example molecule.
@@ -439,8 +432,7 @@ public class AlkylStructureFragmenterTest {
         }
         List<String> tmpExpectedSMILESList = new ArrayList<>();
         tmpExpectedSMILESList.add("C1CCCCC1");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
         //test structure: c1ccccc1
         tmpTestStructureAC = tmpParser.parseSmiles("c1ccccc1");
         Assertions.assertFalse(tmpASF.shouldBeFiltered(tmpTestStructureAC));
@@ -456,8 +448,7 @@ public class AlkylStructureFragmenterTest {
         }
         tmpExpectedSMILESList.clear();
         tmpExpectedSMILESList.add("c1ccccc1");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
     }
     /**
      * Method testing correct fragmentation with a basic example molecule.
@@ -482,8 +473,7 @@ public class AlkylStructureFragmenterTest {
         }
         List<String> tmpExpectedSMILESList = new ArrayList<>();
         tmpExpectedSMILESList.add("C1CC2CCCC2C1");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
         //test structure: C=1C=CC(=CC1)C2=CC=CC=C2
         tmpTestStructureAC = tmpParser.parseSmiles("C=1C=CC(=CC1)C2=CC=CC=C2");
         Assertions.assertFalse(tmpASF.shouldBeFiltered(tmpTestStructureAC));
@@ -499,8 +489,7 @@ public class AlkylStructureFragmenterTest {
         }
         tmpExpectedSMILESList.clear();
         tmpExpectedSMILESList.add("C=1C=CC(=CC1)C2=CC=CC=C2");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
     }
     /**
      * Method testing correct fragmentation with a basic example molecule.
@@ -526,8 +515,7 @@ public class AlkylStructureFragmenterTest {
         List<String> tmpExpectedSMILESList = new ArrayList<>();
         tmpExpectedSMILESList.add("C1CCCCC1");
         tmpExpectedSMILESList.add("C1CCCCC1");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
         //alternate setting value since two connected rings also have at least tertiary configuration at their joint atoms
         //though there should be no difference in resulting fragments
         tmpASF.setSeparateTertQuatCarbonFromRingSetting(true);
@@ -539,8 +527,7 @@ public class AlkylStructureFragmenterTest {
         if (this.checkChemicalFormula(tmpPreFragmenationCount, tmpACList)) {
             tmpFragmentsSMILESList.addAll(this.generateSMILESFromACList(tmpACList, false));
         }
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
     }
     /**
      * Method testing the correct handling of spiro configurated rings with an example molecule.
@@ -565,8 +552,7 @@ public class AlkylStructureFragmenterTest {
         }
         List<String> tmpExpectedSMILESList = new ArrayList<>();
         tmpExpectedSMILESList.add("C1CCC2(CC1)CCCCC2");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
     }
     /**
      * Method testing the correct handling of tertiary and quaternary atoms attached to rings with an example molecule.
@@ -592,8 +578,7 @@ public class AlkylStructureFragmenterTest {
         }
         List<String> tmpExpectedSMILESList = new ArrayList<>();
         tmpExpectedSMILESList.add("CC(C)(C)C1CCCCC1");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
         //combinations of relevant settings
         //tmpASF.setIsolateTertQuatCarbonsSetting(true); -> default value
         tmpASF.setSeparateTertQuatCarbonFromRingSetting(true);
@@ -611,8 +596,7 @@ public class AlkylStructureFragmenterTest {
         tmpExpectedSMILESList.add("C");
         tmpExpectedSMILESList.add("C");
         tmpExpectedSMILESList.add("C");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                    new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
         //
         tmpASF.setIsolateTertQuatCarbonsSetting(false);
         //tmpASF.setSeparateTertQuatCarbonFromRingSetting(true); -> still correct value from test above
@@ -627,8 +611,7 @@ public class AlkylStructureFragmenterTest {
         tmpExpectedSMILESList.clear();
         tmpExpectedSMILESList.add("*C(C)(C)C");
         tmpExpectedSMILESList.add("C1CCCCC1");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
         //
         //tmpASF.setIsolateTertQuatCarbonsSetting(false); -> still correct value from test above
         tmpASF.setSeparateTertQuatCarbonFromRingSetting(false);
@@ -642,8 +625,7 @@ public class AlkylStructureFragmenterTest {
         }
         tmpExpectedSMILESList.clear();
         tmpExpectedSMILESList.add("CC(C)(C)C1CCCCC1");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
     }
     /**
      * Method to test correct extraction of allene structures.
@@ -668,8 +650,7 @@ public class AlkylStructureFragmenterTest {
         tmpExpectedSMILESList.add("C(=C)=C");
         tmpExpectedSMILESList.add("C");
         tmpExpectedSMILESList.add("C");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
     }
     /**
      * Method testing correct handling of conjugated aromatic rings, conjoined with a single bond,
@@ -694,8 +675,7 @@ public class AlkylStructureFragmenterTest {
         }
         List<String> tmpExpectedSMILESList = new ArrayList<>();
         tmpExpectedSMILESList.add("c1ccc(cc1)c2ccccc2");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
     }
     /**
      * Method testing for correct behavior in dissection and separation of linear carbon chains of varying sizes (including 'no restrictions applied').
@@ -717,8 +697,7 @@ public class AlkylStructureFragmenterTest {
         tmpExpectedSMILESList.add("CC");
         tmpExpectedSMILESList.add("CCCCCC");
         tmpExpectedSMILESList.add("CCCCCC");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
         //alternate setting value -> maximum length of linear chains = 7
         tmpASF.setMaxChainLengthSetting(7);
         tmpFragmentsSMILESList.clear();
@@ -732,8 +711,7 @@ public class AlkylStructureFragmenterTest {
         }
         tmpExpectedSMILESList.add("CCCCCCC");
         tmpExpectedSMILESList.add("CCCCCCC");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
         tmpASF.setFragmentSideChainsSetting(false);
         tmpExpectedSMILESList.clear();
         tmpFragmentsSMILESList.clear();
@@ -745,8 +723,7 @@ public class AlkylStructureFragmenterTest {
             tmpFragmentsSMILESList.addAll(this.generateSMILESFromACList(tmpACList, false));
         }
         tmpExpectedSMILESList.add("CCCCCCCCCCCCCC");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
     }
     //</editor-fold>
     //
@@ -780,8 +757,7 @@ public class AlkylStructureFragmenterTest {
         tmpExpectedSMILESList.add("C=C1C=2C=CC=CC2CC3CCCCC13");
         tmpExpectedSMILESList.add("C");
         tmpExpectedSMILESList.add("C");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
     }
     /**
      * Method testing correct fragmentation with a specific example molecule.
@@ -814,8 +790,7 @@ public class AlkylStructureFragmenterTest {
         tmpExpectedSMILESList.add("CCC");
         tmpExpectedSMILESList.add("*C(*)(*)*");
         tmpExpectedSMILESList.add("*C(*)(*)*");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
         //alternate setting values
         tmpASF.setIsolateTertQuatCarbonsSetting(false);
         tmpFragmentsSMILESList.clear();
@@ -830,8 +805,7 @@ public class AlkylStructureFragmenterTest {
         tmpExpectedSMILESList.add("CC");
         tmpExpectedSMILESList.add("CC");
         tmpExpectedSMILESList.add("CC(C)(C)CC(C)(C)C");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
     }
     /**
      * Method testing correct fragmentation with a specific example molecule.
@@ -862,8 +836,7 @@ public class AlkylStructureFragmenterTest {
         tmpExpectedSMILESList.add("C");
         tmpExpectedSMILESList.add("C");
         tmpExpectedSMILESList.add("C1CCCC1");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
     }
     /**
      * Tests molecule "CC(C)(C)CC1CCC(=C)C2CC21" which showed difficulties in fragmentation in past versions.
@@ -892,8 +865,7 @@ public class AlkylStructureFragmenterTest {
         tmpExpectedSMILESList.add("C");
         tmpExpectedSMILESList.add("C");
         tmpExpectedSMILESList.add("C=C1CCCC2CC12");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
         tmpASF.setIsolateTertQuatCarbonsSetting(false);
         tmpFragmentsSMILESList.clear();
         tmpPreFragmenationCount = this.countAtoms(tmpTestStructureAC);
@@ -906,8 +878,7 @@ public class AlkylStructureFragmenterTest {
         tmpExpectedSMILESList.clear();
         tmpExpectedSMILESList.add("CC(C)(C)C");
         tmpExpectedSMILESList.add("C=C1CCCC2CC12");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
     }
     /**
      * Tests correct functionality of tetrahedral stereo chemistry preservation with concept molecule containing a central
@@ -936,8 +907,7 @@ public class AlkylStructureFragmenterTest {
         }
         List<String> tmpExpectedSMILESList = new ArrayList<>();
         tmpExpectedSMILESList.add("c1ccc(cc1)[C@@](C2CCCCC2)(C3CCCC3)c4cccc5ccccc54");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
         tmpASF.setPreserveStereoChemistrySetting(false);
         tmpFragmentsSMILESList.clear();
         tmpExpectedSMILESList.clear();
@@ -945,8 +915,7 @@ public class AlkylStructureFragmenterTest {
         if (this.checkChemicalFormula(tmpPreFragmenationCount, tmpACList)) {
             tmpFragmentsSMILESList.addAll(this.generateSMILESFromACList(tmpACList, false));
         }
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
         //test structure: c1ccccc1[C@@H](C1CCC2CCCC12)C1CCCCC1
         tmpTestStructureAC = tmpParser.parseSmiles("c1ccccc1[C@@H](C1CCC2CCCC12)C1CCCCC1");
         this.preprocessTestMolecule(tmpASF, tmpTestStructureAC,
@@ -962,8 +931,7 @@ public class AlkylStructureFragmenterTest {
         }
         tmpExpectedSMILESList.clear();
         tmpExpectedSMILESList.add("c1ccc(cc1)[C@H](C2CCCCC2)C3CCC4CCCC43");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
         tmpASF.setPreserveStereoChemistrySetting(false);
         tmpFragmentsSMILESList.clear();
         tmpExpectedSMILESList.clear();
@@ -971,8 +939,7 @@ public class AlkylStructureFragmenterTest {
         if (this.checkChemicalFormula(tmpPreFragmenationCount, tmpACList)) {
             tmpFragmentsSMILESList.addAll(this.generateSMILESFromACList(tmpACList, false));
         }
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
     }
     /**
      * Tests correct functionality of double bond stereo chemistry preservation with concept molecule with consecutive double bonds.
@@ -999,8 +966,7 @@ public class AlkylStructureFragmenterTest {
         }
         List<String> tmpExpectedSMILESList = new ArrayList<>();
         tmpExpectedSMILESList.add("C=C/C=C\\C=C");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
         tmpASF.setPreserveStereoChemistrySetting(false);
         tmpFragmentsSMILESList.clear();
         tmpExpectedSMILESList.clear();
@@ -1008,8 +974,7 @@ public class AlkylStructureFragmenterTest {
         if (this.checkChemicalFormula(tmpPreFragmenationCount, tmpACList)) {
             tmpFragmentsSMILESList.addAll(this.generateSMILESFromACList(tmpACList, false));
         }
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
     }/**
      * Tests correct functionality of specific ring, tertiary and linear chain configuration.
      * It is tested with a derivative of Cholesterin (CNP0174859.1), moreover, the alkyl base structure
@@ -1043,8 +1008,7 @@ public class AlkylStructureFragmenterTest {
         tmpExpectedSMILESList.add("CC");
         tmpExpectedSMILESList.add("C");
         tmpExpectedSMILESList.add("C");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
     }
 
     /**
@@ -1373,8 +1337,7 @@ public class AlkylStructureFragmenterTest {
         tmpExpectedSMILESList.add("C"); //methane connecting triple bond and quaternary system
         tmpExpectedSMILESList.add("C#C"); //triple bond
         tmpExpectedSMILESList.add("C"); //methane residual of triple bond chain
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
         //alternate settings
         tmpASF.setFragmentSideChainsSetting(false);
         tmpFragmentsSMILESList.clear();
@@ -1397,8 +1360,7 @@ public class AlkylStructureFragmenterTest {
         tmpExpectedSMILESList.add("C"); //methane connecting triple bond and quaternary system
         tmpExpectedSMILESList.add("C#C"); //triple bond
         tmpExpectedSMILESList.add("C"); //methane residual of triple bond chain
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
         //
         tmpASF.setFragmentSideChainsSetting(true);
         tmpASF.setMaxChainLengthSetting(3);
@@ -1424,8 +1386,7 @@ public class AlkylStructureFragmenterTest {
         tmpExpectedSMILESList.add("C"); //methane connecting triple bond and quaternary system
         tmpExpectedSMILESList.add("C#C"); //triple bond
         tmpExpectedSMILESList.add("C"); //methane residual of triple bond chain
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
         //
         tmpASF.setMaxChainLengthSetting(6); //max chain length default value
         tmpASF.setSeparateTertQuatCarbonFromRingSetting(true);
@@ -1453,8 +1414,7 @@ public class AlkylStructureFragmenterTest {
         tmpExpectedSMILESList.add("C#C");
         tmpExpectedSMILESList.add("CCC");
         tmpExpectedSMILESList.add("CCCCCC");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
         //
         tmpASF.setSeparateTertQuatCarbonFromRingSetting(false);
         tmpASF.setIsolateTertQuatCarbonsSetting(false);
@@ -1476,8 +1436,7 @@ public class AlkylStructureFragmenterTest {
         tmpExpectedSMILESList.add("C");
         tmpExpectedSMILESList.add("CCCCCC");
         tmpExpectedSMILESList.add("CC");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
         //
         tmpASF.setSeparateTertQuatCarbonFromRingSetting(true);
         tmpFragmentsSMILESList.clear();
@@ -1499,8 +1458,7 @@ public class AlkylStructureFragmenterTest {
         tmpExpectedSMILESList.add("CCCCCC");
         tmpExpectedSMILESList.add("CC");
         tmpExpectedSMILESList.add("C");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
     }
     /**
      * Example fragmentation using natural compounds CNP0321029.1; CNP0509407.0 and CNP0242949.0. The natural compounds
@@ -1527,8 +1485,7 @@ public class AlkylStructureFragmenterTest {
         tmpExpectedSMILESList.add("C");
         tmpExpectedSMILESList.add("C");
         tmpExpectedSMILESList.add("C1CCCC1");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
         //
         //test structure: CNP0509407.0
         tmpTestStructureAC = tmpParser.parseSmiles("CCCCCCCCCC(CC)(CCCCCCC)CCCCCCCC");
@@ -1552,8 +1509,7 @@ public class AlkylStructureFragmenterTest {
         tmpExpectedSMILESList.add("C");
         tmpExpectedSMILESList.add("*C(*)(*)*");
         System.out.println("Result: " + tmpFragmentsSMILESList);
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
         //alternate settings
         tmpASF.setIsolateTertQuatCarbonsSetting(false);
         tmpExpectedSMILESList.clear();
@@ -1572,8 +1528,7 @@ public class AlkylStructureFragmenterTest {
         tmpExpectedSMILESList.add("C");
         tmpExpectedSMILESList.add("C");
         tmpExpectedSMILESList.add("CC(C)(C)C");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
         //
         tmpASF.setIsolateTertQuatCarbonsSetting(false);
         tmpASF.setFragmentSideChainsSetting(false);
@@ -1591,8 +1546,7 @@ public class AlkylStructureFragmenterTest {
         tmpExpectedSMILESList.add("CCCCCC");
         tmpExpectedSMILESList.add("C");
         tmpExpectedSMILESList.add("CC(C)(C)C");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
         //
         //test structure: CNP0242949.0
         tmpTestStructureAC = tmpParser.parseSmiles("CC1CCCCCCCCC1");
@@ -1609,8 +1563,7 @@ public class AlkylStructureFragmenterTest {
         }
         tmpExpectedSMILESList.add("C");
         tmpExpectedSMILESList.add("C1CCCCCCCCC1");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
     }
     //</editor-fold>
     //
@@ -1625,7 +1578,7 @@ public class AlkylStructureFragmenterTest {
      * @throws IllegalAccessException if reflection can not be done
      */
     @Test
-    public void fillMolecularArraysTest() throws InvalidSmilesException, NoSuchFieldException, IllegalAccessException {
+    public void nullAtomInputTest() throws InvalidSmilesException, NoSuchFieldException, IllegalAccessException {
         SmilesParser tmpParser = new SmilesParser(SilentChemObjectBuilder.getInstance());
         IAtomContainer tmpMolecule = tmpParser.parseSmiles("CCCCCCCCCCCC");
         //reflection is used to manually insert/inflict a null value
@@ -1730,8 +1683,7 @@ public class AlkylStructureFragmenterTest {
         tmpExpectedSMILESList.add("C");
         tmpExpectedSMILESList.add("C1CCCCC1");
         tmpExpectedSMILESList.add("C1CCCCC1");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
         tmpASF.setIsolateTertQuatCarbonsSetting(false);
         tmpFragmentsSMILESList.clear();
         tmpPreFragmenationCount = this.countAtoms(tmpTestStructureAC);
@@ -1745,8 +1697,7 @@ public class AlkylStructureFragmenterTest {
         tmpExpectedSMILESList.add("CC(C)C");
         tmpExpectedSMILESList.add("C1CCCCC1");
         tmpExpectedSMILESList.add("C1CCCCC1");
-        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(tmpFragmentsSMILESList),
-                new ArrayList<>(tmpExpectedSMILESList)));
+        this.assertSameElementsIgnoringOrder(tmpFragmentsSMILESList, tmpExpectedSMILESList);
     }
     //</editor-fold
     //
@@ -1770,6 +1721,16 @@ public class AlkylStructureFragmenterTest {
             aList2.remove(o);
         }
         return aList2.isEmpty();
+    }
+    /**
+     * Asserts that the given lists contain the same elements, ignoring their order; the failure message lists both.
+     *
+     * @param anActualList actual elements, e.g. fragment SMILES
+     * @param anExpectedList expected elements
+     */
+    private void assertSameElementsIgnoringOrder(List<?> anActualList, List<?> anExpectedList) {
+        Assertions.assertTrue(this.compareListsIgnoringOrder(new ArrayList<>(anActualList), new ArrayList<>(anExpectedList)),
+                () -> "expected (in any order): " + anExpectedList + ", actual: " + anActualList);
     }
     /**
      * Utility method to generate SMILES notation strings for a given List containing IAtomContainer instances.

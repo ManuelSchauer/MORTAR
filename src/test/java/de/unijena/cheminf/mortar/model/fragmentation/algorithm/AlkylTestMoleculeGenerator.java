@@ -77,56 +77,56 @@ final class AlkylTestMoleculeGenerator {
 
     static {
         //chains and branched end groups
-        MOTIFS.put("methyl end group", "C");
-        MOTIFS.put("propyl chain", "CCC");
-        MOTIFS.put("octyl chain (longer than default max chain length)", "CCCCCCCC");
-        MOTIFS.put("isopropyl (tertiary C end group)", "C(C)C");
-        MOTIFS.put("tert-butyl (quaternary C end group)", "C(C)(C)C");
+        AlkylTestMoleculeGenerator.MOTIFS.put("methyl end group", "C");
+        AlkylTestMoleculeGenerator.MOTIFS.put("propyl chain", "CCC");
+        AlkylTestMoleculeGenerator.MOTIFS.put("octyl chain (longer than default max chain length)", "CCCCCCCC");
+        AlkylTestMoleculeGenerator.MOTIFS.put("isopropyl (tertiary C end group)", "C(C)C");
+        AlkylTestMoleculeGenerator.MOTIFS.put("tert-butyl (quaternary C end group)", "C(C)(C)C");
         //rings and ring systems
-        MOTIFS.put("cyclopropane ring", "C1CC1");
-        MOTIFS.put("cyclohexane ring", "C1CCCCC1");
-        MOTIFS.put("decalin (fused ring system)", "C1CCC2CCCCC2C1");
-        MOTIFS.put("spiro[4.5]decane (spiro ring system)", "C1CCC2(CC1)CCCC2");
-        MOTIFS.put("norbornane (bridged ring system)", "C1CC2CCC1C2");
-        MOTIFS.put("cyclohexene (ring with double bond)", "C1=CCCCC1");
-        MOTIFS.put("methylenecyclohexane (exocyclic double bond)", "C1CC(=C)CCC1");
+        AlkylTestMoleculeGenerator.MOTIFS.put("cyclopropane ring", "C1CC1");
+        AlkylTestMoleculeGenerator.MOTIFS.put("cyclohexane ring", "C1CCCCC1");
+        AlkylTestMoleculeGenerator.MOTIFS.put("decalin (fused ring system)", "C1CCC2CCCCC2C1");
+        AlkylTestMoleculeGenerator.MOTIFS.put("spiro[4.5]decane (spiro ring system)", "C1CCC2(CC1)CCCC2");
+        AlkylTestMoleculeGenerator.MOTIFS.put("norbornane (bridged ring system)", "C1CC2CCC1C2");
+        AlkylTestMoleculeGenerator.MOTIFS.put("cyclohexene (ring with double bond)", "C1=CCCCC1");
+        AlkylTestMoleculeGenerator.MOTIFS.put("methylenecyclohexane (exocyclic double bond)", "C1CC(=C)CCC1");
         //aromatics
-        MOTIFS.put("benzene ring", "c1ccccc1");
-        MOTIFS.put("naphthalene (fused aromatic)", "c1ccc2ccccc2c1");
-        MOTIFS.put("cyclopentadiene (conjugated ring)", "C1=CC=CC1");
+        AlkylTestMoleculeGenerator.MOTIFS.put("benzene ring", "c1ccccc1");
+        AlkylTestMoleculeGenerator.MOTIFS.put("naphthalene (fused aromatic)", "c1ccc2ccccc2c1");
+        AlkylTestMoleculeGenerator.MOTIFS.put("cyclopentadiene (conjugated ring)", "C1=CC=CC1");
         //conjugated systems
-        MOTIFS.put("butadiene (conjugated D-S-D)", "C=CC=C");
-        MOTIFS.put("hexatriene (conjugated D-S-D-S-D)", "C=CC=CC=C");
-        MOTIFS.put("butadiyne (conjugated T-S-T)", "C#CC#C");
-        MOTIFS.put("butenyne (D-S-T, not conjugated)", "C=CC#C");
+        AlkylTestMoleculeGenerator.MOTIFS.put("butadiene (conjugated D-S-D)", "C=CC=C");
+        AlkylTestMoleculeGenerator.MOTIFS.put("hexatriene (conjugated D-S-D-S-D)", "C=CC=CC=C");
+        AlkylTestMoleculeGenerator.MOTIFS.put("butadiyne (conjugated T-S-T)", "C#CC#C");
+        AlkylTestMoleculeGenerator.MOTIFS.put("butenyne (D-S-T, not conjugated)", "C=CC#C");
         //isolated multiple bonds
-        MOTIFS.put("isolated double bond", "C=C");
-        MOTIFS.put("isolated triple bond", "C#C");
-        MOTIFS.put("allene (cumulated double bonds)", "C=C=C");
+        AlkylTestMoleculeGenerator.MOTIFS.put("isolated double bond", "C=C");
+        AlkylTestMoleculeGenerator.MOTIFS.put("isolated triple bond", "C#C");
+        AlkylTestMoleculeGenerator.MOTIFS.put("allene (cumulated double bonds)", "C=C=C");
         //aromatic remnants (Ertl), the odd ones cannot be kekulized
-        MOTIFS.put("single aromatic remnant atom (no aromatic bond)", "c");
-        MOTIFS.put("aromatic remnant, 2 atoms (kekulizable)", "cc");
-        MOTIFS.put("aromatic remnant, 3 atoms (not kekulizable)", "ccc");
-        MOTIFS.put("aromatic remnant, 5 atoms (not kekulizable)", "ccccc");
+        AlkylTestMoleculeGenerator.MOTIFS.put("single aromatic remnant atom (no aromatic bond)", "c");
+        AlkylTestMoleculeGenerator.MOTIFS.put("aromatic remnant, 2 atoms (kekulizable)", "cc");
+        AlkylTestMoleculeGenerator.MOTIFS.put("aromatic remnant, 3 atoms (not kekulizable)", "ccc");
+        AlkylTestMoleculeGenerator.MOTIFS.put("aromatic remnant, 5 atoms (not kekulizable)", "ccccc");
         //stereo centers and stereo double bonds
-        MOTIFS.put("tetrahedral stereo center", "C[C@@H](CC)C");
-        MOTIFS.put("E double bond (stereo)", "C/C=C/C");
-        MOTIFS.put("trans-disubstituted cyclohexane (ring stereo centers)", "C[C@H]1CC[C@@H](C)CC1");
+        AlkylTestMoleculeGenerator.MOTIFS.put("tetrahedral stereo center", "C[C@@H](CC)C");
+        AlkylTestMoleculeGenerator.MOTIFS.put("E double bond (stereo)", "C/C=C/C");
+        AlkylTestMoleculeGenerator.MOTIFS.put("trans-disubstituted cyclohexane (ring stereo centers)", "C[C@H]1CC[C@@H](C)CC1");
         //linkers
-        LINKERS.put("direct bond", "");
-        LINKERS.put("CH2 linker", "C");
-        LINKERS.put("C2 chain linker", "CC");
-        LINKERS.put("C5 chain linker", "CCCCC");
-        LINKERS.put("C9 chain linker (cut by max chain length)", "CCCCCCCCC");
-        LINKERS.put("tertiary C linker", "C(C)");
-        LINKERS.put("quaternary C linker", "C(C)(C)");
-        LINKERS.put("quaternary C linker with ethyl", "C(CC)(C)");
-        LINKERS.put("two adjacent tertiary C", "C(C)C(C)");
-        LINKERS.put("two adjacent quaternary C", "C(C)(C)C(C)(C)");
-        LINKERS.put("double bond linker", "C=C");
-        LINKERS.put("triple bond linker", "C#C");
-        LINKERS.put("C with exo-methylene (double bond branch)", "C(=C)");
-        LINKERS.put("allene linker", "C=C=C");
+        AlkylTestMoleculeGenerator.LINKERS.put("direct bond", "");
+        AlkylTestMoleculeGenerator.LINKERS.put("CH2 linker", "C");
+        AlkylTestMoleculeGenerator.LINKERS.put("C2 chain linker", "CC");
+        AlkylTestMoleculeGenerator.LINKERS.put("C5 chain linker", "CCCCC");
+        AlkylTestMoleculeGenerator.LINKERS.put("C9 chain linker (cut by max chain length)", "CCCCCCCCC");
+        AlkylTestMoleculeGenerator.LINKERS.put("tertiary C linker", "C(C)");
+        AlkylTestMoleculeGenerator.LINKERS.put("quaternary C linker", "C(C)(C)");
+        AlkylTestMoleculeGenerator.LINKERS.put("quaternary C linker with ethyl", "C(CC)(C)");
+        AlkylTestMoleculeGenerator.LINKERS.put("two adjacent tertiary C", "C(C)C(C)");
+        AlkylTestMoleculeGenerator.LINKERS.put("two adjacent quaternary C", "C(C)(C)C(C)(C)");
+        AlkylTestMoleculeGenerator.LINKERS.put("double bond linker", "C=C");
+        AlkylTestMoleculeGenerator.LINKERS.put("triple bond linker", "C#C");
+        AlkylTestMoleculeGenerator.LINKERS.put("C with exo-methylene (double bond branch)", "C(=C)");
+        AlkylTestMoleculeGenerator.LINKERS.put("allene linker", "C=C=C");
     }
 
     /**
@@ -161,14 +161,14 @@ final class AlkylTestMoleculeGenerator {
      * @return map of molecule name to SMILES, in generation order
      */
     static Map<String, String> generateSmiles() {
-        List<String> tmpMotifNames = new ArrayList<>(MOTIFS.keySet());
-        List<String> tmpLinkerNames = new ArrayList<>(LINKERS.keySet());
+        List<String> tmpMotifNames = new ArrayList<>(AlkylTestMoleculeGenerator.MOTIFS.keySet());
+        List<String> tmpLinkerNames = new ArrayList<>(AlkylTestMoleculeGenerator.LINKERS.keySet());
         Map<String, String> tmpSmilesByTitle = new LinkedHashMap<>();
         for (String tmpFirst : tmpMotifNames) {
             for (String tmpLinker : tmpLinkerNames) {
                 for (String tmpSecond : tmpMotifNames) {
                     tmpSmilesByTitle.put(tmpFirst + " + " + tmpLinker + " + " + tmpSecond,
-                            MOTIFS.get(tmpFirst) + LINKERS.get(tmpLinker) + MOTIFS.get(tmpSecond));
+                            AlkylTestMoleculeGenerator.MOTIFS.get(tmpFirst) + AlkylTestMoleculeGenerator.LINKERS.get(tmpLinker) + AlkylTestMoleculeGenerator.MOTIFS.get(tmpSecond));
                 }
             }
         }
@@ -180,8 +180,8 @@ final class AlkylTestMoleculeGenerator {
             String tmpSecondLinker = tmpLinkerNames.get(tmpRandom.nextInt(tmpLinkerNames.size()));
             String tmpThird = tmpMotifNames.get(tmpRandom.nextInt(tmpMotifNames.size()));
             tmpSmilesByTitle.put(tmpFirst + " + " + tmpFirstLinker + " + " + tmpSecond + " + " + tmpSecondLinker + " + " + tmpThird,
-                    MOTIFS.get(tmpFirst) + LINKERS.get(tmpFirstLinker) + MOTIFS.get(tmpSecond)
-                            + LINKERS.get(tmpSecondLinker) + MOTIFS.get(tmpThird));
+                    AlkylTestMoleculeGenerator.MOTIFS.get(tmpFirst) + AlkylTestMoleculeGenerator.LINKERS.get(tmpFirstLinker) + AlkylTestMoleculeGenerator.MOTIFS.get(tmpSecond)
+                            + AlkylTestMoleculeGenerator.LINKERS.get(tmpSecondLinker) + AlkylTestMoleculeGenerator.MOTIFS.get(tmpThird));
         }
         return tmpSmilesByTitle;
     }
@@ -193,8 +193,8 @@ final class AlkylTestMoleculeGenerator {
      */
     static Map<String, String> generateOverviewSmiles() {
         Map<String, String> tmpSmilesByTitle = new LinkedHashMap<>();
-        for (Map.Entry<String, String> tmpMotif : MOTIFS.entrySet()) {
-            for (Map.Entry<String, String> tmpLinker : LINKERS.entrySet()) {
+        for (Map.Entry<String, String> tmpMotif : AlkylTestMoleculeGenerator.MOTIFS.entrySet()) {
+            for (Map.Entry<String, String> tmpLinker : AlkylTestMoleculeGenerator.LINKERS.entrySet()) {
                 tmpSmilesByTitle.put(tmpMotif.getKey() + " + " + tmpLinker.getKey() + " + methyl end group",
                         tmpMotif.getValue() + tmpLinker.getValue() + "C");
             }
