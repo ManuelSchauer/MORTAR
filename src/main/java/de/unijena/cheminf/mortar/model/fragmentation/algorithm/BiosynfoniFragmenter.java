@@ -192,17 +192,17 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
                 "C(~[#8])~C(~[#8])~C(~[#8])~C(~[#8])~C(~[#8])",
                 "OCC(O)C(O)C(O)C=O"),
         /**
-         * Pyranose, six-membered sugar ring containing one oxygen atom. Represented by glucopyranose.
+         * Pyranose, six-membered sugar ring containing one oxygen atom.
          */
         S_PYRANOSE_C5O4("s_pyranose_C5O4",
                 "C~1~[#8]~C~C(~[#8])~C(~[#8])~C(~[#8])~1",
-                "OCC1OC(O)C(O)C(O)C1O"),
+                "C1OCC(O)C(O)C1O"),
         /**
-         * Furanose, five-membered sugar ring containing one oxygen atom. Represented by ribofuranose.
+         * Furanose, five-membered sugar ring containing one oxygen atom.
          */
         S_FURANOSE_C4O3("s_furanose_C4O3",
                 "C~1~[#8]~C~C(~[#8])~C(~[#8])~1",
-                "OCC1OC(O)C(O)C1O"),
+                "C1OCC(O)C1O"),
         //nitrogen-containing building blocks
         /**
          * Indole scaffold with a two-carbon side chain terminating in a nitrogen atom (tryptamine-like).
@@ -233,26 +233,24 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
          * Phenyl ring attached to a three-carbon side chain. The side chain carbon atoms after the first one must not be
          * part of any six-membered ring. This is a revision of the original pattern, which excludes them via
          * "[#6;!$([r6])]" only if their smallest ring is six-membered, so that, e.g., carbon atoms in a six-membered ring
-         * fused to a five-membered ring are not excluded there. Represented by trans-cinnamic acid, the precursor
-         * of the phenylpropanoids (C6-C3 units).
+         * fused to a five-membered ring are not excluded there.
          */
         D_PHENYL_C3("d_phenylC3_9_strict",
                 "[#6;R1]~1~[#6;R1]~[#6;R1]~[#6;R1]~[#6;R1]~[#6;R1]~1~[#6]~[#6!$(*1*****1)]~[#6!$(*1*****1)]",
-                "OC(=O)/C=C/c1ccccc1"),
+                "CCCc1ccccc1"),
         /**
          * Phenyl ring attached to a two-carbon side chain. The second side chain carbon atom must not be part of any
-         * six-membered ring, see the revision of the pattern described at {@link #D_PHENYL_C3}. Represented by
-         * phenylacetic acid (C6-C2 unit).
+         * six-membered ring, see the revision of the pattern described at {@link #D_PHENYL_C3}.
          */
         D_PHENYL_C2("d_phenylC2_8_strict",
                 "[#6;R1]~1~[#6;R1]~[#6;R1]~[#6;R1]~[#6;R1]~[#6;R1]~1~[#6]~[#6!$(*1*****1)]",
-                "OC(=O)Cc1ccccc1"),
+                "CCc1ccccc1"),
         /**
-         * Phenyl ring attached to a single carbon atom. Represented by benzoic acid (C6-C1 unit).
+         * Phenyl ring attached to a single carbon atom.
          */
         D_PHENYL_C1("d_phenylC1_7_strict",
                 "[#6;R1]~1~[#6;R1]~[#6;R1]~[#6;R1]~[#6;R1]~[#6;R1]~1~[#6]",
-                "OC(=O)c1ccccc1"),
+                "Cc1ccccc1"),
         //carbon chains
         /**
          * Isoprene unit, branched five-carbon motif. Represented by isoprene (2-methylbuta-1,3-diene).
@@ -261,17 +259,18 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
                 "[#6]~[#6](~[#6])~[#6]~[#6]",
                 "C=CC(C)=C"),
         /**
-         * Acetyl unit, two-carbon chain connected to an oxygen atom. Represented by acetic acid.
+         * Acetyl unit, two-carbon chain connected to an oxygen atom. Represented by acetaldehyde, i.e. with the carbonyl
+         * group of the acetyl unit.
          */
         D2_ACETYL("d2_acetyl_C2O1",
                 "[#6]~[#6]~[#8]",
-                "CC(=O)O"),
+                "CC=O"),
         /**
-         * Methylmalonyl unit, three-carbon motif terminating in a methyl carbon. Represented by methylmalonic acid.
+         * Methylmalonyl unit, three-carbon motif terminating in a methyl carbon.
          */
         D2_METHYLMALONYL("d2_methylmalonyl_C3",
                 "[#6]~[#6][C;D1;h3]",
-                "CC(C(=O)O)C(=O)O"),
+                "CCC"),
         /**
          * Ethyl unit, two connected carbon atoms.
          */
@@ -287,17 +286,17 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
                 "*C"),
         //phosphorus- and sulfur-containing groups
         /**
-         * Phosphorus atom bonded to an oxygen atom. Represented by phosphoric acid.
+         * Phosphorus atom bonded to an oxygen atom.
          */
         PHOSPHATE("phosphate_2",
                 "P~O",
-                "OP(=O)(O)O"),
+                "OP"),
         /**
-         * Sulfur atom bonded to an oxygen atom. Represented by methanesulfonic acid.
+         * Sulfur atom bonded to an oxygen atom.
          */
         SULFONATE("sulfonate_2",
                 "S~O",
-                "CS(=O)(=O)O"),
+                "OS"),
         //halides
         /**
          * Fluorine atom.
