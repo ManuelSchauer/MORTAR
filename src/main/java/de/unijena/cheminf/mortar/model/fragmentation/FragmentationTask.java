@@ -84,6 +84,13 @@ public class FragmentationTask implements Callable<FragmentationTaskResult> {
      * Whether stereochemistry in the fragments should be regarded when creating their SMILES codes.
      */
     private final boolean isStereochemistryRegarded;
+    /**
+     * Whether the display labels of the fragments (see
+     * {@link IMoleculeFragmenter#FRAGMENT_DISPLAY_LABEL_PROPERTY_KEY}) should be collected. They are only used for
+     * single fragmentations, not in pipelines, and only if the fragmenter assigns them, see
+     * {@link IMoleculeFragmenter#providesDisplayLabels()}.
+     */
+    private final boolean areDisplayLabelsCollected;
     //</editor-fold>
     //
     /**
@@ -96,17 +103,22 @@ public class FragmentationTask implements Callable<FragmentationTaskResult> {
      *                              keys are unique SMILES codes.
      * @param aFragmentationName String
      * @param isStereo Whether stereochemistry in the fragments should be regarded when creating their SMILES codes
+     * @param areDisplayLabelsCollected whether the display labels of the fragments should be collected; should only be
+     *                                  true for single fragmentations, not in pipelines, and only if the fragmenter
+     *                                  assigns them (see {@link IMoleculeFragmenter#providesDisplayLabels()})
      */
     public FragmentationTask(List<MoleculeDataModel> aListOfMolecules,
                              IMoleculeFragmenter aFragmenter,
                              Map<String, FragmentDataModel> aHashtableOfFragments,
                              String aFragmentationName,
-                             boolean isStereo) {
+                             boolean isStereo,
+                             boolean areDisplayLabelsCollected) {
         this.moleculesList = aListOfMolecules;
         this.fragmenter = aFragmenter;
         this.fragmentsHashTable = aHashtableOfFragments;
         this.fragmentationName = aFragmentationName;
         this.isStereochemistryRegarded = isStereo;
+        this.areDisplayLabelsCollected = areDisplayLabelsCollected;
     }
     //
     /**
@@ -184,6 +196,12 @@ public class FragmentationTask implements Callable<FragmentationTaskResult> {
                     FragmentDataModel tmpFragmentDataModel = this.fragmentsHashTable.putIfAbsent(tmpSmiles,  tmpNewFragmentDataModel);
                     if (tmpFragmentDataModel == null) {
                         tmpFragmentDataModel = tmpNewFragmentDataModel;
+                    }
+                    // collect the display labels of all fragmenter outputs that resulted in this fragment
+                    Object tmpDisplayLabel = this.areDisplayLabelsCollected
+                            ? tmpFragment.getProperty(IMoleculeFragmenter.FRAGMENT_DISPLAY_LABEL_PROPERTY_KEY) : null;
+                    if (tmpDisplayLabel != null) {
+                        tmpFragmentDataModel.addDisplayLabel(tmpDisplayLabel.toString());
                     }
                     // increment the absolute frequency of this fragment - operation is atomic!
                     tmpFragmentDataModel.incrementAbsoluteFrequency();
