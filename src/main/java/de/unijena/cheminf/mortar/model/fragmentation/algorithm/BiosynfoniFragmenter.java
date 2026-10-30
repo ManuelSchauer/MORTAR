@@ -117,7 +117,8 @@ import java.util.logging.Logger;
  *   five-membered ring, as in aryltetralin lignans. The hydroxyl pattern does not match the oxygen atoms of nitro
  *   groups, nitrate esters, and N-oxides (see {@link BiosynfoniKey#O_HYDROXYL}), which the reference implementation
  *   matches as hydroxyl groups in their charge-separated form. Like this, both notations of these groups give the
- *   same result. The revised patterns are the same as in the BiosynfoniFingerprinter of the CDK.</li>
+ *   same result. The revised patterns are the same as in the Biosynfoni fingerprinter that is being developed for
+ *   the CDK.</li>
  *   <li><b>Intra-substructure overlap filter</b>: the reference implementation selects the matches greedily in the
  *   order in which RDKit finds them, so that its counts depend on the input atom order of the molecule. Here, the
  *   matches are selected in a canonical order (see above), so the counts do not depend on the input atom order but can
@@ -347,7 +348,7 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
          * group, so that the result depended on the notation of the same molecule. The reference implementation matches
          * this "[O-]" because RDKit converts nitro groups and N-oxides into the charge-separated form. Hydroxylamines,
          * oximes, and hydroxamic acids, whose uncharged nitrogen atom carries only one oxygen atom, are still matched.
-         * Revision taken from the BiosynfoniFingerprinter of the CDK.
+         * Revision taken from the Biosynfoni fingerprinter that is being developed for the CDK.
          */
         O_HYDROXYL("o_hydroxyl_1",
                 "[#8;D1;h,!v2;$(*[#6,#7]);!$(*C~O);!$(*[#7]~[#8]);!$([#8-][#7+]);!$(P);!$(S)]",
