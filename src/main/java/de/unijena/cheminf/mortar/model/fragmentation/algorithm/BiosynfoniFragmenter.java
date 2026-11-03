@@ -37,7 +37,6 @@ import javafx.beans.property.Property;
 import javafx.beans.property.SimpleBooleanProperty;
 
 import org.openscience.cdk.aromaticity.Aromaticity;
-import org.openscience.cdk.aromaticity.ElectronDonation;
 import org.openscience.cdk.aromaticity.Kekulization;
 import org.openscience.cdk.exception.CDKException;
 import org.openscience.cdk.graph.Cycles;
@@ -55,6 +54,7 @@ import org.openscience.cdk.smiles.SmilesParser;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -81,14 +81,19 @@ import java.util.logging.Logger;
  * <br>Alternatively, the actually matched substructures can be returned (see
  * {@link BiosynfoniReturnedFragmentsOption#MATCHED_SUBSTRUCTURES}). This shows which different substructures are
  * covered by a specific SMARTS pattern. Each matched substructure consists of the matched atoms and all bonds between
- * them, free valences are saturated with implicit hydrogen atoms, and aromaticity is re-detected on the fragment.
- * Bonds of aromatic systems that are only partially matched therefore appear in the Kekulé form of the input molecule.
+ * them, free valences are saturated with implicit hydrogen atoms, and aromaticity is re-detected on the fragment. A
+ * cut bond of an aromatic system counts as a single bond, so that completely matched aromatic rings of fused systems
+ * remain aromatic, e.g. the pyrrole ring of indole. If the matched part of an aromatic system has no Kekulé structure,
+ * e.g. three atoms of a benzene ring, the fragment is built from the bond orders of the Kekulé form of the input
+ * molecule instead, so that its bonds appear in this Kekulé form. If the input molecule has no Kekulé structure, its
+ * unset bond orders are treated as single bonds.
  * <br><b>Known limitation of the matched substructures option:</b> MORTAR identifies fragments by their unique SMILES
  * code across the whole data set. Keys whose SMARTS pattern matches only a single atom (ether, hydroxyl, and epoxide
  * oxygen; terminal nitrogen and both amino acid keys; methyl) can produce identical fragments, e.g. "O" for an ether
- * and a hydroxyl oxygen atom. Such fragments are combined into one fragment that carries the labels of all keys that
- * produced it anywhere in the data set, and its frequency in a molecule is the sum over these keys. The number of
- * matches per key and the representative structures option are not affected.
+ * and a hydroxyl oxygen atom. Such fragments are combined into one fragment whose display label in the GUI lists all
+ * keys that produced it anywhere in the data set, while its properties (e.g. the Biosynfoni label in exported files)
+ * are those of only one of these keys. Its frequency in a molecule is the sum over these keys. The number of matches
+ * per key and the representative structures option are not affected.
  * <br>The label and the SMARTS pattern of the key are attached to every returned fragment as properties (see
  * {@link #BIOSYNFONI_LABEL_PROPERTY_KEY}, {@link #BIOSYNFONI_SMARTS_PROPERTY_KEY},
  * {@link IMoleculeFragmenter#FRAGMENT_CATEGORY_PROPERTY_KEY}, and
@@ -111,14 +116,14 @@ import java.util.logging.Logger;
  * <ul>
  *   <li><b>Revised SMARTS patterns</b>: 36 of the 39 SMARTS patterns are identical to the reference implementation.
  *   In the patterns of the phenyl-C3 and phenyl-C2 units, the side chain carbon atoms must not be part of any
- *   six-membered ring, while the reference implementation only excludes atoms whose smallest ring is six-membered (see
- *   {@link BiosynfoniKey#D_PHENYL_C3}). This follows the intention of the original patterns not to detect phenyl units
- *   in fused ring systems, e.g. it is no longer relevant whether a six-membered ring is additionally fused to a
- *   five-membered ring, as in aryltetralin lignans. The hydroxyl pattern does not match the oxygen atoms of nitro
- *   groups, nitrate esters, and N-oxides (see {@link BiosynfoniKey#O_HYDROXYL}), which the reference implementation
- *   matches as hydroxyl groups in their charge-separated form. Like this, both notations of these groups give the
- *   same result. The revised patterns are the same as in the Biosynfoni fingerprinter that is being developed for
- *   the CDK.</li>
+ *   six-membered ring, regardless of its bond orders, while the reference implementation only excludes atoms whose
+ *   smallest ring is six-membered (see {@link BiosynfoniKey#D_PHENYL_C3}). This follows the intention of the original
+ *   patterns not to detect phenyl units in fused ring systems, e.g. it is no longer relevant whether a six-membered
+ *   ring is additionally fused to a five-membered ring, as in aryltetralin lignans. The hydroxyl pattern does not match
+ *   the oxygen atoms of nitro groups, nitrate esters, and N-oxides (see {@link BiosynfoniKey#O_HYDROXYL}), which the
+ *   reference implementation matches as hydroxyl groups in their charge-separated form. Like this, both notations of
+ *   these groups give the same result. The revisions go back to the Biosynfoni fingerprinter that is being developed
+ *   for the CDK.</li>
  *   <li><b>Intra-substructure overlap filter</b>: the reference implementation selects the matches greedily in the
  *   order in which RDKit finds them, so that its counts depend on the input atom order of the molecule. Here, the
  *   matches are selected in a canonical order (see above), so the counts do not depend on the input atom order but can
@@ -233,17 +238,20 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
          * Phenyl ring attached to a three-carbon side chain. The side chain carbon atoms after the first one must not be
          * part of any six-membered ring. This is a revision of the original pattern, which excludes them via
          * "[#6;!$([r6])]" only if their smallest ring is six-membered, so that, e.g., carbon atoms in a six-membered ring
-         * fused to a five-membered ring are not excluded there.
+         * fused to a five-membered ring are not excluded there. The six-membered ring is written with any-bond
+         * expressions ("~") so that it is recognised regardless of its bond orders; without bond symbols, as in
+         * "[#6!$(*1*****1)]", a bond means single or aromatic in SMARTS, so that rings with a non-aromatic double bond,
+         * e.g. cyclohexene, would not be recognised.
          */
         D_PHENYL_C3("d_phenylC3_9_strict",
-                "[#6;R1]~1~[#6;R1]~[#6;R1]~[#6;R1]~[#6;R1]~[#6;R1]~1~[#6]~[#6!$(*1*****1)]~[#6!$(*1*****1)]",
+                "[#6;R1]~1~[#6;R1]~[#6;R1]~[#6;R1]~[#6;R1]~[#6;R1]~1~[#6]~[#6;!$(*~1~*~*~*~*~*~1)]~[#6;!$(*~1~*~*~*~*~*~1)]",
                 "CCCc1ccccc1"),
         /**
          * Phenyl ring attached to a two-carbon side chain. The second side chain carbon atom must not be part of any
          * six-membered ring, see the revision of the pattern described at {@link #D_PHENYL_C3}.
          */
         D_PHENYL_C2("d_phenylC2_8_strict",
-                "[#6;R1]~1~[#6;R1]~[#6;R1]~[#6;R1]~[#6;R1]~[#6;R1]~1~[#6]~[#6!$(*1*****1)]",
+                "[#6;R1]~1~[#6;R1]~[#6;R1]~[#6;R1]~[#6;R1]~[#6;R1]~1~[#6]~[#6;!$(*~1~*~*~*~*~*~1)]",
                 "CCc1ccccc1"),
         /**
          * Phenyl ring attached to a single carbon atom.
@@ -594,7 +602,7 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
             this.smartsPatterns[i] = SmartsPattern.create(tmpKeys[i].getSmarts()).setPrepare(false);
         }
         this.smilesParser = new SmilesParser(SilentChemObjectBuilder.getInstance());
-        this.fragmentAromaticityModel = new Aromaticity(ElectronDonation.daylight(),
+        this.fragmentAromaticityModel = new Aromaticity(Aromaticity.Model.Daylight,
                 Cycles.or(Cycles.all(), Cycles.cdkAromaticSet()));
         int tmpNumberOfSettings = 3;
         this.settings = new ArrayList<>(tmpNumberOfSettings);
@@ -794,46 +802,19 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
             throw new IllegalArgumentException("Given molecule cannot be fragmented but should be filtered or preprocessed first.");
         }
         //</editor-fold>
-        //SMARTS preparation alters the aromaticity and ring flags of the atom container, so work on a clone
-        IAtomContainer tmpMoleculeClone = aMolecule.clone();
         List<IAtomContainer> tmpFragments = new ArrayList<>();
         boolean tmpAreMatchedSubstructuresReturned = this.returnedFragmentsSetting.get().equals(
                 BiosynfoniReturnedFragmentsOption.MATCHED_SUBSTRUCTURES);
         try {
-            if (tmpAreMatchedSubstructuresReturned) {
-                //the matched substructures are built from the explicit bond orders of the Kekulé form
-                for (IBond tmpBond : tmpMoleculeClone.bonds()) {
-                    if (Objects.isNull(tmpBond.getOrder()) || tmpBond.getOrder() == IBond.Order.UNSET) {
-                        Kekulization.kekulize(tmpMoleculeClone);
-                        break;
-                    }
-                }
-            }
-            //marks ring atoms and bonds and applies the Daylight aromaticity model once for all patterns, whose
-            // automatic preparation is disabled
-            SmartsPattern.prepare(tmpMoleculeClone);
+            IAtomContainer tmpPreparedMolecule = BiosynfoniFragmenter.prepareMolecule(aMolecule, tmpAreMatchedSubstructuresReturned);
             int[] tmpCanonicalRanks = this.intraSubstructureOverlapFilterSetting.get()
-                    ? BiosynfoniFragmenter.getCanonicalRanks(tmpMoleculeClone) : null;
+                    ? BiosynfoniFragmenter.getCanonicalRanks(tmpPreparedMolecule) : null;
             //atoms of accepted matches of previous keys, only used by the inter-substructure overlap filter
-            boolean[] tmpIsAtomBlockedByPreviousKeys = new boolean[tmpMoleculeClone.getAtomCount()];
+            boolean[] tmpIsAtomBlockedByPreviousKeys = new boolean[tmpPreparedMolecule.getAtomCount()];
             BiosynfoniKey[] tmpKeys = BiosynfoniKey.values();
             for (int i = 0; i < tmpKeys.length; i++) {
-                List<int[]> tmpMatches = new ArrayList<>(Arrays.asList(
-                        this.smartsPatterns[i].matchAll(tmpMoleculeClone).uniqueAtoms().toArray()));
-                if (this.intraSubstructureOverlapFilterSetting.get()) {
-                    tmpMatches = BiosynfoniFragmenter.applyIntraSubstructureOverlapFilter(tmpMatches, tmpCanonicalRanks);
-                }
-                if (this.interSubstructureOverlapFilterSetting.get()) {
-                    tmpMatches = BiosynfoniFragmenter.applyInterSubstructureOverlapFilter(tmpMatches, tmpIsAtomBlockedByPreviousKeys);
-                    for (int[] tmpMatch : tmpMatches) {
-                        for (int tmpAtomIndex : tmpMatch) {
-                            tmpIsAtomBlockedByPreviousKeys[tmpAtomIndex] = true;
-                        }
-                    }
-                }
-                if (tmpMatches.isEmpty()) {
-                    continue;
-                }
+                List<int[]> tmpMatches = this.getFilteredMatches(this.smartsPatterns[i], tmpPreparedMolecule,
+                        tmpCanonicalRanks, tmpIsAtomBlockedByPreviousKeys);
                 if (tmpAreMatchedSubstructuresReturned) {
                     //TODO: keys matching only a single atom (O_ETHER, O_HYDROXYL, O_EPOXY, N_NITRATE, ALL_STD_AMINOS,
                     // NON_STD_AMINOS, D_METHYL) can produce identical fragments ("O", "N") whose labels and frequencies
@@ -841,14 +822,11 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
                     // structure for these keys also in this mode, since a single matched atom does not show the
                     // promiscuity of the pattern anyway
                     for (int[] tmpMatch : tmpMatches) {
-                        tmpFragments.add(this.createMatchedSubstructureFragment(tmpMoleculeClone, tmpMatch, tmpKeys[i]));
+                        tmpFragments.add(this.createMatchedSubstructureFragment(tmpPreparedMolecule, tmpMatch, tmpKeys[i]));
                     }
-                } else {
+                } else if (!tmpMatches.isEmpty()) {
                     //all matches of one key are represented by the same structure and thereby collapse into one fragment
-                    IAtomContainer tmpRepresentative = this.createRepresentativeFragment(tmpKeys[i]);
-                    for (int j = 0; j < tmpMatches.size(); j++) {
-                        tmpFragments.add(tmpRepresentative);
-                    }
+                    tmpFragments.addAll(Collections.nCopies(tmpMatches.size(), this.createRepresentativeFragment(tmpKeys[i])));
                 }
             }
         } catch (Exception anException) {
@@ -896,6 +874,80 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
     //
     //<editor-fold desc="Private methods">
     /**
+     * Returns a clone of the given molecule that is prepared for matching all SMARTS patterns, i.e. ring atoms and
+     * bonds are marked and the Daylight aromaticity model is applied once (see
+     * {@link SmartsPattern#prepare(IAtomContainer)}), since the automatic preparation of the patterns is disabled. If
+     * the matched substructures are returned, the clone is kekulized beforehand if it has unset bond orders, because
+     * the matched substructures are built from explicit bond orders. If no Kekulé structure can be assigned, the clone
+     * is used with its unset bond orders, which are then treated as single bonds in the matched substructures.
+     *
+     * @param aMolecule the molecule to fragment, it is not altered
+     * @param areMatchedSubstructuresReturned whether the matched substructures are returned
+     * @return prepared clone of the given molecule
+     * @throws CloneNotSupportedException if the molecule cannot be cloned
+     */
+    private static IAtomContainer prepareMolecule(IAtomContainer aMolecule, boolean areMatchedSubstructuresReturned)
+            throws CloneNotSupportedException {
+        //SMARTS preparation alters the aromaticity and ring flags of the atom container, so work on a clone
+        IAtomContainer tmpMoleculeClone = aMolecule.clone();
+        if (areMatchedSubstructuresReturned && BiosynfoniFragmenter.hasUnsetBondOrders(tmpMoleculeClone)) {
+            try {
+                Kekulization.kekulize(tmpMoleculeClone);
+            } catch (CDKException anException) {
+                BiosynfoniFragmenter.LOGGER.log(Level.FINE, "Molecule cannot be kekulized, unset bond orders are"
+                        + " treated as single bonds in the matched substructures.", anException);
+            }
+        }
+        SmartsPattern.prepare(tmpMoleculeClone);
+        return tmpMoleculeClone;
+    }
+
+    /**
+     * Checks whether the given molecule has bonds with unset bond order.
+     *
+     * @param aMolecule the molecule to check
+     * @return true if at least one bond order is null or unset
+     */
+    private static boolean hasUnsetBondOrders(IAtomContainer aMolecule) {
+        for (IBond tmpBond : aMolecule.bonds()) {
+            if (Objects.isNull(tmpBond.getOrder()) || tmpBond.getOrder() == IBond.Order.UNSET) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Returns the unique matches of the given SMARTS pattern in the prepared molecule, filtered by the overlap filters
+     * that are turned on. If the inter-substructure overlap filter is turned on, the atoms of the returned matches are
+     * additionally flagged as blocked for the SMARTS patterns of the following keys.
+     *
+     * @param aPattern SMARTS pattern of the current key
+     * @param aPreparedMolecule molecule prepared for SMARTS matching, see {@link #prepareMolecule(IAtomContainer, boolean)}
+     * @param aCanonicalRanks canonical rank of every atom, indexed by atom index; only used and may be null if the
+     *                        intra-substructure overlap filter is turned off
+     * @param anIsAtomBlockedArray flags of atoms used by accepted matches of previous keys, indexed by atom index; only
+     *                             used by the inter-substructure overlap filter
+     * @return filtered matches, each given as atom indices
+     */
+    private List<int[]> getFilteredMatches(SmartsPattern aPattern, IAtomContainer aPreparedMolecule, int[] aCanonicalRanks,
+                                           boolean[] anIsAtomBlockedArray) {
+        List<int[]> tmpMatches = Arrays.asList(aPattern.matchAll(aPreparedMolecule).uniqueAtoms().toArray());
+        if (this.intraSubstructureOverlapFilterSetting.get()) {
+            tmpMatches = BiosynfoniFragmenter.applyIntraSubstructureOverlapFilter(tmpMatches, aCanonicalRanks);
+        }
+        if (this.interSubstructureOverlapFilterSetting.get()) {
+            tmpMatches = BiosynfoniFragmenter.applyInterSubstructureOverlapFilter(tmpMatches, anIsAtomBlockedArray);
+            for (int[] tmpMatch : tmpMatches) {
+                for (int tmpAtomIndex : tmpMatch) {
+                    anIsAtomBlockedArray[tmpAtomIndex] = true;
+                }
+            }
+        }
+        return tmpMatches;
+    }
+
+    /**
      * Creates the representative fragment structure of the given key from its stored SMILES code and annotates it
      * with the key label and SMARTS pattern.
      *
@@ -912,9 +964,14 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
     /**
      * Creates a fragment from the given match that consists of the matched atoms and all bonds between them. Free
      * valences resulting from bonds to non-matched atoms are saturated with implicit hydrogen atoms, and aromaticity
-     * is re-detected on the fragment. The fragment is annotated with the key label and SMARTS pattern.
+     * is re-detected on the fragment. A cut bond of an aromatic system counts as a single bond and a Kekulé structure
+     * is assigned to the matched part of the aromatic system, so that completely matched aromatic rings remain
+     * aromatic, e.g. the pyrrole ring of indole. If no Kekulé structure can be assigned, e.g. to three atoms of a
+     * benzene ring, the fragment is built from the bond orders of the given molecule instead. The fragment is
+     * annotated with the key label and SMARTS pattern.
      *
-     * @param aMolecule the molecule the match was found in; must have explicit (Kekulé) bond orders
+     * @param aMolecule the molecule the match was found in, prepared for SMARTS matching; it should have explicit
+     *                  (Kekulé) bond orders, unset bond orders are treated as single bonds
      * @param aMatch atom indices of the match
      * @param aKey the Biosynfoni key that produced the match
      * @return new atom container of the matched substructure
@@ -923,6 +980,34 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
      */
     private IAtomContainer createMatchedSubstructureFragment(IAtomContainer aMolecule, int[] aMatch, BiosynfoniKey aKey)
             throws CloneNotSupportedException, CDKException {
+        IAtomContainer tmpFragment = BiosynfoniFragmenter.copyMatchedAtomsAndBonds(aMolecule, aMatch, true);
+        try {
+            Kekulization.kekulize(tmpFragment);
+        } catch (CDKException anException) {
+            //the matched part of the aromatic system has no Kekulé structure, the bond orders of the molecule are used
+            tmpFragment = BiosynfoniFragmenter.copyMatchedAtomsAndBonds(aMolecule, aMatch, false);
+        }
+        this.fragmentAromaticityModel.apply(tmpFragment);
+        BiosynfoniFragmenter.annotateFragment(tmpFragment, aKey);
+        return tmpFragment;
+    }
+
+    /**
+     * Copies the matched atoms and all bonds between them into a new atom container and saturates the free valences
+     * resulting from bonds to non-matched atoms with implicit hydrogen atoms. If the aromaticity is kept, the aromatic
+     * flags of the matched atoms and bonds are copied, the bond orders of the aromatic bonds are left unset so that a
+     * Kekulé structure can be assigned to them afterwards, and every cut aromatic bond counts as a single bond.
+     * Otherwise, all bond orders of the given molecule are used and no aromatic flags are set. Unset bond orders of
+     * non-aromatic bonds are treated as single bonds.
+     *
+     * @param aMolecule the molecule the match was found in, prepared for SMARTS matching
+     * @param aMatch atom indices of the match
+     * @param isAromaticityKept whether the aromatic flags are copied and cut aromatic bonds count as single bonds
+     * @return new atom container of the matched atoms and the bonds between them
+     * @throws CloneNotSupportedException if an atom cannot be cloned
+     */
+    private static IAtomContainer copyMatchedAtomsAndBonds(IAtomContainer aMolecule, int[] aMatch, boolean isAromaticityKept)
+            throws CloneNotSupportedException {
         IChemObjectBuilder tmpBuilder = aMolecule.getBuilder();
         IAtomContainer tmpFragment = tmpBuilder.newAtomContainer();
         IAtom[] tmpOriginalToFragmentAtom = new IAtom[aMolecule.getAtomCount()];
@@ -932,7 +1017,7 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
             int tmpImplicitHydrogenCount = Objects.isNull(tmpOriginalAtom.getImplicitHydrogenCount())
                     ? 0 : tmpOriginalAtom.getImplicitHydrogenCount();
             tmpFragmentAtom.setImplicitHydrogenCount(tmpImplicitHydrogenCount);
-            tmpFragmentAtom.setIsAromatic(false);
+            tmpFragmentAtom.setIsAromatic(isAromaticityKept && tmpOriginalAtom.isAromatic());
             tmpFragmentAtom.setIsInRing(false);
             tmpFragment.addAtom(tmpFragmentAtom);
             //the container may wrap the added atom, so the stored reference has to be taken from it
@@ -941,16 +1026,21 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
         for (IBond tmpBond : aMolecule.bonds()) {
             IAtom tmpBegin = tmpOriginalToFragmentAtom[tmpBond.getBegin().getIndex()];
             IAtom tmpEnd = tmpOriginalToFragmentAtom[tmpBond.getEnd().getIndex()];
+            boolean tmpIsAromaticBondKept = isAromaticityKept && tmpBond.isAromatic();
+            IBond.Order tmpBondOrder = Objects.isNull(tmpBond.getOrder()) || tmpBond.getOrder() == IBond.Order.UNSET
+                    ? IBond.Order.SINGLE : tmpBond.getOrder();
             if (!Objects.isNull(tmpBegin) && !Objects.isNull(tmpEnd)) {
-                tmpFragment.addBond(tmpBuilder.newInstance(IBond.class, tmpBegin, tmpEnd, tmpBond.getOrder()));
+                IBond tmpFragmentBond = tmpBuilder.newInstance(IBond.class, tmpBegin, tmpEnd,
+                        tmpIsAromaticBondKept ? IBond.Order.UNSET : tmpBondOrder);
+                tmpFragmentBond.setIsAromatic(tmpIsAromaticBondKept);
+                tmpFragment.addBond(tmpFragmentBond);
             } else if (!Objects.isNull(tmpBegin) || !Objects.isNull(tmpEnd)) {
                 //bond to a non-matched atom is cut, saturate the free valence with hydrogen atoms
                 IAtom tmpMatchedAtom = Objects.isNull(tmpBegin) ? tmpEnd : tmpBegin;
-                tmpMatchedAtom.setImplicitHydrogenCount(tmpMatchedAtom.getImplicitHydrogenCount() + tmpBond.getOrder().numeric());
+                tmpMatchedAtom.setImplicitHydrogenCount(tmpMatchedAtom.getImplicitHydrogenCount()
+                        + (tmpIsAromaticBondKept ? 1 : tmpBondOrder.numeric()));
             }
         }
-        this.fragmentAromaticityModel.apply(tmpFragment);
-        BiosynfoniFragmenter.annotateFragment(tmpFragment, aKey);
         return tmpFragment;
     }
 
@@ -1048,9 +1138,10 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
      * Computes the canonical rank of every atom as its position in the unique (canonical) SMILES code of the molecule.
      * This numbering does not depend on the input atom order. Because the SMILES code is written by a depth-first
      * traversal along the bonds, neighbouring atoms get close ranks, so that the intra-substructure overlap filter
-     * selects the matches along chains and rings. This packs the matches as densely as the reference implementation,
-     * which processes the matches in the order of the (SMILES-based) input atom indices, but without depending on the
-     * input atom order. Should the SMILES code not be creatable, e.g. for unset bond orders, the ranks of the CDK
+     * selects the matches along chains and rings, similar to the reference implementation, which processes the matches
+     * in the order of the (SMILES-based) input atom indices. The matches are thereby packed about as densely, but the
+     * selected matches and their number can still differ from the reference implementation (see the class
+     * documentation). Should the SMILES code not be creatable, e.g. for unset bond orders, the ranks of the CDK
      * canonical labelling are used instead, which are input order independent as well.
      *
      * @param aMolecule the molecule

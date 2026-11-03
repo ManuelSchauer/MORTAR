@@ -321,6 +321,92 @@ class BiosynfoniFragmenterTest {
     }
     //
     /**
+     * Tests that the side chain carbon atoms of the phenyl-C3 and phenyl-C2 units must not be part of any six-membered
+     * ring, regardless of the bond orders in this ring and of further fused rings like the lactone ring of
+     * aryltetralin lignans, while open side chains are still matched.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    void phenylSideChainRingTest() throws Exception {
+        SmilesParser tmpSmiPar = new SmilesParser(SilentChemObjectBuilder.getInstance());
+        BiosynfoniFragmenter tmpFragmenter = new BiosynfoniFragmenter();
+        String tmpPhenylC3Label = BiosynfoniFragmenter.BiosynfoniKey.D_PHENYL_C3.getLabel();
+        String tmpPhenylC2Label = BiosynfoniFragmenter.BiosynfoniKey.D_PHENYL_C2.getLabel();
+        //side chain in a six-membered ring: phenylcyclohexane, 4-phenylcyclohexene (non-aromatic double bond in the
+        // ring), aryltetralin lignan skeletons with and without lactone ring, and aryldihydronaphthalene lignan
+        // skeletons (double bond in the ring) with and without lactone ring
+        for (String tmpSmiles : new String[] {"c1ccccc1C1CCCCC1", "c1ccccc1C1CC=CCC1",
+                "COc1cc(cc(OC)c1OC)C1C2C(COC2=O)Cc2cc3OCOc3cc12", "OCC1Cc2cc(OC)c(O)cc2C(c2ccc(O)c(OC)c2)C1CO",
+                "COc1cc(cc(OC)c1OC)C1=C2C(COC2=O)Cc2cc3OCOc3cc12", "OCC1=Cc2cc(OC)c(O)cc2C(c2ccc(O)c(OC)c2)C1CO"}) {
+            Map<String, Integer> tmpCounts = BiosynfoniFragmenterTest.countPerLabel(tmpFragmenter.fragmentMolecule(tmpSmiPar.parseSmiles(tmpSmiles)));
+            Assertions.assertEquals(0, tmpCounts.getOrDefault(tmpPhenylC3Label, 0), tmpSmiles);
+            Assertions.assertEquals(0, tmpCounts.getOrDefault(tmpPhenylC2Label, 0), tmpSmiles);
+        }
+        //open side chains: propylbenzene, cinnamyl alcohol, and cannabidiol, whose only phenyl-C3 unit is in the pentyl
+        // chain, while its aryl group is attached to a cyclohexene ring
+        for (String tmpSmiles : new String[] {"CCCc1ccccc1", "OC/C=C/c1ccccc1", "CCCCCc1cc(O)c(C2C=C(C)CCC2C(C)=C)c(O)c1"}) {
+            Map<String, Integer> tmpCounts = BiosynfoniFragmenterTest.countPerLabel(tmpFragmenter.fragmentMolecule(tmpSmiPar.parseSmiles(tmpSmiles)));
+            Assertions.assertEquals(1, tmpCounts.getOrDefault(tmpPhenylC3Label, 0), tmpSmiles);
+        }
+    }
+    //
+    /**
+     * Tests that completely matched aromatic rings of fused ring systems remain aromatic in the matched substructures
+     * mode: the pyrrole ring of indole, the pyridine ring of quinoline, and both rings of naphthalene.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    void matchedSubstructuresOfFusedAromaticRingsTest() throws Exception {
+        SmilesParser tmpSmiPar = new SmilesParser(SilentChemObjectBuilder.getInstance());
+        SmilesGenerator tmpSmiGen = new SmilesGenerator(SmiFlavor.Unique | SmiFlavor.UseAromaticSymbols);
+        BiosynfoniFragmenter tmpFragmenter = new BiosynfoniFragmenter();
+        tmpFragmenter.setReturnedFragmentsSetting(BiosynfoniFragmenter.BiosynfoniReturnedFragmentsOption.MATCHED_SUBSTRUCTURES);
+        //molecule, key of the ring, expected fragment of the ring
+        String[][] tmpCases = {
+                {"c1ccc2[nH]ccc2c1", BiosynfoniFragmenter.BiosynfoniKey.D_C4N.getLabel(), "c1cc[nH]c1"},
+                {"c1ccc2ncccc2c1", BiosynfoniFragmenter.BiosynfoniKey.D_C5N.getLabel(), "c1ccncc1"},
+                {"c1ccc2ccccc2c1", BiosynfoniFragmenter.BiosynfoniKey.R_C6.getLabel(), "c1ccccc1"}};
+        for (String[] tmpCase : tmpCases) {
+            String tmpExpectedSmiles = tmpSmiGen.create(tmpSmiPar.parseSmiles(tmpCase[2]));
+            int tmpRingCount = 0;
+            for (IAtomContainer tmpFragment : tmpFragmenter.fragmentMolecule(tmpSmiPar.parseSmiles(tmpCase[0]))) {
+                if (tmpCase[1].equals(tmpFragment.getProperty(BiosynfoniFragmenter.BIOSYNFONI_LABEL_PROPERTY_KEY))) {
+                    Assertions.assertEquals(tmpExpectedSmiles, tmpSmiGen.create(tmpFragment), tmpCase[0]);
+                    tmpRingCount++;
+                }
+            }
+            Assertions.assertTrue(tmpRingCount > 0, tmpCase[0]);
+        }
+    }
+    //
+    /**
+     * Tests that a molecule without Kekulé structure, which MORTAR reads with unset bond orders if necessary, is also
+     * fragmented in the matched substructures mode, with the same number of fragments per key as in the
+     * representative structures mode.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    void matchedSubstructuresOfNonKekulizableMoleculeTest() throws Exception {
+        SmilesParser tmpSmiPar = new SmilesParser(SilentChemObjectBuilder.getInstance());
+        tmpSmiPar.kekulise(false);
+        IAtomContainer tmpMolecule = tmpSmiPar.parseSmiles("OCCc1cccc1");
+        BiosynfoniFragmenter tmpRepresentativeFragmenter = new BiosynfoniFragmenter();
+        BiosynfoniFragmenter tmpMatchedFragmenter = new BiosynfoniFragmenter();
+        tmpMatchedFragmenter.setReturnedFragmentsSetting(BiosynfoniFragmenter.BiosynfoniReturnedFragmentsOption.MATCHED_SUBSTRUCTURES);
+        List<IAtomContainer> tmpFragments = tmpMatchedFragmenter.fragmentMolecule(tmpMolecule);
+        Assertions.assertFalse(tmpFragments.isEmpty());
+        Assertions.assertEquals(BiosynfoniFragmenterTest.countPerLabel(tmpRepresentativeFragmenter.fragmentMolecule(tmpMolecule)),
+                BiosynfoniFragmenterTest.countPerLabel(tmpFragments));
+        for (IAtomContainer tmpFragment : tmpFragments) {
+            Assertions.assertNotNull(ChemUtil.createUniqueSmiles(tmpFragment, false),
+                    (String) tmpFragment.getProperty(BiosynfoniFragmenter.BIOSYNFONI_LABEL_PROPERTY_KEY));
+        }
+    }
+    //
+    /**
      * Returns the name of the key enum constant with the given label.
      *
      * @param aLabel Biosynfoni label

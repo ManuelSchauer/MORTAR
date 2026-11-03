@@ -304,48 +304,63 @@ public class ItemizationDataTableView extends TableView implements IDataTableVie
                 }
                 // fragments with display labels, e.g. the name of the substructure pattern that produced them, are
                 // grouped by a header bar with the label above them; the frequency is displayed below the structure
-                String tmpLabelText = tmpFragment.getDisplayLabelText();
-                if (tmpLabelText != null) {
-                    //the fragments of a molecule are ordered by their label, e.g. the Biosynfoni key order, so the
-                    // fragments of a group are in neighbouring cells; the label is only written in the first cell of a
-                    // group and the bar has side borders only at the start and end of the group
-                    boolean tmpIsFirstOfGroup = tmpIndex == 0
-                            || !tmpLabelText.equals(tmpFragments.get(tmpIndex - 1).getDisplayLabelText());
-                    boolean tmpIsLastOfGroup = tmpIndex == tmpFragments.size() - 1
-                            || !tmpLabelText.equals(tmpFragments.get(tmpIndex + 1).getDisplayLabelText());
-                    Label tmpHeader = new Label(tmpIsFirstOfGroup ? tmpLabelText : "");
-                    tmpHeader.setAlignment(Pos.CENTER_LEFT);
-                    tmpHeader.setMaxWidth(Double.MAX_VALUE);
-                    tmpHeader.setMinHeight(ItemizationDataTableView.GROUP_HEADER_HEIGHT);
-                    tmpHeader.setPrefHeight(ItemizationDataTableView.GROUP_HEADER_HEIGHT);
-                    tmpHeader.setStyle(ItemizationDataTableView.GROUP_HEADER_STYLE + String.format(" -fx-border-width: 1 %d 1 %d;",
-                            tmpIsLastOfGroup ? 1 : 0, tmpIsFirstOfGroup ? 1 : 0));
-                    VBox.setMargin(tmpHeader, new Insets(0,
-                            tmpIsLastOfGroup ? ItemizationDataTableView.GROUP_HEADER_GAP : 0,
-                            0,
-                            tmpIsFirstOfGroup ? ItemizationDataTableView.GROUP_HEADER_GAP : 0));
-                    double tmpImageHeight = Math.max(tmpFragment.getStructureImageHeight() - ItemizationDataTableView.GROUP_HEADER_HEIGHT, 1.0);
-                    ImageView tmpImage = tmpFragment.getStructureWithText(tmpFrequencyString,
-                            tmpFragment.getStructureImageWidth(), tmpImageHeight);
-                    VBox tmpCellBox = new VBox(tmpHeader, tmpImage);
-                    tmpCellBox.setAlignment(Pos.TOP_CENTER);
-                    //the box has exactly the cell width, independent of the image width, and is anchored at the left cell
-                    // border, so that the header bars of neighbouring cells touch and every group starts with the same
-                    // distance to the left cell border; an image wider than the cell is centered and clipped
-                    tmpCellBox.minWidthProperty().bind(tmpColumn.widthProperty());
-                    tmpCellBox.prefWidthProperty().bind(tmpColumn.widthProperty());
-                    tmpCellBox.maxWidthProperty().bind(tmpColumn.widthProperty());
-                    Rectangle tmpClip = new Rectangle();
-                    tmpClip.widthProperty().bind(tmpCellBox.widthProperty());
-                    tmpClip.heightProperty().bind(tmpCellBox.heightProperty());
-                    tmpCellBox.setClip(tmpClip);
-                    return tmpCellBox;
+                if (tmpFragment.getDisplayLabelText() != null) {
+                    return this.createLabelledFragmentCell(tmpFragments, tmpIndex, tmpFrequencyString, tmpColumn);
                 }
                 return tmpFragment.getStructureWithText(tmpFrequencyString);
             }));
             tmpColumn.setMinWidth(300);
             this.fragmentStructureColumn.getColumns().add(tmpColumn);
         }
+    }
+    //
+    /**
+     * Creates the content of a fragment cell for a fragment with a display label: a header bar with the label above
+     * the structure depiction with the frequency of the fragment below it. The fragments of a molecule that share a
+     * display label are in neighbouring cells, since fragmenters return them one after the other, e.g. in the
+     * Biosynfoni key order. Therefore, the label is only written in the first cell of a group, and the bar has side
+     * borders only at the start and end of the group.
+     *
+     * @param aFragmentList fragments of the molecule in the order of the fragment columns
+     * @param anIndex index of the fragment of this cell in the given list; its display label must not be null
+     * @param aFrequencyText text displayed below the structure, i.e. the frequency of the fragment in the molecule
+     * @param aColumn fragment column the cell belongs to, whose width the content takes
+     * @return box with the header bar and the structure depiction
+     */
+    private VBox createLabelledFragmentCell(List<FragmentDataModel> aFragmentList, int anIndex, String aFrequencyText,
+                                            TableColumn<MoleculeDataModel, Node> aColumn) {
+        FragmentDataModel tmpFragment = aFragmentList.get(anIndex);
+        String tmpLabelText = tmpFragment.getDisplayLabelText();
+        boolean tmpIsFirstOfGroup = anIndex == 0
+                || !tmpLabelText.equals(aFragmentList.get(anIndex - 1).getDisplayLabelText());
+        boolean tmpIsLastOfGroup = anIndex == aFragmentList.size() - 1
+                || !tmpLabelText.equals(aFragmentList.get(anIndex + 1).getDisplayLabelText());
+        Label tmpHeader = new Label(tmpIsFirstOfGroup ? tmpLabelText : "");
+        tmpHeader.setAlignment(Pos.CENTER_LEFT);
+        tmpHeader.setMaxWidth(Double.MAX_VALUE);
+        tmpHeader.setMinHeight(ItemizationDataTableView.GROUP_HEADER_HEIGHT);
+        tmpHeader.setPrefHeight(ItemizationDataTableView.GROUP_HEADER_HEIGHT);
+        tmpHeader.setStyle(ItemizationDataTableView.GROUP_HEADER_STYLE + String.format(" -fx-border-width: 1 %d 1 %d;",
+                tmpIsLastOfGroup ? 1 : 0, tmpIsFirstOfGroup ? 1 : 0));
+        VBox.setMargin(tmpHeader, new Insets(0,
+                tmpIsLastOfGroup ? ItemizationDataTableView.GROUP_HEADER_GAP : 0,
+                0,
+                tmpIsFirstOfGroup ? ItemizationDataTableView.GROUP_HEADER_GAP : 0));
+        double tmpImageHeight = Math.max(tmpFragment.getStructureImageHeight() - ItemizationDataTableView.GROUP_HEADER_HEIGHT, 1.0);
+        ImageView tmpImage = tmpFragment.getStructureWithText(aFrequencyText, tmpFragment.getStructureImageWidth(), tmpImageHeight);
+        VBox tmpCellBox = new VBox(tmpHeader, tmpImage);
+        tmpCellBox.setAlignment(Pos.TOP_CENTER);
+        //the box has exactly the cell width, independent of the image width, and is anchored at the left cell
+        // border, so that the header bars of neighbouring cells touch and every group starts with the same
+        // distance to the left cell border; an image wider than the cell is centered and clipped
+        tmpCellBox.minWidthProperty().bind(aColumn.widthProperty());
+        tmpCellBox.prefWidthProperty().bind(aColumn.widthProperty());
+        tmpCellBox.maxWidthProperty().bind(aColumn.widthProperty());
+        Rectangle tmpClip = new Rectangle();
+        tmpClip.widthProperty().bind(tmpCellBox.widthProperty());
+        tmpClip.heightProperty().bind(tmpCellBox.heightProperty());
+        tmpCellBox.setClip(tmpClip);
+        return tmpCellBox;
     }
     //</editor-fold>
     //
