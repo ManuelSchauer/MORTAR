@@ -26,6 +26,7 @@
 package de.unijena.cheminf.mortar.model.data;
 
 import de.unijena.cheminf.mortar.model.depict.DepictionUtil;
+import de.unijena.cheminf.mortar.model.util.BasicDefinitions;
 
 import javafx.scene.image.ImageView;
 
@@ -35,6 +36,7 @@ import org.openscience.cdk.interfaces.IAtomContainer;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
@@ -73,6 +75,20 @@ public class FragmentDataModel extends MoleculeDataModel {
      * List of parent molecules, which contain this fragment.
      */
     private final Set<MoleculeDataModel> parentMolecules;
+    //
+    /**
+     * Display labels of this fragment in alphabetical order, e.g. the names of the substructure patterns that produced
+     * it, see {@link de.unijena.cheminf.mortar.model.fragmentation.algorithm.IMoleculeFragmenter#FRAGMENT_DISPLAY_LABEL_PROPERTY_KEY}.
+     * They are used to group fragments in the GUI. Only created when the first label is added, because most
+     * fragmenters do not set display labels; guarded by synchronizing on this object.
+     */
+    private Set<String> displayLabels;
+    //
+    /**
+     * Display labels in alphabetical order, separated by commas, or null if there is none; cached because it is
+     * queried very often, e.g. when sorting fragment lists and rendering table cells.
+     */
+    private volatile String displayLabelText;
     //
     /**
      * First or random parent molecule which contains this fragment.
@@ -144,6 +160,58 @@ public class FragmentDataModel extends MoleculeDataModel {
      */
     public final int incrementMoleculeFrequency() {
         return this.moleculeFrequency.incrementAndGet();
+    }
+    //
+    /**
+     * Adds a display label to this fragment, e.g. the name of the substructure pattern that produced it. Adding the
+     * same label multiple times has no effect. This operation is thread-safe.
+     *
+     * @param aLabel label to add
+     * @throws NullPointerException if the given label is null
+     */
+    public synchronized void addDisplayLabel(String aLabel) throws NullPointerException {
+        //synchronized so that the cached text always corresponds to the complete set of labels
+        Objects.requireNonNull(aLabel, "Given label is null.");
+        if (this.displayLabels == null) {
+            this.displayLabels = new TreeSet<>();
+        }
+        if (this.displayLabels.add(aLabel)) {
+            this.displayLabelText = String.join(", ", this.displayLabels);
+        }
+    }
+    //
+    /**
+     * Returns all display labels of this fragment in alphabetical order, separated by commas, or null if the fragment
+     * has no display label.
+     *
+     * @return display label text or null
+     */
+    public String getDisplayLabelText() {
+        return this.displayLabelText;
+    }
+    //
+    /**
+     * Creates and returns an ImageView of this fragment as 2D structure of the given size with the given text below
+     * the structure. If the given height is too small for the text, the structure is depicted without text.
+     * Mainly used for fragments in items tab that are displayed below a group header.
+     *
+     * @param aText text to show below the structure
+     * @param aWidth image width
+     * @param aHeight image height
+     * @return ImageView with text
+     */
+    public ImageView getStructureWithText(String aText, double aWidth, double aHeight) {
+        try {
+            IAtomContainer tmpAtomContainer = this.getAtomContainer();
+            if (aHeight < BasicDefinitions.DEFAULT_IMAGE_TEXT_LABEL_HEIGHT) {
+                return new ImageView(DepictionUtil.depictImageWithTransparentBackground(tmpAtomContainer, 1, aWidth, aHeight, false));
+            }
+            return new ImageView(DepictionUtil.depictImageWithTextNoFillToFitAndTransparentBackground(tmpAtomContainer, 1,
+                    aWidth, aHeight, aText));
+        } catch (CDKException aCDKException) {
+            FragmentDataModel.LOGGER.log(Level.SEVERE, aCDKException.toString(), aCDKException);
+            return new ImageView(DepictionUtil.depictErrorImage(aCDKException.getMessage(), (int) aWidth, (int) aHeight));
+        }
     }
     //</editor-fold>
     //

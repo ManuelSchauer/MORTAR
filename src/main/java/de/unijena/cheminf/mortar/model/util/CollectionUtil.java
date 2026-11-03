@@ -29,7 +29,10 @@ import de.unijena.cheminf.mortar.model.data.DataModelPropertiesForTableView;
 import de.unijena.cheminf.mortar.model.data.FragmentDataModel;
 import de.unijena.cheminf.mortar.model.data.MoleculeDataModel;
 
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Util class for collections.
@@ -49,6 +52,37 @@ public final class CollectionUtil {
     //</editor-fold>
     //
     //<editor-fold desc="public static methods" defaultstate="collapsed">
+    /**
+     * Sorts the given fragment list so that fragments with the same display label (see
+     * {@link FragmentDataModel#getDisplayLabelText()}), e.g. the substructures matched by the same SMARTS pattern, are
+     * listed directly below each other. The groups are sorted by the summed absolute frequency of their fragments in
+     * descending order (ties by label), and the fragments within a group by their absolute frequency in descending
+     * order (ties by unique SMILES). Fragments without display label are listed last, sorted in the same way.
+     * If no fragment has a display label, the list is not changed.
+     *
+     * @param aList list of fragments to sort
+     */
+    public static void sortGivenFragmentListByDisplayLabelGroups(List<FragmentDataModel> aList) {
+        Map<String, Integer> tmpLabelToSummedFrequencyMap = new HashMap<>();
+        for (FragmentDataModel tmpFragment : aList) {
+            String tmpLabel = tmpFragment.getDisplayLabelText();
+            if (tmpLabel != null) {
+                tmpLabelToSummedFrequencyMap.merge(tmpLabel, tmpFragment.getAbsoluteFrequency(), Integer::sum);
+            }
+        }
+        if (tmpLabelToSummedFrequencyMap.isEmpty()) {
+            return;
+        }
+        Comparator<FragmentDataModel> tmpGroupComparator = Comparator.comparing(
+                (FragmentDataModel aFragment) -> aFragment.getDisplayLabelText() == null)
+                .thenComparing(aFragment -> aFragment.getDisplayLabelText() == null
+                        ? 0 : -tmpLabelToSummedFrequencyMap.get(aFragment.getDisplayLabelText()))
+                .thenComparing(aFragment -> aFragment.getDisplayLabelText() == null ? "" : aFragment.getDisplayLabelText());
+        aList.sort(tmpGroupComparator
+                .thenComparing(FragmentDataModel::getAbsoluteFrequency, Comparator.reverseOrder())
+                .thenComparing(MoleculeDataModel::getUniqueSmiles));
+    }
+    //
     /**
      * Sorts a given list of Molecule-/FragmentDataModel objects according to the specified property and
      * the sort type specified by a Boolean. If true, the list is sorted in ascending order,

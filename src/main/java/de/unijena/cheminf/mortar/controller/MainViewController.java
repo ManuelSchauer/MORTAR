@@ -1174,6 +1174,9 @@ public class MainViewController {
                         for (String tmpKey : tmpKeys) {
                             tmpObservableFragments.add(this.fragmentationService.getFragments().get(tmpKey));
                         }
+                        //fragments with the same display label, e.g. substructures matched by the same SMARTS
+                        // pattern, are listed below each other
+                        CollectionUtil.sortGivenFragmentListByDisplayLabelGroups(tmpObservableFragments);
                         this.mapOfFragmentDataModelLists.put(this.fragmentationService.getCurrentFragmentationName(), tmpObservableFragments);
                         this.addFragmentationResultTabs(this.fragmentationService.getCurrentFragmentationName());
                         this.updateStatusBar(this.fragmentationThread, Message.get("Status.finished"));

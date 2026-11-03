@@ -294,6 +294,15 @@ public interface IMoleculeFragmenter {
     String FRAGMENT_CATEGORY_PROPERTY_KEY = "IMoleculeFragmenter.Category";
 
     /**
+     * Property key/name to assign a short label to a fragment, represented by an IAtomContainer, e.g. the name of the
+     * substructure pattern that produced the fragment. In the GUI, fragments with the same label are listed below each
+     * other in the fragments tab and grouped under a header with the label in the items tab. If the same fragment is
+     * produced with different labels, all labels are combined. The labels are only used for single fragmentations,
+     * not in pipelines, and only if the fragmenter declares that it assigns them, see {@link #providesDisplayLabels()}.
+     */
+    String FRAGMENT_DISPLAY_LABEL_PROPERTY_KEY = "IMoleculeFragmenter.DisplayLabel";
+
+    /**
      * Default option for saturating free valences on the returned fragment molecules.
      */
     FragmentSaturationOption FRAGMENT_SATURATION_OPTION_DEFAULT = FragmentSaturationOption.HYDROGEN_SATURATION;
@@ -411,5 +420,17 @@ public interface IMoleculeFragmenter {
      */
     IAtomContainer applyPreprocessing(IAtomContainer aMolecule)
             throws NullPointerException, IllegalArgumentException, CloneNotSupportedException;
+
+    /**
+     * Returns true if the fragmenter assigns display labels to its fragments (see
+     * {@link #FRAGMENT_DISPLAY_LABEL_PROPERTY_KEY}). Only then, the labels are collected in single fragmentations.
+     * This prevents labels from being taken over from input molecules that carry the respective property, e.g. after
+     * re-importing exported fragments, if the fragmenter passes on the properties of the input molecule.
+     *
+     * @return true if the fragmenter assigns display labels; false by default
+     */
+    default boolean providesDisplayLabels() {
+        return false;
+    }
     //</editor-fold>
 }
