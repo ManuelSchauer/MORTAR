@@ -1,0 +1,2388 @@
+# Reference fragments of the AlkylStructureFragmenter, see AlkylStructureFragmenterIntegrationTest.referenceFragmentsTest().
+# Per molecule: "> name<TAB>input SMILES", then one line per distinct result: "<TAB>fragments<TAB>settings".
+# Settings: chains=off (no dissection of linear chains), chains=<maximum chain lengths> or chains=any (all of
+# these), isolate = isolation of tertiary/quaternary carbons, separate = separation of tertiary/quaternary
+# carbons from rings, no-saturation = no hydrogen saturation. Lines starting with # are ignored by the test.
+> C	C
+	C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> CC	CC
+	CC	chains=off,2,3,6; chains=off,2,3,6 isolate; chains=off,2,3,6 separate; chains=off,2,3,6 isolate separate; chains=6 isolate no-saturation
+	C C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+> CCCCCCCCCCCCCCCC	CCCCCCCCCCCCCCCC
+	CCCCCCCCCCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C C C C C C C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	CC CC CC CC CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C CCC CCC CCC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	CCCC CCCCCC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]CCC [CH2]CCCCC [CH2]CCCC[CH2]	chains=6 isolate no-saturation
+> CC(C)C	CC(C)C
+	CC(C)C	chains=any; chains=any separate
+	*C(*)* C C C	chains=any isolate; chains=any isolate separate
+	*C(*)* [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> CC(C)(C)C	CC(C)(C)C
+	CC(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* C C C C	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* [CH3] [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> CC(C)(C)C(C)(C)C	CC(C)(C)C(C)(C)C
+	CC(C)(C)C(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* *C(*)(*)* C C C C C C	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* *C(*)(*)* [CH3] [CH3] [CH3] [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> CC(C)C(C)C	CC(C)C(C)C
+	CC(C)C(C)C	chains=any; chains=any separate
+	*C(*)* *C(*)* C C C C	chains=any isolate; chains=any isolate separate
+	*C(*)* *C(*)* [CH3] [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> CCC(C)CC(C)(C)CCC	CCCC(C)(C)CC(C)CC
+	C CC CC(C)CC(C)(C)C	chains=off,2,3,6; chains=off,2,3,6 separate
+	C C C CC(C)CC(C)(C)C	chains=1; chains=1 separate
+	*C(*)(*)* *C(*)* C C C C CC CCC	chains=off,3,6 isolate; chains=off,3,6 isolate separate
+	*C(*)(*)* *C(*)* C C C C C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* *C(*)* C C C C C CC CC	chains=2 isolate; chains=2 isolate separate
+	*C(*)(*)* *C(*)* [CH2] [CH2]C [CH2]CC [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> CC(C)CCCC(C)CCCC(C)CCCCC(C)CCCC(C)CCCC(C)C	CC(C)CCCC(C)CCCC(C)CCCCC(C)CCCC(C)CCCC(C)C
+	C C C C CC CC(C)C CC(C)C CC(C)C CC(C)C CC(C)C CC(C)C	chains=off,2,3,6; chains=off,2,3,6 separate
+	C C C C C C CC(C)C CC(C)C CC(C)C CC(C)C CC(C)C CC(C)C	chains=1; chains=1 separate
+	*C(*)* *C(*)* *C(*)* *C(*)* *C(*)* *C(*)* C C C C C C C C CCC CCC CCC CCC CCCC	chains=off,6 isolate; chains=off,6 isolate separate
+	*C(*)* *C(*)* *C(*)* *C(*)* *C(*)* *C(*)* C C C C C C C C C C C C C C C C C C C C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)* *C(*)* *C(*)* *C(*)* *C(*)* *C(*)* C C C C C C C C C C C C CC CC CC CC CC CC	chains=2 isolate; chains=2 isolate separate
+	*C(*)* *C(*)* *C(*)* *C(*)* *C(*)* *C(*)* C C C C C C C C C CCC CCC CCC CCC CCC	chains=3 isolate; chains=3 isolate separate
+	*C(*)* *C(*)* *C(*)* *C(*)* *C(*)* *C(*)* [CH2]CC[CH2] [CH2]C[CH2] [CH2]C[CH2] [CH2]C[CH2] [CH2]C[CH2] [CH3] [CH3] [CH3] [CH3] [CH3] [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> CCCCCCCCCC(CC)(CCCCCCC)CCCCCCCC	CCCCCCCCCC(CC)(CCCCCCC)CCCCCCCC
+	C CC(C)(C)C CCCCCC CCCCCCC CCCCCCCC	chains=off; chains=off separate
+	C C C C C C C C C C C C C C C C C C C C C C CC(C)(C)C	chains=1; chains=1 separate
+	C C CC CC CC CC CC CC CC CC CC CC CC(C)(C)C	chains=2; chains=2 separate
+	C C CC CC(C)(C)C CCC CCC CCC CCC CCC CCC	chains=3; chains=3 separate
+	C C CC CC(C)(C)C CCCCCC CCCCCC CCCCCC	chains=6; chains=6 separate
+	*C(*)(*)* CC CCCCCCC CCCCCCCC CCCCCCCCC	chains=off isolate; chains=off isolate separate
+	*C(*)(*)* C C C C C C C C C C C C C C C C C C C C C C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* C C CC CC CC CC CC CC CC CC CC CC CC CC	chains=2 isolate; chains=2 isolate separate
+	*C(*)(*)* C CC CC CCC CCC CCC CCC CCC CCC CCC	chains=3 isolate; chains=3 isolate separate
+	*C(*)(*)* C CC CC CCC CCCCCC CCCCCC CCCCCC	chains=6 isolate; chains=6 isolate separate
+	*C(*)(*)* [CH2]C [CH2]C [CH2]CC [CH2]CCCC[CH2] [CH2]CCCC[CH2] [CH2]CCCC[CH2] [CH3]	chains=6 isolate no-saturation
+> CC(C)(C)CCCC(C)C	CC(C)CCCC(C)(C)C
+	C CC(C)(C)C CC(C)C	chains=any; chains=any separate
+	*C(*)(*)* *C(*)* C C C C C CCC	chains=off,3,6 isolate; chains=off,3,6 isolate separate
+	*C(*)(*)* *C(*)* C C C C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* *C(*)* C C C C C C CC	chains=2 isolate; chains=2 isolate separate
+	*C(*)(*)* *C(*)* [CH2]C[CH2] [CH3] [CH3] [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> CC(C)CC(C)(C)CC(C)(C)CC(C)C	CC(C)CC(C)(C)CC(C)(C)CC(C)C
+	CC(C)CC(C)(C)CC(C)(C)CC(C)C	chains=any; chains=any separate
+	*C(*)(*)* *C(*)(*)* *C(*)* *C(*)* C C C C C C C C C C C	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* *C(*)(*)* *C(*)* *C(*)* [CH2] [CH2] [CH2] [CH3] [CH3] [CH3] [CH3] [CH3] [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> C=C	C=C
+	C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> C#C	C#C
+	C#C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> CC=CC	C(=CC)C
+	C C C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH3] [CH]=[CH]	chains=6 isolate no-saturation
+> CC#CC	C(#CC)C
+	C C C#C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH3] [C]#[C]	chains=6 isolate no-saturation
+> C=CC=C	C=CC=C
+	C=CC=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> C#CC#C	C#CC#C
+	C#CC#C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> C=C=C	C(=C)=C
+	C(=C)=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> C=C=C=C	C(=C=C)=C
+	C(=C=C)=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> CC=C=CC	C(=CC)=CC
+	C C C(=C)=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH3] [CH]=C=[CH]	chains=6 isolate no-saturation
+> C=CC(C)=C	C=CC(=C)C
+	C C=CC=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [C](=C)C=C	chains=6 isolate no-saturation
+> CC(C)=CCCC(=C)C=C	C=CC(=C)CCC=C(C)C
+	C C C=C C=CC=C CC	chains=off,2,3,6; chains=off,2,3,6 isolate; chains=off,2,3,6 separate; chains=off,2,3,6 isolate separate
+	C C C C C=C C=CC=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	[CH2][CH2] [CH3] [CH3] [C](=C)C=C [C]=[CH]	chains=6 isolate no-saturation
+> CC(C)=CCCC(C)=CCCC(C)=CCCC=C(C)CCC=C(C)CCC=C(C)C	C(=C(C)C)CCC(=CCCC(=CCCC=C(C)CCC=C(C)CCC=C(C)C)C)C
+	C C C C C C C C C=C C=C C=C C=C C=C C=C CC CC CC CC CC	chains=off,2,3,6; chains=off,2,3,6 isolate; chains=off,2,3,6 separate; chains=off,2,3,6 isolate separate
+	C C C C C C C C C C C C C C C C C C C=C C=C C=C C=C C=C C=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	[CH2][CH2] [CH2][CH2] [CH2][CH2] [CH2][CH2] [CH2][CH2] [CH3] [CH3] [CH3] [CH3] [CH3] [CH3] [CH3] [CH3] [C]=[CH] [C]=[CH] [C]=[CH] [C]=[CH] [C]=[CH] [C]=[CH]	chains=6 isolate no-saturation
+> C=CC=CC=C	C=CC=CC=C
+	C=CC=CC=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> C#CC#CC	C#CC#CC
+	C C#CC#C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [C]#CC#C	chains=6 isolate no-saturation
+> CCC#CCC	C(#CCC)CC
+	C#C CC CC	chains=off,2,3,6; chains=off,2,3,6 isolate; chains=off,2,3,6 separate; chains=off,2,3,6 isolate separate
+	C C C C C#C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	[CH2]C [CH2]C [C]#[C]	chains=6 isolate no-saturation
+> CC(C)C#CC(C)C	C(#CC(C)C)C(C)C
+	*C(C)C *C(C)C C#C	chains=any; chains=any separate
+	*C(*)* *C(*)* C C C C C#C	chains=any isolate; chains=any isolate separate
+	*C(*)* *C(*)* [CH3] [CH3] [CH3] [CH3] [C]#[C]	chains=6 isolate no-saturation
+> C=CC=CC(C)(C)C	C=CC=CC(C)(C)C
+	C=CC=CC(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* C C C C=CC=C	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* [CH3] [CH3] [CH3] [CH]=CC=C	chains=6 isolate no-saturation
+> C=CCC=C	C=CCC=C
+	C C=C C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH2] [CH]=C [CH]=C	chains=6 isolate no-saturation
+> C=CCCC#C	C#CCCC=C
+	C#C C=C CC	chains=off,2,3,6; chains=off,2,3,6 isolate; chains=off,2,3,6 separate; chains=off,2,3,6 isolate separate
+	C C C#C C=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	[CH2][CH2] [CH]=C [C]#C	chains=6 isolate no-saturation
+> CC(=C)C(C)C	C=C(C)C(C)C
+	*C(C)C C C=C	chains=any; chains=any separate
+	*C(*)* C C C C=C	chains=any isolate; chains=any isolate separate
+	*C(*)* [CH3] [CH3] [CH3] [C]=C	chains=6 isolate no-saturation
+> CC(C)(C)C=C	C=CC(C)(C)C
+	*C(C)(C)C C=C	chains=any; chains=any separate
+	*C(*)(*)* C C C C=C	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* [CH3] [CH3] [CH3] [CH]=C	chains=6 isolate no-saturation
+> CC(C)(C)C#C	C#CC(C)(C)C
+	*C(C)(C)C C#C	chains=any; chains=any separate
+	*C(*)(*)* C C C C#C	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* [CH3] [CH3] [CH3] [C]#C	chains=6 isolate no-saturation
+> CC(C)(C=C)C#C	C#CC(C=C)(C)C
+	*C(*)(C)C C#C C=C	chains=any; chains=any separate
+	*C(*)(*)* C C C#C C=C	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* [CH3] [CH3] [CH]=C [C]#C	chains=6 isolate no-saturation
+> C=CC(C)(C)C=C	C=CC(C=C)(C)C
+	*C(*)(C)C C=C C=C	chains=any; chains=any separate
+	*C(*)(*)* C C C=C C=C	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* [CH3] [CH3] [CH]=C [CH]=C	chains=6 isolate no-saturation
+> C1CC1	C1CC1
+	C1CC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> CC1CC1	CC1CC1
+	C C1CC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]1CC1	chains=6 isolate no-saturation
+> C1CCCCC1	C1CCCCC1
+	C1CCCCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> CC1CCCCC1	CC1CCCCC1
+	C C1CCCCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]1CCCCC1	chains=6 isolate no-saturation
+> CC1(C)CCCCC1(C)C	CC1(C)CCCCC1(C)C
+	C C C C C1CCCCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH3] [CH3] [CH3] [C]1[C]CCCC1	chains=6 isolate no-saturation
+> C1CCC2(CC1)CCCC2	C1CCC2(CC1)CCCC2
+	C1CCC2(CC1)CCCC2	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> C1CCC2CCCCC2C1	C1CCC2CCCCC2C1
+	C1CCC2CCCCC2C1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> C1C2CC3CC1CC(C2)C3	C1C2CC3CC1CC(C2)C3
+	C1C2CC3CC1CC(C2)C3	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> CC1CCCCCCCCC1	CC1CCCCCCCCC1
+	C C1CCCCCCCCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]1CCCCCCCCC1	chains=6 isolate no-saturation
+> C1CCC(CC1)C1CCCCC1	C1CCC(CC1)C2CCCCC2
+	C1CCCCC1 C1CCCCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH]1CCCCC1 [CH]1CCCCC1	chains=6 isolate no-saturation
+> C1CCC(CC1)CC1CCCCC1	C1CCC(CC1)CC2CCCCC2
+	C C1CCCCC1 C1CCCCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH2] [CH]1CCCCC1 [CH]1CCCCC1	chains=6 isolate no-saturation
+> CC(C)CC(C)C1CCCCC1	CC(C)CC(C)C1CCCCC1
+	CC(C)CC(C)C1CCCCC1	chains=any
+	*C(*)* C C CC(C)C1CCCCC1	chains=any isolate
+	*C(C)CC(C)C C1CCCCC1	chains=any separate
+	*C(*)* *C(*)* C C C C C1CCCCC1	chains=any isolate separate
+	*C(*)* [CH2]C(C)C1CCCCC1 [CH3] [CH3]	chains=6 isolate no-saturation
+> CC(C)(C)C1CCCCC1	CC(C)(C)C1CCCCC1
+	CC(C)(C)C1CCCCC1	chains=any; chains=any isolate; chains=6 isolate no-saturation
+	*C(C)(C)C C1CCCCC1	chains=any separate
+	*C(*)(*)* C C C C1CCCCC1	chains=any isolate separate
+> CC(C)(C)CC1CCCCC1	CC(C)(C)CC1CCCCC1
+	C1CCCCC1 CC(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* C C C C C1CCCCC1	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* [CH2] [CH3] [CH3] [CH3] [CH]1CCCCC1	chains=6 isolate no-saturation
+> CC(C)(C1CCCCC1)C1CCCCC1	CC(C)(C1CCCCC1)C2CCCCC2
+	CC(C)(C1CCCCC1)C2CCCCC2	chains=any; chains=any isolate; chains=6 isolate no-saturation
+	*C(*)(C)C C1CCCCC1 C1CCCCC1	chains=any separate
+	*C(*)(*)* C C C1CCCCC1 C1CCCCC1	chains=any isolate separate
+> C=C1CCCCC1	C=C1CCCCC1
+	C=C1CCCCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> CC(C)=C1CCCCC1	C(=C1CCCCC1)(C)C
+	C C C=C1CCCCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH3] [C]=C1CCCCC1	chains=6 isolate no-saturation
+> C=CC1CCC=CC1	C=CC1CC=CCC1
+	C1=CCCCC1 C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	C1=CCC[CH]C1 [CH]=C	chains=6 isolate no-saturation
+> C=C1CCCC2CC12	C=C1CCCC2CC12
+	C=C1CCCC2CC12	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> C1CC=CC1	C1=CCCC1
+	C1=CCCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> C1=CCC=C1	C=1C=CCC1
+	C=1C=CCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> CC1=CCC(CC1)C(=C)C	C=C(C)C1CC=C(C)CC1
+	C C C1=CCCCC1 C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH3] [C]1=CC[CH]CC1 [C]=C	chains=6 isolate no-saturation
+> CC1=CCC2CC1C2(C)C	C1=C(C)C2CC(C1)C2(C)C
+	C C C C1=CC2CC(C1)C2	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH3] [CH3] [C]1=CCC2[C]C1C2	chains=6 isolate no-saturation
+> CC1(C)C2CCC(=C)C1C2	C=C1CCC2CC1C2(C)C
+	C C C=C1CCC2CC1C2	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH3] [C]1C2C(=C)CCC1C2	chains=6 isolate no-saturation
+> C[C@@H]1C[C@@H](C)[C@@H](C)C1	C[C@H]1C[C@H](C)[C@H](C)C1
+	C C C C1CCCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH3] [CH3] [CH]1[CH]C[CH]C1	chains=6 isolate no-saturation
+> C[C@H](CCCC(C)C)[C@H]1CC[C@@H]2[C@@]1(CC[C@H]3[C@H]2CC[C@@H]4[C@@]3(CCCC4)C)C	CC(C)CCC[C@@H](C)[C@H]1CC[C@H]2[C@@H]3CC[C@H]4CCCC[C@]4(C)[C@H]3CC[C@]12C
+	C C C CC(C)C CC(C)[C@H]1CC[C@@H]2C1CC[C@@H]3C4CCCC[C@@H]4CC[C@H]32	chains=any
+	*C(*)* C C C C CC CC(C)[C@H]1CC[C@@H]2C1CC[C@@H]3C4CCCC[C@@H]4CC[C@H]32	chains=off,2,3,6 isolate
+	*C(*)* C C C C C C CC(C)[C@H]1CC[C@@H]2C1CC[C@@H]3C4CCCC[C@@H]4CC[C@H]32	chains=1 isolate
+	*C(C)C C C C C1CCC2[C@H](C1)CC[C@H]3[C@@H]4CCCC4CC[C@H]23 CC(C)C	chains=any separate
+	*C(*)* *C(*)* C C C C C C1CCC2[C@H](C1)CC[C@H]3[C@@H]4CCCC4CC[C@H]23 CCC	chains=off,3,6 isolate separate
+	*C(*)* *C(*)* C C C C C C C C C1CCC2[C@H](C1)CC[C@H]3[C@@H]4CCCC4CC[C@H]23	chains=1 isolate separate
+	*C(*)* *C(*)* C C C C C C C1CCC2[C@H](C1)CC[C@H]3[C@@H]4CCCC4CC[C@H]23 CC	chains=2 isolate separate
+	*C(*)* [CH2][C@@H](C)[C@H]1CC[C@@H]2[C]1CC[C@@H]3[C]4CCCC[C@@H]4CC[C@H]32 [CH2][CH2] [CH3] [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> CC1CCC(C(C)C)C(C)C1	CC(C)C1CCC(C)CC1C
+	C C CC(C)C1CCCCC1	chains=any; chains=any isolate
+	*C(C)C C C C1CCCCC1	chains=any separate
+	*C(*)* C C C C C1CCCCC1	chains=any isolate separate
+	[CH3] [CH3] [CH]1C[CH]C(CC1)C(C)C	chains=6 isolate no-saturation
+> C1CCC(=C2CCCCC2)CC1	C1(=C2CCCCC2)CCCCC1
+	C1(=C2CCCCC2)CCCCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> c1ccccc1	c1ccccc1
+	c1ccccc1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> Cc1ccccc1	c1ccc(cc1)C
+	C c1ccccc1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [c]1ccccc1	chains=6 isolate no-saturation
+> CCc1ccccc1	c1ccc(cc1)CC
+	CC c1ccccc1	chains=off,2,3,6; chains=off,2,3,6 isolate; chains=off,2,3,6 separate; chains=off,2,3,6 isolate separate
+	C C c1ccccc1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	[CH2]C [c]1ccccc1	chains=6 isolate no-saturation
+> CC(C)c1ccccc1	c1ccc(cc1)C(C)C
+	c1ccc(cc1)C(C)C	chains=any; chains=any isolate; chains=6 isolate no-saturation
+	*C(C)C c1ccccc1	chains=any separate
+	*C(*)* C C c1ccccc1	chains=any isolate separate
+> CC(C)(C)c1ccccc1	c1ccc(cc1)C(C)(C)C
+	c1ccc(cc1)C(C)(C)C	chains=any; chains=any isolate; chains=6 isolate no-saturation
+	*C(C)(C)C c1ccccc1	chains=any separate
+	*C(*)(*)* C C C c1ccccc1	chains=any isolate separate
+> CC(C)(C)Cc1ccccc1	c1ccc(cc1)CC(C)(C)C
+	CC(C)(C)C c1ccccc1	chains=any; chains=any separate
+	*C(*)(*)* C C C C c1ccccc1	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* [CH2] [CH3] [CH3] [CH3] [c]1ccccc1	chains=6 isolate no-saturation
+> Cc1ccc(cc1)C(C)C	c1cc(ccc1C)C(C)C
+	C c1ccc(cc1)C(C)C	chains=any; chains=any isolate
+	*C(C)C C c1ccccc1	chains=any separate
+	*C(*)* C C C c1ccccc1	chains=any isolate separate
+	[CH3] [c]1ccc(cc1)C(C)C	chains=6 isolate no-saturation
+> c1ccc(cc1)-c1ccccc1	c1ccc(cc1)-c2ccccc2
+	c1ccc(cc1)-c2ccccc2	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> c1ccc2ccccc2c1	c1ccc2ccccc2c1
+	c1ccc2ccccc2c1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> c1ccc2cccc2cc1	c1ccc2cccc2cc1
+	c1ccc2cccc2cc1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> C=Cc1ccccc1	C=Cc1ccccc1
+	C=Cc1ccccc1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> C(=C/c1ccccc1)\c1ccccc1	c1ccc(cc1)/C=C/c2ccccc2
+	c1ccc(cc1)/C=C/c2ccccc2	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> C(#Cc1ccccc1)c1ccccc1	C(#Cc1ccccc1)c2ccccc2
+	C#C c1ccccc1 c1ccccc1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[C]#[C] [c]1ccccc1 [c]1ccccc1	chains=6 isolate no-saturation
+> C(c1ccccc1)(c1ccccc1)c1ccccc1	c1ccc(cc1)C(c2ccccc2)c3ccccc3
+	c1ccc(cc1)C(c2ccccc2)c3ccccc3	chains=any; chains=any isolate; chains=6 isolate no-saturation
+	*C(*)* c1ccccc1 c1ccccc1 c1ccccc1	chains=any separate; chains=any isolate separate
+> CC(C)/C=C/C=C/c1ccccc1	CC(C)/C=C/C=C/c1ccccc1
+	CC(C)/C=C/C=C/c1ccccc1	chains=any; chains=any separate
+	*C(*)* C C C=C/C=C/c1ccccc1	chains=any isolate; chains=any isolate separate
+	*C(*)* [CH3] [CH3] [CH]=C/C=C/c1ccccc1	chains=6 isolate no-saturation
+> C=CC1=CC=C2C=CC=CC2=C1	C=CC1=CC=C2C=CC=CC2=C1
+	C=CC1=CC=C2C=CC=CC2=C1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> C=C1C=CC=C1	C=C1C=CC=C1
+	C=C1C=CC=C1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> C1=CC=CC=CC1	C1=CC=CCC=C1
+	C1=CC=CCC=C1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> C12=CC(=CC=C1C(=CC(=C2)C3CCCCC3)CC(C)(C)C/C=C/CCC)/C=C\C(C)C	CCC/C=C/CC(C)(C)CC1=CC(=CC2=CC(=CC=C21)/C=C\C(C)C)C3CCCCC3
+	C1CCCCC1 C=C CC(C)(C)C CC(C)/C=C\C1=CC=C2C=CC=CC2=C1 CCC	chains=off,3,6; chains=off,3,6 separate
+	C C C C1CCCCC1 C=C CC(C)(C)C CC(C)/C=C\C1=CC=C2C=CC=CC2=C1	chains=1; chains=1 separate
+	C C1CCCCC1 C=C CC CC(C)(C)C CC(C)/C=C\C1=CC=C2C=CC=CC2=C1	chains=2; chains=2 separate
+	*C(*)(*)* *C(*)* C C C C C C C1CCCCC1 C=C C=CC1=CC=C2C=CC=CC2=C1 CCC	chains=off,3,6 isolate; chains=off,3,6 isolate separate
+	*C(*)(*)* *C(*)* C C C C C C C C C C1CCCCC1 C=C C=CC1=CC=C2C=CC=CC2=C1	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* *C(*)* C C C C C C C C1CCCCC1 C=C C=CC1=CC=C2C=CC=CC2=C1 CC	chains=2 isolate; chains=2 isolate separate
+	*C(*)(*)* *C(*)* [CH2] [CH2] [CH2]CC [CH3] [CH3] [CH3] [CH3] [CH]1CCCCC1 [CH]=CC1=CC=C2[C]=C[C]=CC2=C1 [CH]=[CH]	chains=6 isolate no-saturation
+> CC(CC1C2CC2C(=C)CC1c1ccc(cc1C\C=C/c1ccccc1)C(C)C)(CCCCCCCCC)CC#CC	CCCCCCCCCC(C)(CC#CC)CC1C(CC(=C)C2CC21)c3ccc(cc3C/C=C\c4ccccc4)C(C)C
+	C C C#C C=C1CCCC2CC12 C=Cc1ccccc1 CC(C)(C)C CCCCCCCC c1ccc(cc1)C(C)C	chains=off
+	C C C C C C C C C C C#C C=C1CCCC2CC12 C=Cc1ccccc1 CC(C)(C)C c1ccc(cc1)C(C)C	chains=1
+	C C C#C C=C1CCCC2CC12 C=Cc1ccccc1 CC CC CC CC CC(C)(C)C c1ccc(cc1)C(C)C	chains=2
+	C C C#C C=C1CCCC2CC12 C=Cc1ccccc1 CC CC(C)(C)C CCC CCC c1ccc(cc1)C(C)C	chains=3
+	C C C#C C=C1CCCC2CC12 C=Cc1ccccc1 CC CC(C)(C)C CCCCCC c1ccc(cc1)C(C)C	chains=6
+	*C(*)(*)* C C C C C C#C C=C1CCCC2CC12 C=Cc1ccccc1 CCCCCCCCC c1ccc(cc1)C(C)C	chains=off isolate
+	*C(*)(*)* C C C C C C C C C C C C C C C#C C=C1CCCC2CC12 C=Cc1ccccc1 c1ccc(cc1)C(C)C	chains=1 isolate
+	*C(*)(*)* C C C C C C C#C C=C1CCCC2CC12 C=Cc1ccccc1 CC CC CC CC c1ccc(cc1)C(C)C	chains=2 isolate
+	*C(*)(*)* C C C C C C#C C=C1CCCC2CC12 C=Cc1ccccc1 CCC CCC CCC c1ccc(cc1)C(C)C	chains=3 isolate
+	*C(*)(*)* C C C C C C#C C=C1CCCC2CC12 C=Cc1ccccc1 CCC CCCCCC c1ccc(cc1)C(C)C	chains=6 isolate
+	*C(C)C C C C#C C=C1CCCC2CC12 C=Cc1ccccc1 CC(C)(C)C CCCCCCCC c1ccccc1	chains=off separate
+	*C(C)C C C C C C C C C C C C#C C=C1CCCC2CC12 C=Cc1ccccc1 CC(C)(C)C c1ccccc1	chains=1 separate
+	*C(C)C C C C#C C=C1CCCC2CC12 C=Cc1ccccc1 CC CC CC CC CC(C)(C)C c1ccccc1	chains=2 separate
+	*C(C)C C C C#C C=C1CCCC2CC12 C=Cc1ccccc1 CC CC(C)(C)C CCC CCC c1ccccc1	chains=3 separate
+	*C(C)C C C C#C C=C1CCCC2CC12 C=Cc1ccccc1 CC CC(C)(C)C CCCCCC c1ccccc1	chains=6 separate
+	*C(*)(*)* *C(*)* C C C C C C C C#C C=C1CCCC2CC12 C=Cc1ccccc1 CCCCCCCCC c1ccccc1	chains=off isolate separate
+	*C(*)(*)* *C(*)* C C C C C C C C C C C C C C C C C#C C=C1CCCC2CC12 C=Cc1ccccc1 c1ccccc1	chains=1 isolate separate
+	*C(*)(*)* *C(*)* C C C C C C C C C#C C=C1CCCC2CC12 C=Cc1ccccc1 CC CC CC CC c1ccccc1	chains=2 isolate separate
+	*C(*)(*)* *C(*)* C C C C C C C C#C C=C1CCCC2CC12 C=Cc1ccccc1 CCC CCC CCC c1ccccc1	chains=3 isolate separate
+	*C(*)(*)* *C(*)* C C C C C C C C#C C=C1CCCC2CC12 C=Cc1ccccc1 CCC CCCCCC c1ccccc1	chains=6 isolate separate
+	*C(*)(*)* C=C1C[CH][CH]C2CC12 [CH2] [CH2] [CH2] [CH2]CC [CH2]CCCC[CH2] [CH3] [CH3] [CH]=Cc1ccccc1 [C]#[C] [c]1[c]cc(cc1)C(C)C	chains=6 isolate no-saturation
+> CC1=C(C(C)(C)CCC1)/C=C/C(C)=C/C=C/C(C)=C/C=C/C=C(C)/C=C/C=C(C)/C=C/C1=C(C)CCCC1(C)C	C/C(=C\C=C\C=C(/C)\C=C\C=C(/C)\C=C\C1=C(C)CCCC1(C)C)/C=C/C=C(\C)/C=C/C2=C(C)CCCC2(C)C
+	C C C C C C C C C C C(=C\C=C\C=C\C=C\C=C\C1=CCCCC1)/C=C/C=C/C=C/C=C/C2=CCCCC2	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	C(=C\C=[C]\C=C\C=[C]\C=C\C1=[C]CCC[C]1)/C=[C]/C=C/C=[C]/C=C/C2=[C]CCC[C]2 [CH3] [CH3] [CH3] [CH3] [CH3] [CH3] [CH3] [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> CC(C)C1=CC=C(C)CC1	C=1C=C(CCC1C)C(C)C
+	C C=1C=C(CCC1)C(C)C	chains=any; chains=any isolate
+	*C(C)C C C=1C=CCCC1	chains=any separate
+	*C(*)* C C C C=1C=CCCC1	chains=any isolate separate
+	[CH3] [C]1=CC=C(CC1)C(C)C	chains=6 isolate no-saturation
+> CC(C)c1ccc(C)cc1C(C)(C)C	c1cc(c(cc1C)C(C)(C)C)C(C)C
+	C c1ccc(c(c1)C(C)C)C(C)(C)C	chains=any; chains=any isolate
+	*C(C)(C)C *C(C)C C c1ccccc1	chains=any separate
+	*C(*)(*)* *C(*)* C C C C C C c1ccccc1	chains=any isolate separate
+	[CH3] [c]1ccc(c(c1)C(C)(C)C)C(C)C	chains=6 isolate no-saturation
+> C(Cc1ccccc1)Cc1ccccc1	c1ccc(cc1)CCCc2ccccc2
+	CCC c1ccccc1 c1ccccc1	chains=off,3,6; chains=off,3,6 isolate; chains=off,3,6 separate; chains=off,3,6 isolate separate
+	C C C c1ccccc1 c1ccccc1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C CC c1ccccc1 c1ccccc1	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	[CH2]C[CH2] [c]1ccccc1 [c]1ccccc1	chains=6 isolate no-saturation
+> CCCC.CCCCCCCC	CCCC.CCCCCCCC
+	CCCC CCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C C C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	CC CC CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C CC CCC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	CC CCCC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	CCCC [CH2]C [CH2]CCCCC	chains=6 isolate no-saturation
+> CC(C)C.C1CCCCC1C1CCCCC1	CC(C)C.C1CCC(CC1)C2CCCCC2
+	C1CCCCC1 C1CCCCC1 CC(C)C	chains=any; chains=any separate
+	*C(*)* C C C C1CCCCC1 C1CCCCC1	chains=any isolate; chains=any isolate separate
+	*C(*)* [CH3] [CH3] [CH3] [CH]1CCCCC1 [CH]1CCCCC1	chains=6 isolate no-saturation
+> substructure library #1	C1CCCCC1
+	C1CCCCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> substructure library #2	C1CCC(CC1)C2CCCCC2
+	C1CCCCC1 C1CCCCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH]1CCCCC1 [CH]1CCCCC1	chains=6 isolate no-saturation
+> substructure library #3	C1CCC2CCCCC2C1
+	C1CCC2CCCCC2C1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> substructure library #4	C1CCC2(CC1)CCCCC2
+	C1CCC2(CC1)CCCCC2	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> substructure library #5	C1(=C2CCCCC2)CCCCC1
+	C1(=C2CCCCC2)CCCCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> substructure library #6	C/C=C/C
+	C C C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH3] [CH]=[CH]	chains=6 isolate no-saturation
+> substructure library #7	C(#CC)C
+	C C C#C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH3] [C]#[C]	chains=6 isolate no-saturation
+> substructure library #8	C=CC=C
+	C=CC=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> substructure library #9	C#CC#C
+	C#CC#C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> substructure library #10	C(=C)=C
+	C(=C)=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> substructure library #11	CC(C)C
+	CC(C)C	chains=any; chains=any separate
+	*C(*)* C C C	chains=any isolate; chains=any isolate separate
+	*C(*)* [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> substructure library #12	CC(C)(C)C
+	CC(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* C C C C	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* [CH3] [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> substructure library #13	C=1C=CC(=CC1)C=2C=CC=CC2
+	C=1C=CC(=CC1)C=2C=CC=CC2	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> substructure library #14	C1=CC=C2C=CC=CC2=C1
+	C1=CC=C2C=CC=CC2=C1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> substructure library #15	C=1C=CC=CC1
+	C=1C=CC=CC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> substructure library #16	C=C
+	C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> substructure library #17	C#C
+	C#C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> substructure library #18	CCC/C=C/CC(C)(C)CC1=CC(=CC2=CC(=CC=C21)/C=C\C(C)C)C3CCCCC3
+	C1CCCCC1 C=C CC(C)(C)C CC(C)/C=C\C1=CC=C2C=CC=CC2=C1 CCC	chains=off,3,6; chains=off,3,6 separate
+	C C C C1CCCCC1 C=C CC(C)(C)C CC(C)/C=C\C1=CC=C2C=CC=CC2=C1	chains=1; chains=1 separate
+	C C1CCCCC1 C=C CC CC(C)(C)C CC(C)/C=C\C1=CC=C2C=CC=CC2=C1	chains=2; chains=2 separate
+	*C(*)(*)* *C(*)* C C C C C C C1CCCCC1 C=C C=CC1=CC=C2C=CC=CC2=C1 CCC	chains=off,3,6 isolate; chains=off,3,6 isolate separate
+	*C(*)(*)* *C(*)* C C C C C C C C C C1CCCCC1 C=C C=CC1=CC=C2C=CC=CC2=C1	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* *C(*)* C C C C C C C C1CCCCC1 C=C C=CC1=CC=C2C=CC=CC2=C1 CC	chains=2 isolate; chains=2 isolate separate
+	*C(*)(*)* *C(*)* [CH2] [CH2] [CH2]CC [CH3] [CH3] [CH3] [CH3] [CH]1CCCCC1 [CH]=CC1=CC=C2[C]=C[C]=CC2=C1 [CH]=[CH]	chains=6 isolate no-saturation
+> substructure library #19	CCCCCCCCCCCCCC
+	CCCCCCCCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C C C C C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	CC CC CC CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	CC CCC CCC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	CC CCCCCC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]C [CH2]CCCCC [CH2]CCCC[CH2]	chains=6 isolate no-saturation
+> substructure library #20	C=C/C=C/C=C
+	C=C/C=C/C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate; chains=6 isolate no-saturation
+> substructure library #21	CC(C)CCCC(C)(C)C
+	C CC(C)(C)C CC(C)C	chains=any; chains=any separate
+	*C(*)(*)* *C(*)* C C C C C CCC	chains=off,3,6 isolate; chains=off,3,6 isolate separate
+	*C(*)(*)* *C(*)* C C C C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* *C(*)* C C C C C C CC	chains=2 isolate; chains=2 isolate separate
+	*C(*)(*)* *C(*)* [CH2]C[CH2] [CH3] [CH3] [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> substructure library #22	CC(C)(C)C1CCCCC1
+	CC(C)(C)C1CCCCC1	chains=any; chains=any isolate; chains=6 isolate no-saturation
+	*C(C)(C)C C1CCCCC1	chains=any separate
+	*C(*)(*)* C C C C1CCCCC1	chains=any isolate separate
+> substructure library #23	C(=CC)=CC
+	C C C(=C)=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH3] [CH]=C=[CH]	chains=6 isolate no-saturation
+> substructure library #24	C=C1C=2C=CC=CC2C(C)(C)C3CCC(C)CC13
+	C C C C=C1C=2C=CC=CC2CC3CCCCC13	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH3] [CH3] [C]1C=2C=CC=CC2C(=C)C3C[CH]CCC13	chains=6 isolate no-saturation
+> substructure library #25	CCCC(C)(C)CC(C)(C)CCC
+	CC CC CC(C)(C)CC(C)(C)C	chains=off,2,3,6; chains=off,2,3,6 separate
+	C C C C CC(C)(C)CC(C)(C)C	chains=1; chains=1 separate
+	*C(*)(*)* *C(*)(*)* C C C C C CCC CCC	chains=off,3,6 isolate; chains=off,3,6 isolate separate
+	*C(*)(*)* *C(*)(*)* C C C C C C C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* *C(*)(*)* C C C C C C C CC CC	chains=2 isolate; chains=2 isolate separate
+	*C(*)(*)* *C(*)(*)* [CH2] [CH2]CC [CH2]CC [CH3] [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> substructure library #26	C=CC=CCC1(C)C(C)CCC1C
+	C C C C C1CCCC1 C=CC=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH2] [CH3] [CH3] [CH3] [CH]=CC=C [C]1[CH]CC[CH]1	chains=6 isolate no-saturation
+> substructure library #27	C=C1CCC(CC(C)(C)C)C2CC12
+	C=C1CCCC2CC12 CC(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* C C C C C=C1CCCC2CC12	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* C=C1CC[CH]C2CC12 [CH2] [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> substructure library #28	CCCCCCCCCC(C)(CC#CC)CC1C(CC(=C)C2CC21)C3=C(C/C=C\C4=CC=CC=C4)C=C(C=C3)C(C)C
+	C C C#C C=1C=CC(=CC1)C(C)C C=C1CCCC2CC12 C=CC=1C=CC=CC1 CC(C)(C)C CCCCCCCC	chains=off
+	C C C C C C C C C C C#C C=1C=CC(=CC1)C(C)C C=C1CCCC2CC12 C=CC=1C=CC=CC1 CC(C)(C)C	chains=1
+	C C C#C C=1C=CC(=CC1)C(C)C C=C1CCCC2CC12 C=CC=1C=CC=CC1 CC CC CC CC CC(C)(C)C	chains=2
+	C C C#C C=1C=CC(=CC1)C(C)C C=C1CCCC2CC12 C=CC=1C=CC=CC1 CC CC(C)(C)C CCC CCC	chains=3
+	C C C#C C=1C=CC(=CC1)C(C)C C=C1CCCC2CC12 C=CC=1C=CC=CC1 CC CC(C)(C)C CCCCCC	chains=6
+	*C(*)(*)* C C C C C C#C C=1C=CC(=CC1)C(C)C C=C1CCCC2CC12 C=CC=1C=CC=CC1 CCCCCCCCC	chains=off isolate
+	*C(*)(*)* C C C C C C C C C C C C C C C#C C=1C=CC(=CC1)C(C)C C=C1CCCC2CC12 C=CC=1C=CC=CC1	chains=1 isolate
+	*C(*)(*)* C C C C C C C#C C=1C=CC(=CC1)C(C)C C=C1CCCC2CC12 C=CC=1C=CC=CC1 CC CC CC CC	chains=2 isolate
+	*C(*)(*)* C C C C C C#C C=1C=CC(=CC1)C(C)C C=C1CCCC2CC12 C=CC=1C=CC=CC1 CCC CCC CCC	chains=3 isolate
+	*C(*)(*)* C C C C C C#C C=1C=CC(=CC1)C(C)C C=C1CCCC2CC12 C=CC=1C=CC=CC1 CCC CCCCCC	chains=6 isolate
+	*C(C)C C C C#C C=1C=CC=CC1 C=C1CCCC2CC12 C=CC=1C=CC=CC1 CC(C)(C)C CCCCCCCC	chains=off separate
+	*C(C)C C C C C C C C C C C C#C C=1C=CC=CC1 C=C1CCCC2CC12 C=CC=1C=CC=CC1 CC(C)(C)C	chains=1 separate
+	*C(C)C C C C#C C=1C=CC=CC1 C=C1CCCC2CC12 C=CC=1C=CC=CC1 CC CC CC CC CC(C)(C)C	chains=2 separate
+	*C(C)C C C C#C C=1C=CC=CC1 C=C1CCCC2CC12 C=CC=1C=CC=CC1 CC CC(C)(C)C CCC CCC	chains=3 separate
+	*C(C)C C C C#C C=1C=CC=CC1 C=C1CCCC2CC12 C=CC=1C=CC=CC1 CC CC(C)(C)C CCCCCC	chains=6 separate
+	*C(*)(*)* *C(*)* C C C C C C C C#C C=1C=CC=CC1 C=C1CCCC2CC12 C=CC=1C=CC=CC1 CCCCCCCCC	chains=off isolate separate
+	*C(*)(*)* *C(*)* C C C C C C C C C C C C C C C C C#C C=1C=CC=CC1 C=C1CCCC2CC12 C=CC=1C=CC=CC1	chains=1 isolate separate
+	*C(*)(*)* *C(*)* C C C C C C C C C#C C=1C=CC=CC1 C=C1CCCC2CC12 C=CC=1C=CC=CC1 CC CC CC CC	chains=2 isolate separate
+	*C(*)(*)* *C(*)* C C C C C C C C#C C=1C=CC=CC1 C=C1CCCC2CC12 C=CC=1C=CC=CC1 CCC CCC CCC	chains=3 isolate separate
+	*C(*)(*)* *C(*)* C C C C C C C C#C C=1C=CC=CC1 C=C1CCCC2CC12 C=CC=1C=CC=CC1 CCC CCCCCC	chains=6 isolate separate
+	*C(*)(*)* C=C1C[CH][CH]C2CC12 [CH2] [CH2] [CH2] [CH2]CC [CH2]CCCC[CH2] [CH3] [CH3] [CH]=CC=1C=CC=CC1 [C]#[C] [C]1=[C]C=C(C=C1)C(C)C	chains=6 isolate no-saturation
+> substructure library #29	C[C@H]1C[C@H](C)[C@H](C)C1
+	C C C C1CCCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH3] [CH3] [CH]1[CH]C[CH]C1	chains=6 isolate no-saturation
+> substructure library #30	CCCCCCCCCC(CC)(CCCCCCC)CCCCCCCC
+	C CC(C)(C)C CCCCCC CCCCCCC CCCCCCCC	chains=off; chains=off separate
+	C C C C C C C C C C C C C C C C C C C C C C CC(C)(C)C	chains=1; chains=1 separate
+	C C CC CC CC CC CC CC CC CC CC CC CC(C)(C)C	chains=2; chains=2 separate
+	C C CC CC(C)(C)C CCC CCC CCC CCC CCC CCC	chains=3; chains=3 separate
+	C C CC CC(C)(C)C CCCCCC CCCCCC CCCCCC	chains=6; chains=6 separate
+	*C(*)(*)* CC CCCCCCC CCCCCCCC CCCCCCCCC	chains=off isolate; chains=off isolate separate
+	*C(*)(*)* C C C C C C C C C C C C C C C C C C C C C C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* C C CC CC CC CC CC CC CC CC CC CC CC CC	chains=2 isolate; chains=2 isolate separate
+	*C(*)(*)* C CC CC CCC CCC CCC CCC CCC CCC CCC	chains=3 isolate; chains=3 isolate separate
+	*C(*)(*)* C CC CC CCC CCCCCC CCCCCC CCCCCC	chains=6 isolate; chains=6 isolate separate
+	*C(*)(*)* [CH2]C [CH2]C [CH2]CC [CH2]CCCC[CH2] [CH2]CCCC[CH2] [CH2]CCCC[CH2] [CH3]	chains=6 isolate no-saturation
+> substructure library #31	CC1CCCCCCCCC1
+	C C1CCCCCCCCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]1CCCCCCCCC1	chains=6 isolate no-saturation
+> methyl end group + direct bond + methyl end group	CC
+	CC	chains=off,2,3,6; chains=off,2,3,6 isolate; chains=off,2,3,6 separate; chains=off,2,3,6 isolate separate; chains=6 isolate no-saturation
+	C C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+> methyl end group + CH2 linker + methyl end group	CCC
+	CCC	chains=off,3,6; chains=off,3,6 isolate; chains=off,3,6 separate; chains=off,3,6 isolate separate; chains=6 isolate no-saturation
+	C C C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+> methyl end group + C2 chain linker + methyl end group	CCCC
+	CCCC	chains=off,6; chains=off,6 isolate; chains=off,6 separate; chains=off,6 isolate separate; chains=6 isolate no-saturation
+	C C C C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+> methyl end group + C5 chain linker + methyl end group	CCCCCCC
+	CCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	C CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]CCCCC [CH3]	chains=6 isolate no-saturation
+> methyl end group + C9 chain linker (cut by max chain length) + methyl end group	CCCCCCCCCCC
+	CCCCCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C CC CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	CC CCC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	CCCCC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]CCCC [CH2]CCCCC	chains=6 isolate no-saturation
+> methyl end group + tertiary C linker + methyl end group	CC(C)C
+	CC(C)C	chains=any; chains=any separate
+	*C(*)* C C C	chains=any isolate; chains=any isolate separate
+	*C(*)* [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> methyl end group + quaternary C linker + methyl end group	CC(C)(C)C
+	CC(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* C C C C	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* [CH3] [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> methyl end group + quaternary C linker with ethyl + methyl end group	CCC(C)(C)C
+	C CC(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* C C C CC	chains=off,2,3,6 isolate; chains=off,2,3,6 isolate separate
+	*C(*)(*)* C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* [CH2]C [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> methyl end group + two adjacent tertiary C + methyl end group	CC(C)C(C)C
+	CC(C)C(C)C	chains=any; chains=any separate
+	*C(*)* *C(*)* C C C C	chains=any isolate; chains=any isolate separate
+	*C(*)* *C(*)* [CH3] [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> methyl end group + two adjacent quaternary C + methyl end group	CC(C)(C)C(C)(C)C
+	CC(C)(C)C(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* *C(*)(*)* C C C C C C	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* *C(*)(*)* [CH3] [CH3] [CH3] [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> methyl end group + double bond linker + methyl end group	C(=CC)C
+	C C C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH3] [CH]=[CH]	chains=6 isolate no-saturation
+> methyl end group + triple bond linker + methyl end group	C(#CC)C
+	C C C#C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH3] [C]#[C]	chains=6 isolate no-saturation
+> methyl end group + C with exo-methylene (double bond branch) + methyl end group	C=C(C)C
+	C C C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH3] [C]=C	chains=6 isolate no-saturation
+> methyl end group + allene linker + methyl end group	C(=CC)=CC
+	C C C(=C)=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH3] [CH]=C=[CH]	chains=6 isolate no-saturation
+> propyl chain + direct bond + methyl end group	CCCC
+	CCCC	chains=off,6; chains=off,6 isolate; chains=off,6 separate; chains=off,6 isolate separate; chains=6 isolate no-saturation
+	C C C C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+> propyl chain + CH2 linker + methyl end group	CCCCC
+	CCCCC	chains=off,6; chains=off,6 isolate; chains=off,6 separate; chains=off,6 isolate separate; chains=6 isolate no-saturation
+	C C C C C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	CC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+> propyl chain + C2 chain linker + methyl end group	CCCCCC
+	CCCCCC	chains=off,6; chains=off,6 isolate; chains=off,6 separate; chains=off,6 isolate separate; chains=6 isolate no-saturation
+	C C C C C C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+> propyl chain + C5 chain linker + methyl end group	CCCCCCCCC
+	CCCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	CCC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	CCC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]CC [CH2]CCCCC	chains=6 isolate no-saturation
+> propyl chain + C9 chain linker (cut by max chain length) + methyl end group	CCCCCCCCCCCCC
+	CCCCCCCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C C C C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C CC CC CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C CCC CCC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	C CCCCCC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]CCCCC [CH2]CCCC[CH2] [CH3]	chains=6 isolate no-saturation
+> propyl chain + tertiary C linker + methyl end group	CCCC(C)C
+	CC CC(C)C	chains=off,2,3,6; chains=off,2,3,6 separate
+	C C CC(C)C	chains=1; chains=1 separate
+	*C(*)* C C CCC	chains=off,3,6 isolate; chains=off,3,6 isolate separate
+	*C(*)* C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)* C C C CC	chains=2 isolate; chains=2 isolate separate
+	*C(*)* [CH2]CC [CH3] [CH3]	chains=6 isolate no-saturation
+> propyl chain + quaternary C linker + methyl end group	CCCC(C)(C)C
+	CC CC(C)(C)C	chains=off,2,3,6; chains=off,2,3,6 separate
+	C C CC(C)(C)C	chains=1; chains=1 separate
+	*C(*)(*)* C C C CCC	chains=off,3,6 isolate; chains=off,3,6 isolate separate
+	*C(*)(*)* C C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* C C C C CC	chains=2 isolate; chains=2 isolate separate
+	*C(*)(*)* [CH2]CC [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> propyl chain + quaternary C linker with ethyl + methyl end group	CCCC(C)(C)CC
+	C CC CC(C)(C)C	chains=off,2,3,6; chains=off,2,3,6 separate
+	C C C CC(C)(C)C	chains=1; chains=1 separate
+	*C(*)(*)* C C CC CCC	chains=off,3,6 isolate; chains=off,3,6 isolate separate
+	*C(*)(*)* C C C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* C C C CC CC	chains=2 isolate; chains=2 isolate separate
+	*C(*)(*)* [CH2]C [CH2]CC [CH3] [CH3]	chains=6 isolate no-saturation
+> propyl chain + two adjacent tertiary C + methyl end group	CCCC(C)C(C)C
+	CC CC(C)C(C)C	chains=off,2,3,6; chains=off,2,3,6 separate
+	C C CC(C)C(C)C	chains=1; chains=1 separate
+	*C(*)* *C(*)* C C C CCC	chains=off,3,6 isolate; chains=off,3,6 isolate separate
+	*C(*)* *C(*)* C C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)* *C(*)* C C C C CC	chains=2 isolate; chains=2 isolate separate
+	*C(*)* *C(*)* [CH2]CC [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> propyl chain + two adjacent quaternary C + methyl end group	CCCC(C)(C)C(C)(C)C
+	CC CC(C)(C)C(C)(C)C	chains=off,2,3,6; chains=off,2,3,6 separate
+	C C CC(C)(C)C(C)(C)C	chains=1; chains=1 separate
+	*C(*)(*)* *C(*)(*)* C C C C C CCC	chains=off,3,6 isolate; chains=off,3,6 isolate separate
+	*C(*)(*)* *C(*)(*)* C C C C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* *C(*)(*)* C C C C C C CC	chains=2 isolate; chains=2 isolate separate
+	*C(*)(*)* *C(*)(*)* [CH2]CC [CH3] [CH3] [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> propyl chain + double bond linker + methyl end group	C(=CCCC)C
+	C C=C CCC	chains=off,3,6; chains=off,3,6 isolate; chains=off,3,6 separate; chains=off,3,6 isolate separate
+	C C C C C=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C C=C CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	[CH2]CC [CH3] [CH]=[CH]	chains=6 isolate no-saturation
+> propyl chain + triple bond linker + methyl end group	C(#CCCC)C
+	C C#C CCC	chains=off,3,6; chains=off,3,6 isolate; chains=off,3,6 separate; chains=off,3,6 isolate separate
+	C C C C C#C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C C#C CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	[CH2]CC [CH3] [C]#[C]	chains=6 isolate no-saturation
+> propyl chain + C with exo-methylene (double bond branch) + methyl end group	C=C(C)CCC
+	C C=C CCC	chains=off,3,6; chains=off,3,6 isolate; chains=off,3,6 separate; chains=off,3,6 isolate separate
+	C C C C C=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C C=C CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	[CH2]CC [CH3] [C]=C	chains=6 isolate no-saturation
+> propyl chain + allene linker + methyl end group	C(=CC)=CCCC
+	C C(=C)=C CCC	chains=off,3,6; chains=off,3,6 isolate; chains=off,3,6 separate; chains=off,3,6 isolate separate
+	C C C C C(=C)=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C C(=C)=C CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	[CH2]CC [CH3] [CH]=C=[CH]	chains=6 isolate no-saturation
+> octyl chain (longer than default max chain length) + direct bond + methyl end group	CCCCCCCCC
+	CCCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	CCC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	CCC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]CC [CH2]CCCCC	chains=6 isolate no-saturation
+> octyl chain (longer than default max chain length) + CH2 linker + methyl end group	CCCCCCCCCC
+	CCCCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	CC CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C CCC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	CCCC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]CCC [CH2]CCCCC	chains=6 isolate no-saturation
+> octyl chain (longer than default max chain length) + C2 chain linker + methyl end group	CCCCCCCCCCC
+	CCCCCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C CC CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	CC CCC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	CCCCC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]CCCC [CH2]CCCCC	chains=6 isolate no-saturation
+> octyl chain (longer than default max chain length) + C5 chain linker + methyl end group	CCCCCCCCCCCCCC
+	CCCCCCCCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C C C C C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	CC CC CC CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	CC CCC CCC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	CC CCCCCC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]C [CH2]CCCCC [CH2]CCCC[CH2]	chains=6 isolate no-saturation
+> octyl chain (longer than default max chain length) + C9 chain linker (cut by max chain length) + methyl end group	CCCCCCCCCCCCCCCCCC
+	CCCCCCCCCCCCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C C C C C C C C C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	CC CC CC CC CC CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	CCC CCC CCC CCC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	CCCCCC CCCCCC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]CCCCC [CH2]CCCCC [CH2]CCCC[CH2]	chains=6 isolate no-saturation
+> octyl chain (longer than default max chain length) + tertiary C linker + methyl end group	CCCCCCCCC(C)C
+	CC(C)C CCCCCCC	chains=off; chains=off separate
+	C C C C C C C CC(C)C	chains=1; chains=1 separate
+	C CC CC CC CC(C)C	chains=2; chains=2 separate
+	C CC(C)C CCC CCC	chains=3; chains=3 separate
+	C CC(C)C CCCCCC	chains=6; chains=6 separate
+	*C(*)* C C CCCCCCCC	chains=off isolate; chains=off isolate separate
+	*C(*)* C C C C C C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)* C C CC CC CC CC	chains=2 isolate; chains=2 isolate separate
+	*C(*)* C C CC CCC CCC	chains=3 isolate; chains=3 isolate separate
+	*C(*)* C C CC CCCCCC	chains=6 isolate; chains=6 isolate separate
+	*C(*)* [CH2]C [CH2]CCCC[CH2] [CH3] [CH3]	chains=6 isolate no-saturation
+> octyl chain (longer than default max chain length) + quaternary C linker + methyl end group	CCCCCCCCC(C)(C)C
+	CC(C)(C)C CCCCCCC	chains=off; chains=off separate
+	C C C C C C C CC(C)(C)C	chains=1; chains=1 separate
+	C CC CC CC CC(C)(C)C	chains=2; chains=2 separate
+	C CC(C)(C)C CCC CCC	chains=3; chains=3 separate
+	C CC(C)(C)C CCCCCC	chains=6; chains=6 separate
+	*C(*)(*)* C C C CCCCCCCC	chains=off isolate; chains=off isolate separate
+	*C(*)(*)* C C C C C C C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* C C C CC CC CC CC	chains=2 isolate; chains=2 isolate separate
+	*C(*)(*)* C C C CC CCC CCC	chains=3 isolate; chains=3 isolate separate
+	*C(*)(*)* C C C CC CCCCCC	chains=6 isolate; chains=6 isolate separate
+	*C(*)(*)* [CH2]C [CH2]CCCC[CH2] [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> octyl chain (longer than default max chain length) + quaternary C linker with ethyl + methyl end group	CCCCCCCCC(C)(C)CC
+	C CC(C)(C)C CCCCCCC	chains=off; chains=off separate
+	C C C C C C C C CC(C)(C)C	chains=1; chains=1 separate
+	C C CC CC CC CC(C)(C)C	chains=2; chains=2 separate
+	C C CC(C)(C)C CCC CCC	chains=3; chains=3 separate
+	C C CC(C)(C)C CCCCCC	chains=6; chains=6 separate
+	*C(*)(*)* C C CC CCCCCCCC	chains=off isolate; chains=off isolate separate
+	*C(*)(*)* C C C C C C C C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* C C CC CC CC CC CC	chains=2 isolate; chains=2 isolate separate
+	*C(*)(*)* C C CC CC CCC CCC	chains=3 isolate; chains=3 isolate separate
+	*C(*)(*)* C C CC CC CCCCCC	chains=6 isolate; chains=6 isolate separate
+	*C(*)(*)* [CH2]C [CH2]C [CH2]CCCC[CH2] [CH3] [CH3]	chains=6 isolate no-saturation
+> octyl chain (longer than default max chain length) + two adjacent tertiary C + methyl end group	CCCCCCCCC(C)C(C)C
+	CC(C)C(C)C CCCCCCC	chains=off; chains=off separate
+	C C C C C C C CC(C)C(C)C	chains=1; chains=1 separate
+	C CC CC CC CC(C)C(C)C	chains=2; chains=2 separate
+	C CC(C)C(C)C CCC CCC	chains=3; chains=3 separate
+	C CC(C)C(C)C CCCCCC	chains=6; chains=6 separate
+	*C(*)* *C(*)* C C C CCCCCCCC	chains=off isolate; chains=off isolate separate
+	*C(*)* *C(*)* C C C C C C C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)* *C(*)* C C C CC CC CC CC	chains=2 isolate; chains=2 isolate separate
+	*C(*)* *C(*)* C C C CC CCC CCC	chains=3 isolate; chains=3 isolate separate
+	*C(*)* *C(*)* C C C CC CCCCCC	chains=6 isolate; chains=6 isolate separate
+	*C(*)* *C(*)* [CH2]C [CH2]CCCC[CH2] [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> octyl chain (longer than default max chain length) + two adjacent quaternary C + methyl end group	CCCCCCCCC(C)(C)C(C)(C)C
+	CC(C)(C)C(C)(C)C CCCCCCC	chains=off; chains=off separate
+	C C C C C C C CC(C)(C)C(C)(C)C	chains=1; chains=1 separate
+	C CC CC CC CC(C)(C)C(C)(C)C	chains=2; chains=2 separate
+	C CC(C)(C)C(C)(C)C CCC CCC	chains=3; chains=3 separate
+	C CC(C)(C)C(C)(C)C CCCCCC	chains=6; chains=6 separate
+	*C(*)(*)* *C(*)(*)* C C C C C CCCCCCCC	chains=off isolate; chains=off isolate separate
+	*C(*)(*)* *C(*)(*)* C C C C C C C C C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* *C(*)(*)* C C C C C CC CC CC CC	chains=2 isolate; chains=2 isolate separate
+	*C(*)(*)* *C(*)(*)* C C C C C CC CCC CCC	chains=3 isolate; chains=3 isolate separate
+	*C(*)(*)* *C(*)(*)* C C C C C CC CCCCCC	chains=6 isolate; chains=6 isolate separate
+	*C(*)(*)* *C(*)(*)* [CH2]C [CH2]CCCC[CH2] [CH3] [CH3] [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> octyl chain (longer than default max chain length) + double bond linker + methyl end group	C(=CCCCCCCCC)C
+	C C=C CCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C=C CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C C=C CC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	C C=C CC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]C [CH2]CCCC[CH2] [CH3] [CH]=[CH]	chains=6 isolate no-saturation
+> octyl chain (longer than default max chain length) + triple bond linker + methyl end group	C(#CCCCCCCCC)C
+	C C#C CCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C#C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C#C CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C C#C CC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	C C#C CC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]C [CH2]CCCC[CH2] [CH3] [C]#[C]	chains=6 isolate no-saturation
+> octyl chain (longer than default max chain length) + C with exo-methylene (double bond branch) + methyl end group	C=C(C)CCCCCCCC
+	C C=C CCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C=C CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C C=C CC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	C C=C CC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]C [CH2]CCCC[CH2] [CH3] [C]=C	chains=6 isolate no-saturation
+> octyl chain (longer than default max chain length) + allene linker + methyl end group	C(=CC)=CCCCCCCCC
+	C C(=C)=C CCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C(=C)=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C(=C)=C CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C C(=C)=C CC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	C C(=C)=C CC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]C [CH2]CCCC[CH2] [CH3] [CH]=C=[CH]	chains=6 isolate no-saturation
+> isopropyl (tertiary C end group) + direct bond + methyl end group	CCCC
+	CCCC	chains=off,6; chains=off,6 isolate; chains=off,6 separate; chains=off,6 isolate separate; chains=6 isolate no-saturation
+	C C C C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+> isopropyl (tertiary C end group) + CH2 linker + methyl end group	CCCCC
+	CCCCC	chains=off,6; chains=off,6 isolate; chains=off,6 separate; chains=off,6 isolate separate; chains=6 isolate no-saturation
+	C C C C C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	CC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+> isopropyl (tertiary C end group) + C2 chain linker + methyl end group	CCCCCC
+	CCCCCC	chains=off,6; chains=off,6 isolate; chains=off,6 separate; chains=off,6 isolate separate; chains=6 isolate no-saturation
+	C C C C C C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+> isopropyl (tertiary C end group) + C5 chain linker + methyl end group	CCCCCCCCC
+	CCCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	CCC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	CCC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]CC [CH2]CCCCC	chains=6 isolate no-saturation
+> isopropyl (tertiary C end group) + C9 chain linker (cut by max chain length) + methyl end group	CCCCCCCCCCCCC
+	CCCCCCCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C C C C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C CC CC CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C CCC CCC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	C CCCCCC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]CCCCC [CH2]CCCC[CH2] [CH3]	chains=6 isolate no-saturation
+> isopropyl (tertiary C end group) + tertiary C linker + methyl end group	CCCC(C)C
+	CC CC(C)C	chains=off,2,3,6; chains=off,2,3,6 separate
+	C C CC(C)C	chains=1; chains=1 separate
+	*C(*)* C C CCC	chains=off,3,6 isolate; chains=off,3,6 isolate separate
+	*C(*)* C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)* C C C CC	chains=2 isolate; chains=2 isolate separate
+	*C(*)* [CH2]CC [CH3] [CH3]	chains=6 isolate no-saturation
+> isopropyl (tertiary C end group) + quaternary C linker + methyl end group	CCCC(C)(C)C
+	CC CC(C)(C)C	chains=off,2,3,6; chains=off,2,3,6 separate
+	C C CC(C)(C)C	chains=1; chains=1 separate
+	*C(*)(*)* C C C CCC	chains=off,3,6 isolate; chains=off,3,6 isolate separate
+	*C(*)(*)* C C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* C C C C CC	chains=2 isolate; chains=2 isolate separate
+	*C(*)(*)* [CH2]CC [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> isopropyl (tertiary C end group) + quaternary C linker with ethyl + methyl end group	CCCC(C)(C)CC
+	C CC CC(C)(C)C	chains=off,2,3,6; chains=off,2,3,6 separate
+	C C C CC(C)(C)C	chains=1; chains=1 separate
+	*C(*)(*)* C C CC CCC	chains=off,3,6 isolate; chains=off,3,6 isolate separate
+	*C(*)(*)* C C C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* C C C CC CC	chains=2 isolate; chains=2 isolate separate
+	*C(*)(*)* [CH2]C [CH2]CC [CH3] [CH3]	chains=6 isolate no-saturation
+> isopropyl (tertiary C end group) + two adjacent tertiary C + methyl end group	CCCC(C)C(C)C
+	CC CC(C)C(C)C	chains=off,2,3,6; chains=off,2,3,6 separate
+	C C CC(C)C(C)C	chains=1; chains=1 separate
+	*C(*)* *C(*)* C C C CCC	chains=off,3,6 isolate; chains=off,3,6 isolate separate
+	*C(*)* *C(*)* C C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)* *C(*)* C C C C CC	chains=2 isolate; chains=2 isolate separate
+	*C(*)* *C(*)* [CH2]CC [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> isopropyl (tertiary C end group) + two adjacent quaternary C + methyl end group	CCCC(C)(C)C(C)(C)C
+	CC CC(C)(C)C(C)(C)C	chains=off,2,3,6; chains=off,2,3,6 separate
+	C C CC(C)(C)C(C)(C)C	chains=1; chains=1 separate
+	*C(*)(*)* *C(*)(*)* C C C C C CCC	chains=off,3,6 isolate; chains=off,3,6 isolate separate
+	*C(*)(*)* *C(*)(*)* C C C C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* *C(*)(*)* C C C C C C CC	chains=2 isolate; chains=2 isolate separate
+	*C(*)(*)* *C(*)(*)* [CH2]CC [CH3] [CH3] [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> isopropyl (tertiary C end group) + double bond linker + methyl end group	C(=CCCC)C
+	C C=C CCC	chains=off,3,6; chains=off,3,6 isolate; chains=off,3,6 separate; chains=off,3,6 isolate separate
+	C C C C C=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C C=C CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	[CH2]CC [CH3] [CH]=[CH]	chains=6 isolate no-saturation
+> isopropyl (tertiary C end group) + triple bond linker + methyl end group	C(#CCCC)C
+	C C#C CCC	chains=off,3,6; chains=off,3,6 isolate; chains=off,3,6 separate; chains=off,3,6 isolate separate
+	C C C C C#C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C C#C CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	[CH2]CC [CH3] [C]#[C]	chains=6 isolate no-saturation
+> isopropyl (tertiary C end group) + C with exo-methylene (double bond branch) + methyl end group	C=C(C)CCC
+	C C=C CCC	chains=off,3,6; chains=off,3,6 isolate; chains=off,3,6 separate; chains=off,3,6 isolate separate
+	C C C C C=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C C=C CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	[CH2]CC [CH3] [C]=C	chains=6 isolate no-saturation
+> isopropyl (tertiary C end group) + allene linker + methyl end group	C(=CC)=CCCC
+	C C(=C)=C CCC	chains=off,3,6; chains=off,3,6 isolate; chains=off,3,6 separate; chains=off,3,6 isolate separate
+	C C C C C(=C)=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C C(=C)=C CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	[CH2]CC [CH3] [CH]=C=[CH]	chains=6 isolate no-saturation
+> tert-butyl (quaternary C end group) + direct bond + methyl end group	CCC(C)C
+	C CC(C)C	chains=any; chains=any separate
+	*C(*)* C C CC	chains=off,2,3,6 isolate; chains=off,2,3,6 isolate separate
+	*C(*)* C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)* [CH2]C [CH3] [CH3]	chains=6 isolate no-saturation
+> tert-butyl (quaternary C end group) + CH2 linker + methyl end group	CCCC(C)C
+	CC CC(C)C	chains=off,2,3,6; chains=off,2,3,6 separate
+	C C CC(C)C	chains=1; chains=1 separate
+	*C(*)* C C CCC	chains=off,3,6 isolate; chains=off,3,6 isolate separate
+	*C(*)* C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)* C C C CC	chains=2 isolate; chains=2 isolate separate
+	*C(*)* [CH2]CC [CH3] [CH3]	chains=6 isolate no-saturation
+> tert-butyl (quaternary C end group) + C2 chain linker + methyl end group	CCCCC(C)C
+	CC(C)C CCC	chains=off,3,6; chains=off,3,6 separate
+	C C C CC(C)C	chains=1; chains=1 separate
+	C CC CC(C)C	chains=2; chains=2 separate
+	*C(*)* C C CCCC	chains=off,6 isolate; chains=off,6 isolate separate
+	*C(*)* C C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)* C C CC CC	chains=2 isolate; chains=2 isolate separate
+	*C(*)* C C C CCC	chains=3 isolate; chains=3 isolate separate
+	*C(*)* [CH2]CCC [CH3] [CH3]	chains=6 isolate no-saturation
+> tert-butyl (quaternary C end group) + C5 chain linker + methyl end group	CCCCCCCC(C)C
+	CC(C)C CCCCCC	chains=off,6; chains=off,6 separate
+	C C C C C C CC(C)C	chains=1; chains=1 separate
+	CC CC CC CC(C)C	chains=2; chains=2 separate
+	CC(C)C CCC CCC	chains=3; chains=3 separate
+	*C(*)* C C CCCCCCC	chains=off isolate; chains=off isolate separate
+	*C(*)* C C C C C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)* C C C CC CC CC	chains=2 isolate; chains=2 isolate separate
+	*C(*)* C C C CCC CCC	chains=3 isolate; chains=3 isolate separate
+	*C(*)* C C C CCCCCC	chains=6 isolate; chains=6 isolate separate
+	*C(*)* [CH2]CCCC[CH2] [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> tert-butyl (quaternary C end group) + C9 chain linker (cut by max chain length) + methyl end group	CCCCCCCCCCCC(C)C
+	CC(C)C CCCCCCCCCC	chains=off; chains=off separate
+	C C C C C C C C C C CC(C)C	chains=1; chains=1 separate
+	CC CC CC CC CC CC(C)C	chains=2; chains=2 separate
+	C CC(C)C CCC CCC CCC	chains=3; chains=3 separate
+	CC(C)C CCCC CCCCCC	chains=6; chains=6 separate
+	*C(*)* C C CCCCCCCCCCC	chains=off isolate; chains=off isolate separate
+	*C(*)* C C C C C C C C C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)* C C C CC CC CC CC CC	chains=2 isolate; chains=2 isolate separate
+	*C(*)* C C CC CCC CCC CCC	chains=3 isolate; chains=3 isolate separate
+	*C(*)* C C CCCCC CCCCCC	chains=6 isolate; chains=6 isolate separate
+	*C(*)* [CH2]CCCC [CH2]CCCC[CH2] [CH3] [CH3]	chains=6 isolate no-saturation
+> tert-butyl (quaternary C end group) + tertiary C linker + methyl end group	CC(C)CC(C)C
+	CC(C)CC(C)C	chains=any; chains=any separate
+	*C(*)* *C(*)* C C C C C	chains=any isolate; chains=any isolate separate
+	*C(*)* *C(*)* [CH2] [CH3] [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> tert-butyl (quaternary C end group) + quaternary C linker + methyl end group	CC(C)CC(C)(C)C
+	CC(C)CC(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* *C(*)* C C C C C C	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* *C(*)* [CH2] [CH3] [CH3] [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> tert-butyl (quaternary C end group) + quaternary C linker with ethyl + methyl end group	CCC(C)(C)CC(C)C
+	C CC(C)CC(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* *C(*)* C C C C C CC	chains=off,2,3,6 isolate; chains=off,2,3,6 isolate separate
+	*C(*)(*)* *C(*)* C C C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* *C(*)* [CH2] [CH2]C [CH3] [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> tert-butyl (quaternary C end group) + two adjacent tertiary C + methyl end group	CC(C)CC(C)C(C)C
+	CC(C)CC(C)C(C)C	chains=any; chains=any separate
+	*C(*)* *C(*)* *C(*)* C C C C C C	chains=any isolate; chains=any isolate separate
+	*C(*)* *C(*)* *C(*)* [CH2] [CH3] [CH3] [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> tert-butyl (quaternary C end group) + two adjacent quaternary C + methyl end group	CC(C)CC(C)(C)C(C)(C)C
+	CC(C)CC(C)(C)C(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* *C(*)(*)* *C(*)* C C C C C C C C	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* *C(*)(*)* *C(*)* [CH2] [CH3] [CH3] [CH3] [CH3] [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> tert-butyl (quaternary C end group) + double bond linker + methyl end group	C(=CCC(C)C)C
+	C C=C CC(C)C	chains=any; chains=any separate
+	*C(*)* C C C C C=C	chains=any isolate; chains=any isolate separate
+	*C(*)* [CH2] [CH3] [CH3] [CH3] [CH]=[CH]	chains=6 isolate no-saturation
+> tert-butyl (quaternary C end group) + triple bond linker + methyl end group	C(#CCC(C)C)C
+	C C#C CC(C)C	chains=any; chains=any separate
+	*C(*)* C C C C C#C	chains=any isolate; chains=any isolate separate
+	*C(*)* [CH2] [CH3] [CH3] [CH3] [C]#[C]	chains=6 isolate no-saturation
+> tert-butyl (quaternary C end group) + C with exo-methylene (double bond branch) + methyl end group	C=C(C)CC(C)C
+	C C=C CC(C)C	chains=any; chains=any separate
+	*C(*)* C C C C C=C	chains=any isolate; chains=any isolate separate
+	*C(*)* [CH2] [CH3] [CH3] [CH3] [C]=C	chains=6 isolate no-saturation
+> tert-butyl (quaternary C end group) + allene linker + methyl end group	C(=CC)=CCC(C)C
+	C C(=C)=C CC(C)C	chains=any; chains=any separate
+	*C(*)* C C C C C(=C)=C	chains=any isolate; chains=any isolate separate
+	*C(*)* [CH2] [CH3] [CH3] [CH3] [CH]=C=[CH]	chains=6 isolate no-saturation
+> cyclopropane ring + direct bond + methyl end group	CC1CC1
+	C C1CC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]1CC1	chains=6 isolate no-saturation
+> cyclopropane ring + CH2 linker + methyl end group	CCC1CC1
+	C1CC1 CC	chains=off,2,3,6; chains=off,2,3,6 isolate; chains=off,2,3,6 separate; chains=off,2,3,6 isolate separate
+	C C C1CC1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	[CH2]C [CH]1CC1	chains=6 isolate no-saturation
+> cyclopropane ring + C2 chain linker + methyl end group	CCCC1CC1
+	C1CC1 CCC	chains=off,3,6; chains=off,3,6 isolate; chains=off,3,6 separate; chains=off,3,6 isolate separate
+	C C C C1CC1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C1CC1 CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	[CH2]CC [CH]1CC1	chains=6 isolate no-saturation
+> cyclopropane ring + C5 chain linker + methyl end group	CCCCCCC1CC1
+	C1CC1 CCCCCC	chains=off,6; chains=off,6 isolate; chains=off,6 separate; chains=off,6 isolate separate
+	C C C C C C C1CC1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C1CC1 CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C1CC1 CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	[CH2]CCCCC [CH]1CC1	chains=6 isolate no-saturation
+> cyclopropane ring + C9 chain linker (cut by max chain length) + methyl end group	CCCCCCCCCCC1CC1
+	C1CC1 CCCCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C C1CC1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C1CC1 CC CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C C1CC1 CCC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	C1CC1 CCCC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]CCC [CH2]CCCC[CH2] [CH]1CC1	chains=6 isolate no-saturation
+> cyclopropane ring + tertiary C linker + methyl end group	CC(C)C1CC1
+	CC(C)C1CC1	chains=any; chains=any isolate; chains=6 isolate no-saturation
+	*C(C)C C1CC1	chains=any separate
+	*C(*)* C C C1CC1	chains=any isolate separate
+> cyclopropane ring + quaternary C linker + methyl end group	CC(C)(C)C1CC1
+	CC(C)(C)C1CC1	chains=any; chains=any isolate; chains=6 isolate no-saturation
+	*C(C)(C)C C1CC1	chains=any separate
+	*C(*)(*)* C C C C1CC1	chains=any isolate separate
+> cyclopropane ring + quaternary C linker with ethyl + methyl end group	CCC(C)(C)C1CC1
+	C CC(C)(C)C1CC1	chains=any; chains=any isolate
+	*C(C)(C)C C C1CC1	chains=any separate
+	*C(*)(*)* C C C1CC1 CC	chains=off,2,3,6 isolate separate
+	*C(*)(*)* C C C C C1CC1	chains=1 isolate separate
+	[CH2]C(C)(C)C1CC1 [CH3]	chains=6 isolate no-saturation
+> cyclopropane ring + two adjacent tertiary C + methyl end group	CC(C)C(C)C1CC1
+	CC(C)C(C)C1CC1	chains=any
+	*C(*)* *C(C)C1CC1 C C	chains=any isolate
+	*C(C)C(C)C C1CC1	chains=any separate
+	*C(*)* *C(*)* C C C C1CC1	chains=any isolate separate
+	*C(*)* *C(C)C1CC1 [CH3] [CH3]	chains=6 isolate no-saturation
+> cyclopropane ring + two adjacent quaternary C + methyl end group	CC(C)(C)C(C)(C)C1CC1
+	CC(C)(C)C(C)(C)C1CC1	chains=any
+	*C(*)(*)* *C(C)(C)C1CC1 C C C	chains=any isolate
+	*C(C)(C)C(C)(C)C C1CC1	chains=any separate
+	*C(*)(*)* *C(*)(*)* C C C C C C1CC1	chains=any isolate separate
+	*C(*)(*)* *C(C)(C)C1CC1 [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> cyclopropane ring + double bond linker + methyl end group	C(=CC1CC1)C
+	C C1CC1 C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]1CC1 [CH]=[CH]	chains=6 isolate no-saturation
+> cyclopropane ring + triple bond linker + methyl end group	C(#CC1CC1)C
+	C C#C C1CC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]1CC1 [C]#[C]	chains=6 isolate no-saturation
+> cyclopropane ring + C with exo-methylene (double bond branch) + methyl end group	C=C(C)C1CC1
+	C C1CC1 C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]1CC1 [C]=C	chains=6 isolate no-saturation
+> cyclopropane ring + allene linker + methyl end group	C(=CC)=CC1CC1
+	C C(=C)=C C1CC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]1CC1 [CH]=C=[CH]	chains=6 isolate no-saturation
+> cyclohexane ring + direct bond + methyl end group	CC1CCCCC1
+	C C1CCCCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]1CCCCC1	chains=6 isolate no-saturation
+> cyclohexane ring + CH2 linker + methyl end group	CCC1CCCCC1
+	C1CCCCC1 CC	chains=off,2,3,6; chains=off,2,3,6 isolate; chains=off,2,3,6 separate; chains=off,2,3,6 isolate separate
+	C C C1CCCCC1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	[CH2]C [CH]1CCCCC1	chains=6 isolate no-saturation
+> cyclohexane ring + C2 chain linker + methyl end group	CCCC1CCCCC1
+	C1CCCCC1 CCC	chains=off,3,6; chains=off,3,6 isolate; chains=off,3,6 separate; chains=off,3,6 isolate separate
+	C C C C1CCCCC1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C1CCCCC1 CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	[CH2]CC [CH]1CCCCC1	chains=6 isolate no-saturation
+> cyclohexane ring + C5 chain linker + methyl end group	CCCCCCC1CCCCC1
+	C1CCCCC1 CCCCCC	chains=off,6; chains=off,6 isolate; chains=off,6 separate; chains=off,6 isolate separate
+	C C C C C C C1CCCCC1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C1CCCCC1 CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C1CCCCC1 CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	[CH2]CCCCC [CH]1CCCCC1	chains=6 isolate no-saturation
+> cyclohexane ring + C9 chain linker (cut by max chain length) + methyl end group	CCCCCCCCCCC1CCCCC1
+	C1CCCCC1 CCCCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C C1CCCCC1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C1CCCCC1 CC CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C C1CCCCC1 CCC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	C1CCCCC1 CCCC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]CCC [CH2]CCCC[CH2] [CH]1CCCCC1	chains=6 isolate no-saturation
+> cyclohexane ring + tertiary C linker + methyl end group	CC(C)C1CCCCC1
+	CC(C)C1CCCCC1	chains=any; chains=any isolate; chains=6 isolate no-saturation
+	*C(C)C C1CCCCC1	chains=any separate
+	*C(*)* C C C1CCCCC1	chains=any isolate separate
+> cyclohexane ring + quaternary C linker + methyl end group	CC(C)(C)C1CCCCC1
+	CC(C)(C)C1CCCCC1	chains=any; chains=any isolate; chains=6 isolate no-saturation
+	*C(C)(C)C C1CCCCC1	chains=any separate
+	*C(*)(*)* C C C C1CCCCC1	chains=any isolate separate
+> cyclohexane ring + quaternary C linker with ethyl + methyl end group	CCC(C)(C)C1CCCCC1
+	C CC(C)(C)C1CCCCC1	chains=any; chains=any isolate
+	*C(C)(C)C C C1CCCCC1	chains=any separate
+	*C(*)(*)* C C C1CCCCC1 CC	chains=off,2,3,6 isolate separate
+	*C(*)(*)* C C C C C1CCCCC1	chains=1 isolate separate
+	[CH2]C(C)(C)C1CCCCC1 [CH3]	chains=6 isolate no-saturation
+> cyclohexane ring + two adjacent tertiary C + methyl end group	CC(C)C(C)C1CCCCC1
+	CC(C)C(C)C1CCCCC1	chains=any
+	*C(*)* *C(C)C1CCCCC1 C C	chains=any isolate
+	*C(C)C(C)C C1CCCCC1	chains=any separate
+	*C(*)* *C(*)* C C C C1CCCCC1	chains=any isolate separate
+	*C(*)* *C(C)C1CCCCC1 [CH3] [CH3]	chains=6 isolate no-saturation
+> cyclohexane ring + two adjacent quaternary C + methyl end group	CC(C)(C)C(C)(C)C1CCCCC1
+	CC(C)(C)C(C)(C)C1CCCCC1	chains=any
+	*C(*)(*)* *C(C)(C)C1CCCCC1 C C C	chains=any isolate
+	*C(C)(C)C(C)(C)C C1CCCCC1	chains=any separate
+	*C(*)(*)* *C(*)(*)* C C C C C C1CCCCC1	chains=any isolate separate
+	*C(*)(*)* *C(C)(C)C1CCCCC1 [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> cyclohexane ring + double bond linker + methyl end group	C(=CC1CCCCC1)C
+	C C1CCCCC1 C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]1CCCCC1 [CH]=[CH]	chains=6 isolate no-saturation
+> cyclohexane ring + triple bond linker + methyl end group	C(#CC1CCCCC1)C
+	C C#C C1CCCCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]1CCCCC1 [C]#[C]	chains=6 isolate no-saturation
+> cyclohexane ring + C with exo-methylene (double bond branch) + methyl end group	C=C(C)C1CCCCC1
+	C C1CCCCC1 C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]1CCCCC1 [C]=C	chains=6 isolate no-saturation
+> cyclohexane ring + allene linker + methyl end group	C(=CC)=CC1CCCCC1
+	C C(=C)=C C1CCCCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]1CCCCC1 [CH]=C=[CH]	chains=6 isolate no-saturation
+> decalin (fused ring system) + direct bond + methyl end group	CC1CCCC2CCCCC12
+	C C1CCC2CCCCC2C1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]1CCCC2CCCCC12	chains=6 isolate no-saturation
+> decalin (fused ring system) + CH2 linker + methyl end group	CCC1CCCC2CCCCC12
+	C1CCC2CCCCC2C1 CC	chains=off,2,3,6; chains=off,2,3,6 isolate; chains=off,2,3,6 separate; chains=off,2,3,6 isolate separate
+	C C C1CCC2CCCCC2C1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	[CH2]C [CH]1CCCC2CCCCC12	chains=6 isolate no-saturation
+> decalin (fused ring system) + C2 chain linker + methyl end group	CCCC1CCCC2CCCCC12
+	C1CCC2CCCCC2C1 CCC	chains=off,3,6; chains=off,3,6 isolate; chains=off,3,6 separate; chains=off,3,6 isolate separate
+	C C C C1CCC2CCCCC2C1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C1CCC2CCCCC2C1 CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	[CH2]CC [CH]1CCCC2CCCCC12	chains=6 isolate no-saturation
+> decalin (fused ring system) + C5 chain linker + methyl end group	CCCCCCC1CCCC2CCCCC12
+	C1CCC2CCCCC2C1 CCCCCC	chains=off,6; chains=off,6 isolate; chains=off,6 separate; chains=off,6 isolate separate
+	C C C C C C C1CCC2CCCCC2C1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C1CCC2CCCCC2C1 CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C1CCC2CCCCC2C1 CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	[CH2]CCCCC [CH]1CCCC2CCCCC12	chains=6 isolate no-saturation
+> decalin (fused ring system) + C9 chain linker (cut by max chain length) + methyl end group	CCCCCCCCCCC1CCCC2CCCCC12
+	C1CCC2CCCCC2C1 CCCCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C C1CCC2CCCCC2C1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C1CCC2CCCCC2C1 CC CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C C1CCC2CCCCC2C1 CCC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	C1CCC2CCCCC2C1 CCCC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]CCC [CH2]CCCC[CH2] [CH]1CCCC2CCCCC12	chains=6 isolate no-saturation
+> decalin (fused ring system) + tertiary C linker + methyl end group	CC(C)C1CCCC2CCCCC21
+	CC(C)C1CCCC2CCCCC21	chains=any; chains=any isolate; chains=6 isolate no-saturation
+	*C(C)C C1CCC2CCCCC2C1	chains=any separate
+	*C(*)* C C C1CCC2CCCCC2C1	chains=any isolate separate
+> decalin (fused ring system) + quaternary C linker + methyl end group	CC(C)(C)C1CCCC2CCCCC21
+	CC(C)(C)C1CCCC2CCCCC21	chains=any; chains=any isolate; chains=6 isolate no-saturation
+	*C(C)(C)C C1CCC2CCCCC2C1	chains=any separate
+	*C(*)(*)* C C C C1CCC2CCCCC2C1	chains=any isolate separate
+> decalin (fused ring system) + quaternary C linker with ethyl + methyl end group	CCC(C)(C)C1CCCC2CCCCC21
+	C CC(C)(C)C1CCCC2CCCCC21	chains=any; chains=any isolate
+	*C(C)(C)C C C1CCC2CCCCC2C1	chains=any separate
+	*C(*)(*)* C C C1CCC2CCCCC2C1 CC	chains=off,2,3,6 isolate separate
+	*C(*)(*)* C C C C C1CCC2CCCCC2C1	chains=1 isolate separate
+	[CH2]C(C)(C)C1CCCC2CCCCC21 [CH3]	chains=6 isolate no-saturation
+> decalin (fused ring system) + two adjacent tertiary C + methyl end group	CC(C)C(C)C1CCCC2CCCCC21
+	CC(C)C(C)C1CCCC2CCCCC21	chains=any
+	*C(*)* *C(C)C1CCCC2CCCCC21 C C	chains=any isolate
+	*C(C)C(C)C C1CCC2CCCCC2C1	chains=any separate
+	*C(*)* *C(*)* C C C C1CCC2CCCCC2C1	chains=any isolate separate
+	*C(*)* *C(C)C1CCCC2CCCCC21 [CH3] [CH3]	chains=6 isolate no-saturation
+> decalin (fused ring system) + two adjacent quaternary C + methyl end group	CC(C)(C)C(C)(C)C1CCCC2CCCCC21
+	CC(C)(C)C(C)(C)C1CCCC2CCCCC21	chains=any
+	*C(*)(*)* *C(C)(C)C1CCCC2CCCCC21 C C C	chains=any isolate
+	*C(C)(C)C(C)(C)C C1CCC2CCCCC2C1	chains=any separate
+	*C(*)(*)* *C(*)(*)* C C C C C C1CCC2CCCCC2C1	chains=any isolate separate
+	*C(*)(*)* *C(C)(C)C1CCCC2CCCCC21 [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> decalin (fused ring system) + double bond linker + methyl end group	C(=CC1CCCC2CCCCC12)C
+	C C1CCC2CCCCC2C1 C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]1CCCC2CCCCC12 [CH]=[CH]	chains=6 isolate no-saturation
+> decalin (fused ring system) + triple bond linker + methyl end group	C(#CC1CCCC2CCCCC12)C
+	C C#C C1CCC2CCCCC2C1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]1CCCC2CCCCC12 [C]#[C]	chains=6 isolate no-saturation
+> decalin (fused ring system) + C with exo-methylene (double bond branch) + methyl end group	C=C(C)C1CCCC2CCCCC12
+	C C1CCC2CCCCC2C1 C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]1CCCC2CCCCC12 [C]=C	chains=6 isolate no-saturation
+> decalin (fused ring system) + allene linker + methyl end group	C(=CC)=CC1CCCC2CCCCC12
+	C C(=C)=C C1CCC2CCCCC2C1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]1CCCC2CCCCC12 [CH]=C=[CH]	chains=6 isolate no-saturation
+> spiro[4.5]decane (spiro ring system) + direct bond + methyl end group	CC1CCCC21CCCCC2
+	C C1CCC2(CC1)CCCC2	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]1CCCC12CCCCC2	chains=6 isolate no-saturation
+> spiro[4.5]decane (spiro ring system) + CH2 linker + methyl end group	CCC1CCCC21CCCCC2
+	C1CCC2(CC1)CCCC2 CC	chains=off,2,3,6; chains=off,2,3,6 isolate; chains=off,2,3,6 separate; chains=off,2,3,6 isolate separate
+	C C C1CCC2(CC1)CCCC2	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	[CH2]C [CH]1CCCC12CCCCC2	chains=6 isolate no-saturation
+> spiro[4.5]decane (spiro ring system) + C2 chain linker + methyl end group	CCCC1CCCC21CCCCC2
+	C1CCC2(CC1)CCCC2 CCC	chains=off,3,6; chains=off,3,6 isolate; chains=off,3,6 separate; chains=off,3,6 isolate separate
+	C C C C1CCC2(CC1)CCCC2	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C1CCC2(CC1)CCCC2 CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	[CH2]CC [CH]1CCCC12CCCCC2	chains=6 isolate no-saturation
+> spiro[4.5]decane (spiro ring system) + C5 chain linker + methyl end group	CCCCCCC1CCCC21CCCCC2
+	C1CCC2(CC1)CCCC2 CCCCCC	chains=off,6; chains=off,6 isolate; chains=off,6 separate; chains=off,6 isolate separate
+	C C C C C C C1CCC2(CC1)CCCC2	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C1CCC2(CC1)CCCC2 CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C1CCC2(CC1)CCCC2 CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	[CH2]CCCCC [CH]1CCCC12CCCCC2	chains=6 isolate no-saturation
+> spiro[4.5]decane (spiro ring system) + C9 chain linker (cut by max chain length) + methyl end group	CCCCCCCCCCC1CCCC21CCCCC2
+	C1CCC2(CC1)CCCC2 CCCCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C C1CCC2(CC1)CCCC2	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C1CCC2(CC1)CCCC2 CC CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C C1CCC2(CC1)CCCC2 CCC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	C1CCC2(CC1)CCCC2 CCCC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]CCC [CH2]CCCC[CH2] [CH]1CCCC12CCCCC2	chains=6 isolate no-saturation
+> spiro[4.5]decane (spiro ring system) + tertiary C linker + methyl end group	CC(C)C1CCCC21CCCCC2
+	CC(C)C1CCCC21CCCCC2	chains=any; chains=any isolate; chains=6 isolate no-saturation
+	*C(C)C C1CCC2(CC1)CCCC2	chains=any separate
+	*C(*)* C C C1CCC2(CC1)CCCC2	chains=any isolate separate
+> spiro[4.5]decane (spiro ring system) + quaternary C linker + methyl end group	CC(C)(C)C1CCCC21CCCCC2
+	CC(C)(C)C1CCCC21CCCCC2	chains=any; chains=any isolate; chains=6 isolate no-saturation
+	*C(C)(C)C C1CCC2(CC1)CCCC2	chains=any separate
+	*C(*)(*)* C C C C1CCC2(CC1)CCCC2	chains=any isolate separate
+> spiro[4.5]decane (spiro ring system) + quaternary C linker with ethyl + methyl end group	CCC(C)(C)C1CCCC21CCCCC2
+	C CC(C)(C)C1CCCC21CCCCC2	chains=any; chains=any isolate
+	*C(C)(C)C C C1CCC2(CC1)CCCC2	chains=any separate
+	*C(*)(*)* C C C1CCC2(CC1)CCCC2 CC	chains=off,2,3,6 isolate separate
+	*C(*)(*)* C C C C C1CCC2(CC1)CCCC2	chains=1 isolate separate
+	[CH2]C(C)(C)C1CCCC21CCCCC2 [CH3]	chains=6 isolate no-saturation
+> spiro[4.5]decane (spiro ring system) + two adjacent tertiary C + methyl end group	CC(C)C(C)C1CCCC21CCCCC2
+	CC(C)C(C)C1CCCC21CCCCC2	chains=any
+	*C(*)* *C(C)C1CCCC21CCCCC2 C C	chains=any isolate
+	*C(C)C(C)C C1CCC2(CC1)CCCC2	chains=any separate
+	*C(*)* *C(*)* C C C C1CCC2(CC1)CCCC2	chains=any isolate separate
+	*C(*)* *C(C)C1CCCC21CCCCC2 [CH3] [CH3]	chains=6 isolate no-saturation
+> spiro[4.5]decane (spiro ring system) + two adjacent quaternary C + methyl end group	CC(C)(C)C(C)(C)C1CCCC21CCCCC2
+	CC(C)(C)C(C)(C)C1CCCC21CCCCC2	chains=any
+	*C(*)(*)* *C(C)(C)C1CCCC21CCCCC2 C C C	chains=any isolate
+	*C(C)(C)C(C)(C)C C1CCC2(CC1)CCCC2	chains=any separate
+	*C(*)(*)* *C(*)(*)* C C C C C C1CCC2(CC1)CCCC2	chains=any isolate separate
+	*C(*)(*)* *C(C)(C)C1CCCC21CCCCC2 [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> spiro[4.5]decane (spiro ring system) + double bond linker + methyl end group	C(=CC1CCCC21CCCCC2)C
+	C C1CCC2(CC1)CCCC2 C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]1CCCC12CCCCC2 [CH]=[CH]	chains=6 isolate no-saturation
+> spiro[4.5]decane (spiro ring system) + triple bond linker + methyl end group	C(#CC1CCCC21CCCCC2)C
+	C C#C C1CCC2(CC1)CCCC2	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]1CCCC12CCCCC2 [C]#[C]	chains=6 isolate no-saturation
+> spiro[4.5]decane (spiro ring system) + C with exo-methylene (double bond branch) + methyl end group	C=C(C)C1CCCC21CCCCC2
+	C C1CCC2(CC1)CCCC2 C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]1CCCC12CCCCC2 [C]=C	chains=6 isolate no-saturation
+> spiro[4.5]decane (spiro ring system) + allene linker + methyl end group	C(=CC)=CC1CCCC21CCCCC2
+	C C(=C)=C C1CCC2(CC1)CCCC2	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]1CCCC12CCCCC2 [CH]=C=[CH]	chains=6 isolate no-saturation
+> norbornane (bridged ring system) + direct bond + methyl end group	CC1C2CCC1CC2
+	C C1CC2CCC1C2	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]1C2CCC1CC2	chains=6 isolate no-saturation
+> norbornane (bridged ring system) + CH2 linker + methyl end group	CCC1C2CCC1CC2
+	C1CC2CCC1C2 CC	chains=off,2,3,6; chains=off,2,3,6 isolate; chains=off,2,3,6 separate; chains=off,2,3,6 isolate separate
+	C C C1CC2CCC1C2	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	[CH2]C [CH]1C2CCC1CC2	chains=6 isolate no-saturation
+> norbornane (bridged ring system) + C2 chain linker + methyl end group	CCCC1C2CCC1CC2
+	C1CC2CCC1C2 CCC	chains=off,3,6; chains=off,3,6 isolate; chains=off,3,6 separate; chains=off,3,6 isolate separate
+	C C C C1CC2CCC1C2	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C1CC2CCC1C2 CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	[CH2]CC [CH]1C2CCC1CC2	chains=6 isolate no-saturation
+> norbornane (bridged ring system) + C5 chain linker + methyl end group	CCCCCCC1C2CCC1CC2
+	C1CC2CCC1C2 CCCCCC	chains=off,6; chains=off,6 isolate; chains=off,6 separate; chains=off,6 isolate separate
+	C C C C C C C1CC2CCC1C2	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C1CC2CCC1C2 CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C1CC2CCC1C2 CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	[CH2]CCCCC [CH]1C2CCC1CC2	chains=6 isolate no-saturation
+> norbornane (bridged ring system) + C9 chain linker (cut by max chain length) + methyl end group	CCCCCCCCCCC1C2CCC1CC2
+	C1CC2CCC1C2 CCCCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C C1CC2CCC1C2	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C1CC2CCC1C2 CC CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C C1CC2CCC1C2 CCC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	C1CC2CCC1C2 CCCC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]CCC [CH2]CCCC[CH2] [CH]1C2CCC1CC2	chains=6 isolate no-saturation
+> norbornane (bridged ring system) + tertiary C linker + methyl end group	CC(C)C1C2CCC1CC2
+	CC(C)C1C2CCC1CC2	chains=any; chains=any isolate; chains=6 isolate no-saturation
+	*C(C)C C1CC2CCC1C2	chains=any separate
+	*C(*)* C C C1CC2CCC1C2	chains=any isolate separate
+> norbornane (bridged ring system) + quaternary C linker + methyl end group	CC(C)(C)C1C2CCC1CC2
+	CC(C)(C)C1C2CCC1CC2	chains=any; chains=any isolate; chains=6 isolate no-saturation
+	*C(C)(C)C C1CC2CCC1C2	chains=any separate
+	*C(*)(*)* C C C C1CC2CCC1C2	chains=any isolate separate
+> norbornane (bridged ring system) + quaternary C linker with ethyl + methyl end group	CCC(C)(C)C1C2CCC1CC2
+	C CC(C)(C)C1C2CCC1CC2	chains=any; chains=any isolate
+	*C(C)(C)C C C1CC2CCC1C2	chains=any separate
+	*C(*)(*)* C C C1CC2CCC1C2 CC	chains=off,2,3,6 isolate separate
+	*C(*)(*)* C C C C C1CC2CCC1C2	chains=1 isolate separate
+	[CH2]C(C)(C)C1C2CCC1CC2 [CH3]	chains=6 isolate no-saturation
+> norbornane (bridged ring system) + two adjacent tertiary C + methyl end group	CC(C)C(C)C1C2CCC1CC2
+	CC(C)C(C)C1C2CCC1CC2	chains=any
+	*C(*)* *C(C)C1C2CCC1CC2 C C	chains=any isolate
+	*C(C)C(C)C C1CC2CCC1C2	chains=any separate
+	*C(*)* *C(*)* C C C C1CC2CCC1C2	chains=any isolate separate
+	*C(*)* *C(C)C1C2CCC1CC2 [CH3] [CH3]	chains=6 isolate no-saturation
+> norbornane (bridged ring system) + two adjacent quaternary C + methyl end group	CC(C)(C)C(C)(C)C1C2CCC1CC2
+	CC(C)(C)C(C)(C)C1C2CCC1CC2	chains=any
+	*C(*)(*)* *C(C)(C)C1C2CCC1CC2 C C C	chains=any isolate
+	*C(C)(C)C(C)(C)C C1CC2CCC1C2	chains=any separate
+	*C(*)(*)* *C(*)(*)* C C C C C C1CC2CCC1C2	chains=any isolate separate
+	*C(*)(*)* *C(C)(C)C1C2CCC1CC2 [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> norbornane (bridged ring system) + double bond linker + methyl end group	C(=CC1C2CCC1CC2)C
+	C C1CC2CCC1C2 C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]1C2CCC1CC2 [CH]=[CH]	chains=6 isolate no-saturation
+> norbornane (bridged ring system) + triple bond linker + methyl end group	C(#CC1C2CCC1CC2)C
+	C C#C C1CC2CCC1C2	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]1C2CCC1CC2 [C]#[C]	chains=6 isolate no-saturation
+> norbornane (bridged ring system) + C with exo-methylene (double bond branch) + methyl end group	C=C(C)C1C2CCC1CC2
+	C C1CC2CCC1C2 C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]1C2CCC1CC2 [C]=C	chains=6 isolate no-saturation
+> norbornane (bridged ring system) + allene linker + methyl end group	C(=CC)=CC1C2CCC1CC2
+	C C(=C)=C C1CC2CCC1C2	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]1C2CCC1CC2 [CH]=C=[CH]	chains=6 isolate no-saturation
+> cyclohexene (ring with double bond) + direct bond + methyl end group	C1=CC(C)CCC1
+	C C1=CCCCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	C1=CCCC[CH]1 [CH3]	chains=6 isolate no-saturation
+> cyclohexene (ring with double bond) + CH2 linker + methyl end group	C1=CC(CC)CCC1
+	C1=CCCCC1 CC	chains=off,2,3,6; chains=off,2,3,6 isolate; chains=off,2,3,6 separate; chains=off,2,3,6 isolate separate
+	C C C1=CCCCC1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C1=CCCC[CH]1 [CH2]C	chains=6 isolate no-saturation
+> cyclohexene (ring with double bond) + C2 chain linker + methyl end group	C1=CC(CCC)CCC1
+	C1=CCCCC1 CCC	chains=off,3,6; chains=off,3,6 isolate; chains=off,3,6 separate; chains=off,3,6 isolate separate
+	C C C C1=CCCCC1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C1=CCCCC1 CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C1=CCCC[CH]1 [CH2]CC	chains=6 isolate no-saturation
+> cyclohexene (ring with double bond) + C5 chain linker + methyl end group	C1=CC(CCC1)CCCCCC
+	C1=CCCCC1 CCCCCC	chains=off,6; chains=off,6 isolate; chains=off,6 separate; chains=off,6 isolate separate
+	C C C C C C C1=CCCCC1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C1=CCCCC1 CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C1=CCCCC1 CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	C1=CCCC[CH]1 [CH2]CCCCC	chains=6 isolate no-saturation
+> cyclohexene (ring with double bond) + C9 chain linker (cut by max chain length) + methyl end group	C1=CC(CCC1)CCCCCCCCCC
+	C1=CCCCC1 CCCCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C C1=CCCCC1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C1=CCCCC1 CC CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C C1=CCCCC1 CCC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	C1=CCCCC1 CCCC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	C1=CCCC[CH]1 [CH2]CCC [CH2]CCCC[CH2]	chains=6 isolate no-saturation
+> cyclohexene (ring with double bond) + tertiary C linker + methyl end group	C1=CC(CCC1)C(C)C
+	C1=CC(CCC1)C(C)C	chains=any; chains=any isolate; chains=6 isolate no-saturation
+	*C(C)C C1=CCCCC1	chains=any separate
+	*C(*)* C C C1=CCCCC1	chains=any isolate separate
+> cyclohexene (ring with double bond) + quaternary C linker + methyl end group	C1=CC(CCC1)C(C)(C)C
+	C1=CC(CCC1)C(C)(C)C	chains=any; chains=any isolate; chains=6 isolate no-saturation
+	*C(C)(C)C C1=CCCCC1	chains=any separate
+	*C(*)(*)* C C C C1=CCCCC1	chains=any isolate separate
+> cyclohexene (ring with double bond) + quaternary C linker with ethyl + methyl end group	C1=CC(CCC1)C(C)(C)CC
+	C C1=CC(CCC1)C(C)(C)C	chains=any; chains=any isolate
+	*C(C)(C)C C C1=CCCCC1	chains=any separate
+	*C(*)(*)* C C C1=CCCCC1 CC	chains=off,2,3,6 isolate separate
+	*C(*)(*)* C C C C C1=CCCCC1	chains=1 isolate separate
+	[CH2]C(C)(C)C1C=CCCC1 [CH3]	chains=6 isolate no-saturation
+> cyclohexene (ring with double bond) + two adjacent tertiary C + methyl end group	C1=CC(CCC1)C(C)C(C)C
+	C1=CC(CCC1)C(C)C(C)C	chains=any
+	*C(*)* *C(C)C1C=CCCC1 C C	chains=any isolate
+	*C(C)C(C)C C1=CCCCC1	chains=any separate
+	*C(*)* *C(*)* C C C C1=CCCCC1	chains=any isolate separate
+	*C(*)* *C(C)C1C=CCCC1 [CH3] [CH3]	chains=6 isolate no-saturation
+> cyclohexene (ring with double bond) + two adjacent quaternary C + methyl end group	C1=CC(CCC1)C(C)(C)C(C)(C)C
+	C1=CC(CCC1)C(C)(C)C(C)(C)C	chains=any
+	*C(*)(*)* *C(C)(C)C1C=CCCC1 C C C	chains=any isolate
+	*C(C)(C)C(C)(C)C C1=CCCCC1	chains=any separate
+	*C(*)(*)* *C(*)(*)* C C C C C C1=CCCCC1	chains=any isolate separate
+	*C(*)(*)* *C(C)(C)C1C=CCCC1 [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> cyclohexene (ring with double bond) + double bond linker + methyl end group	C(=CC1C=CCCC1)C
+	C C1=CCCCC1 C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	C1=CCCC[CH]1 [CH3] [CH]=[CH]	chains=6 isolate no-saturation
+> cyclohexene (ring with double bond) + triple bond linker + methyl end group	C(#CC1C=CCCC1)C
+	C C#C C1=CCCCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	C1=CCCC[CH]1 [CH3] [C]#[C]	chains=6 isolate no-saturation
+> cyclohexene (ring with double bond) + C with exo-methylene (double bond branch) + methyl end group	C=C(C)C1C=CCCC1
+	C C1=CCCCC1 C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	C1=CCCC[CH]1 [CH3] [C]=C	chains=6 isolate no-saturation
+> cyclohexene (ring with double bond) + allene linker + methyl end group	C(=CC)=CC1C=CCCC1
+	C C(=C)=C C1=CCCCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	C1=CCCC[CH]1 [CH3] [CH]=C=[CH]	chains=6 isolate no-saturation
+> methylenecyclohexane (exocyclic double bond) + direct bond + methyl end group	C=C1CCC(C)CC1
+	C C=C1CCCCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	C=C1CC[CH]CC1 [CH3]	chains=6 isolate no-saturation
+> methylenecyclohexane (exocyclic double bond) + CH2 linker + methyl end group	C=C1CCC(CC)CC1
+	C=C1CCCCC1 CC	chains=off,2,3,6; chains=off,2,3,6 isolate; chains=off,2,3,6 separate; chains=off,2,3,6 isolate separate
+	C C C=C1CCCCC1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C=C1CC[CH]CC1 [CH2]C	chains=6 isolate no-saturation
+> methylenecyclohexane (exocyclic double bond) + C2 chain linker + methyl end group	C=C1CCC(CC1)CCC
+	C=C1CCCCC1 CCC	chains=off,3,6; chains=off,3,6 isolate; chains=off,3,6 separate; chains=off,3,6 isolate separate
+	C C C C=C1CCCCC1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C=C1CCCCC1 CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C=C1CC[CH]CC1 [CH2]CC	chains=6 isolate no-saturation
+> methylenecyclohexane (exocyclic double bond) + C5 chain linker + methyl end group	C=C1CCC(CC1)CCCCCC
+	C=C1CCCCC1 CCCCCC	chains=off,6; chains=off,6 isolate; chains=off,6 separate; chains=off,6 isolate separate
+	C C C C C C C=C1CCCCC1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C=C1CCCCC1 CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C=C1CCCCC1 CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	C=C1CC[CH]CC1 [CH2]CCCCC	chains=6 isolate no-saturation
+> methylenecyclohexane (exocyclic double bond) + C9 chain linker (cut by max chain length) + methyl end group	C=C1CCC(CC1)CCCCCCCCCC
+	C=C1CCCCC1 CCCCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C C=C1CCCCC1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C=C1CCCCC1 CC CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C C=C1CCCCC1 CCC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	C=C1CCCCC1 CCCC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	C=C1CC[CH]CC1 [CH2]CCC [CH2]CCCC[CH2]	chains=6 isolate no-saturation
+> methylenecyclohexane (exocyclic double bond) + tertiary C linker + methyl end group	C=C1CCC(CC1)C(C)C
+	C=C1CCC(CC1)C(C)C	chains=any; chains=any isolate; chains=6 isolate no-saturation
+	*C(C)C C=C1CCCCC1	chains=any separate
+	*C(*)* C C C=C1CCCCC1	chains=any isolate separate
+> methylenecyclohexane (exocyclic double bond) + quaternary C linker + methyl end group	C=C1CCC(CC1)C(C)(C)C
+	C=C1CCC(CC1)C(C)(C)C	chains=any; chains=any isolate; chains=6 isolate no-saturation
+	*C(C)(C)C C=C1CCCCC1	chains=any separate
+	*C(*)(*)* C C C C=C1CCCCC1	chains=any isolate separate
+> methylenecyclohexane (exocyclic double bond) + quaternary C linker with ethyl + methyl end group	C=C1CCC(CC1)C(C)(C)CC
+	C C=C1CCC(CC1)C(C)(C)C	chains=any; chains=any isolate
+	*C(C)(C)C C C=C1CCCCC1	chains=any separate
+	*C(*)(*)* C C C=C1CCCCC1 CC	chains=off,2,3,6 isolate separate
+	*C(*)(*)* C C C C C=C1CCCCC1	chains=1 isolate separate
+	C=C1CCC(CC1)C([CH2])(C)C [CH3]	chains=6 isolate no-saturation
+> methylenecyclohexane (exocyclic double bond) + two adjacent tertiary C + methyl end group	C=C1CCC(CC1)C(C)C(C)C
+	C=C1CCC(CC1)C(C)C(C)C	chains=any
+	*C(*)* *C(C)C1CCC(=C)CC1 C C	chains=any isolate
+	*C(C)C(C)C C=C1CCCCC1	chains=any separate
+	*C(*)* *C(*)* C C C C=C1CCCCC1	chains=any isolate separate
+	*C(*)* *C(C)C1CCC(=C)CC1 [CH3] [CH3]	chains=6 isolate no-saturation
+> methylenecyclohexane (exocyclic double bond) + two adjacent quaternary C + methyl end group	C=C1CCC(CC1)C(C)(C)C(C)(C)C
+	C=C1CCC(CC1)C(C)(C)C(C)(C)C	chains=any
+	*C(*)(*)* *C(C)(C)C1CCC(=C)CC1 C C C	chains=any isolate
+	*C(C)(C)C(C)(C)C C=C1CCCCC1	chains=any separate
+	*C(*)(*)* *C(*)(*)* C C C C C C=C1CCCCC1	chains=any isolate separate
+	*C(*)(*)* *C(C)(C)C1CCC(=C)CC1 [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> methylenecyclohexane (exocyclic double bond) + double bond linker + methyl end group	C=C1CCC(C=CC)CC1
+	C C=C C=C1CCCCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	C=C1CC[CH]CC1 [CH3] [CH]=[CH]	chains=6 isolate no-saturation
+> methylenecyclohexane (exocyclic double bond) + triple bond linker + methyl end group	C(#CC1CCC(=C)CC1)C
+	C C#C C=C1CCCCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	C=C1CC[CH]CC1 [CH3] [C]#[C]	chains=6 isolate no-saturation
+> methylenecyclohexane (exocyclic double bond) + C with exo-methylene (double bond branch) + methyl end group	C=C1CCC(C(=C)C)CC1
+	C C=C C=C1CCCCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	C=C1CC[CH]CC1 [CH3] [C]=C	chains=6 isolate no-saturation
+> methylenecyclohexane (exocyclic double bond) + allene linker + methyl end group	C(=CC)=CC1CCC(=C)CC1
+	C C(=C)=C C=C1CCCCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	C=C1CC[CH]CC1 [CH3] [CH]=C=[CH]	chains=6 isolate no-saturation
+> benzene ring + direct bond + methyl end group	c1ccc(cc1)C
+	C c1ccccc1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [c]1ccccc1	chains=6 isolate no-saturation
+> benzene ring + CH2 linker + methyl end group	c1ccc(cc1)CC
+	CC c1ccccc1	chains=off,2,3,6; chains=off,2,3,6 isolate; chains=off,2,3,6 separate; chains=off,2,3,6 isolate separate
+	C C c1ccccc1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	[CH2]C [c]1ccccc1	chains=6 isolate no-saturation
+> benzene ring + C2 chain linker + methyl end group	c1ccc(cc1)CCC
+	CCC c1ccccc1	chains=off,3,6; chains=off,3,6 isolate; chains=off,3,6 separate; chains=off,3,6 isolate separate
+	C C C c1ccccc1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C CC c1ccccc1	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	[CH2]CC [c]1ccccc1	chains=6 isolate no-saturation
+> benzene ring + C5 chain linker + methyl end group	c1ccc(cc1)CCCCCC
+	CCCCCC c1ccccc1	chains=off,6; chains=off,6 isolate; chains=off,6 separate; chains=off,6 isolate separate
+	C C C C C C c1ccccc1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	CC CC CC c1ccccc1	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	CCC CCC c1ccccc1	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	[CH2]CCCCC [c]1ccccc1	chains=6 isolate no-saturation
+> benzene ring + C9 chain linker (cut by max chain length) + methyl end group	c1ccc(cc1)CCCCCCCCCC
+	CCCCCCCCCC c1ccccc1	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C c1ccccc1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	CC CC CC CC CC c1ccccc1	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C CCC CCC CCC c1ccccc1	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	CCCC CCCCCC c1ccccc1	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]CCC [CH2]CCCC[CH2] [c]1ccccc1	chains=6 isolate no-saturation
+> benzene ring + tertiary C linker + methyl end group	c1ccc(cc1)C(C)C
+	c1ccc(cc1)C(C)C	chains=any; chains=any isolate; chains=6 isolate no-saturation
+	*C(C)C c1ccccc1	chains=any separate
+	*C(*)* C C c1ccccc1	chains=any isolate separate
+> benzene ring + quaternary C linker + methyl end group	c1ccc(cc1)C(C)(C)C
+	c1ccc(cc1)C(C)(C)C	chains=any; chains=any isolate; chains=6 isolate no-saturation
+	*C(C)(C)C c1ccccc1	chains=any separate
+	*C(*)(*)* C C C c1ccccc1	chains=any isolate separate
+> benzene ring + quaternary C linker with ethyl + methyl end group	c1ccc(cc1)C(C)(C)CC
+	C c1ccc(cc1)C(C)(C)C	chains=any; chains=any isolate
+	*C(C)(C)C C c1ccccc1	chains=any separate
+	*C(*)(*)* C C CC c1ccccc1	chains=off,2,3,6 isolate separate
+	*C(*)(*)* C C C C c1ccccc1	chains=1 isolate separate
+	[CH2]C(c1ccccc1)(C)C [CH3]	chains=6 isolate no-saturation
+> benzene ring + two adjacent tertiary C + methyl end group	c1ccc(cc1)C(C)C(C)C
+	c1ccc(cc1)C(C)C(C)C	chains=any
+	*C(*)* *C(c1ccccc1)C C C	chains=any isolate
+	*C(C)C(C)C c1ccccc1	chains=any separate
+	*C(*)* *C(*)* C C C c1ccccc1	chains=any isolate separate
+	*C(*)* *C(c1ccccc1)C [CH3] [CH3]	chains=6 isolate no-saturation
+> benzene ring + two adjacent quaternary C + methyl end group	c1ccc(cc1)C(C)(C)C(C)(C)C
+	c1ccc(cc1)C(C)(C)C(C)(C)C	chains=any
+	*C(*)(*)* *C(c1ccccc1)(C)C C C C	chains=any isolate
+	*C(C)(C)C(C)(C)C c1ccccc1	chains=any separate
+	*C(*)(*)* *C(*)(*)* C C C C C c1ccccc1	chains=any isolate separate
+	*C(*)(*)* *C(c1ccccc1)(C)C [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> benzene ring + double bond linker + methyl end group	c1ccc(cc1)C=CC
+	C C=Cc1ccccc1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=Cc1ccccc1	chains=6 isolate no-saturation
+> benzene ring + triple bond linker + methyl end group	C(#CC)c1ccccc1
+	C C#C c1ccccc1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [C]#[C] [c]1ccccc1	chains=6 isolate no-saturation
+> benzene ring + C with exo-methylene (double bond branch) + methyl end group	C=C(c1ccccc1)C
+	C C=Cc1ccccc1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [C](=C)c1ccccc1	chains=6 isolate no-saturation
+> benzene ring + allene linker + methyl end group	C(=Cc1ccccc1)=CC
+	C C(=C)=Cc1ccccc1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=C=Cc1ccccc1	chains=6 isolate no-saturation
+> naphthalene (fused aromatic) + direct bond + methyl end group	c1ccc2c(c1)cccc2C
+	C c1ccc2ccccc2c1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [c]1cccc2ccccc12	chains=6 isolate no-saturation
+> naphthalene (fused aromatic) + CH2 linker + methyl end group	c1ccc2c(c1)cccc2CC
+	CC c1ccc2ccccc2c1	chains=off,2,3,6; chains=off,2,3,6 isolate; chains=off,2,3,6 separate; chains=off,2,3,6 isolate separate
+	C C c1ccc2ccccc2c1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	[CH2]C [c]1cccc2ccccc12	chains=6 isolate no-saturation
+> naphthalene (fused aromatic) + C2 chain linker + methyl end group	c1ccc2c(c1)cccc2CCC
+	CCC c1ccc2ccccc2c1	chains=off,3,6; chains=off,3,6 isolate; chains=off,3,6 separate; chains=off,3,6 isolate separate
+	C C C c1ccc2ccccc2c1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C CC c1ccc2ccccc2c1	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	[CH2]CC [c]1cccc2ccccc12	chains=6 isolate no-saturation
+> naphthalene (fused aromatic) + C5 chain linker + methyl end group	c1ccc2c(c1)cccc2CCCCCC
+	CCCCCC c1ccc2ccccc2c1	chains=off,6; chains=off,6 isolate; chains=off,6 separate; chains=off,6 isolate separate
+	C C C C C C c1ccc2ccccc2c1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	CC CC CC c1ccc2ccccc2c1	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	CCC CCC c1ccc2ccccc2c1	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	[CH2]CCCCC [c]1cccc2ccccc12	chains=6 isolate no-saturation
+> naphthalene (fused aromatic) + C9 chain linker (cut by max chain length) + methyl end group	c1ccc2c(c1)cccc2CCCCCCCCCC
+	CCCCCCCCCC c1ccc2ccccc2c1	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C c1ccc2ccccc2c1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	CC CC CC CC CC c1ccc2ccccc2c1	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C CCC CCC CCC c1ccc2ccccc2c1	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	CCCC CCCCCC c1ccc2ccccc2c1	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]CCC [CH2]CCCC[CH2] [c]1cccc2ccccc12	chains=6 isolate no-saturation
+> naphthalene (fused aromatic) + tertiary C linker + methyl end group	c1ccc2c(c1)cccc2C(C)C
+	c1ccc2c(c1)cccc2C(C)C	chains=any; chains=any isolate; chains=6 isolate no-saturation
+	*C(C)C c1ccc2ccccc2c1	chains=any separate
+	*C(*)* C C c1ccc2ccccc2c1	chains=any isolate separate
+> naphthalene (fused aromatic) + quaternary C linker + methyl end group	c1ccc2c(c1)cccc2C(C)(C)C
+	c1ccc2c(c1)cccc2C(C)(C)C	chains=any; chains=any isolate; chains=6 isolate no-saturation
+	*C(C)(C)C c1ccc2ccccc2c1	chains=any separate
+	*C(*)(*)* C C C c1ccc2ccccc2c1	chains=any isolate separate
+> naphthalene (fused aromatic) + quaternary C linker with ethyl + methyl end group	c1ccc2c(c1)cccc2C(C)(C)CC
+	C c1ccc2c(c1)cccc2C(C)(C)C	chains=any; chains=any isolate
+	*C(C)(C)C C c1ccc2ccccc2c1	chains=any separate
+	*C(*)(*)* C C CC c1ccc2ccccc2c1	chains=off,2,3,6 isolate separate
+	*C(*)(*)* C C C C c1ccc2ccccc2c1	chains=1 isolate separate
+	[CH2]C(c1cccc2ccccc21)(C)C [CH3]	chains=6 isolate no-saturation
+> naphthalene (fused aromatic) + two adjacent tertiary C + methyl end group	c1ccc2c(c1)cccc2C(C)C(C)C
+	c1ccc2c(c1)cccc2C(C)C(C)C	chains=any
+	*C(*)* *C(c1cccc2ccccc21)C C C	chains=any isolate
+	*C(C)C(C)C c1ccc2ccccc2c1	chains=any separate
+	*C(*)* *C(*)* C C C c1ccc2ccccc2c1	chains=any isolate separate
+	*C(*)* *C(c1cccc2ccccc21)C [CH3] [CH3]	chains=6 isolate no-saturation
+> naphthalene (fused aromatic) + two adjacent quaternary C + methyl end group	c1ccc2c(c1)cccc2C(C)(C)C(C)(C)C
+	c1ccc2c(c1)cccc2C(C)(C)C(C)(C)C	chains=any
+	*C(*)(*)* *C(c1cccc2ccccc21)(C)C C C C	chains=any isolate
+	*C(C)(C)C(C)(C)C c1ccc2ccccc2c1	chains=any separate
+	*C(*)(*)* *C(*)(*)* C C C C C c1ccc2ccccc2c1	chains=any isolate separate
+	*C(*)(*)* *C(c1cccc2ccccc21)(C)C [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> naphthalene (fused aromatic) + double bond linker + methyl end group	c1ccc2c(c1)cccc2C=CC
+	C C=Cc1cccc2ccccc12	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=Cc1cccc2ccccc12	chains=6 isolate no-saturation
+> naphthalene (fused aromatic) + triple bond linker + methyl end group	C(#CC)c1cccc2ccccc12
+	C C#C c1ccc2ccccc2c1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [C]#[C] [c]1cccc2ccccc12	chains=6 isolate no-saturation
+> naphthalene (fused aromatic) + C with exo-methylene (double bond branch) + methyl end group	C=C(c1cccc2ccccc21)C
+	C C=Cc1cccc2ccccc12	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [C](=C)c1cccc2ccccc12	chains=6 isolate no-saturation
+> naphthalene (fused aromatic) + allene linker + methyl end group	C(=Cc1cccc2ccccc12)=CC
+	C C(=C)=Cc1cccc2ccccc12	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=C=Cc1cccc2ccccc12	chains=6 isolate no-saturation
+> cyclopentadiene (conjugated ring) + direct bond + methyl end group	C=1C=CC(C1)C
+	C C=1C=CCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	C1=CC=C[CH]1 [CH3]	chains=6 isolate no-saturation
+> cyclopentadiene (conjugated ring) + CH2 linker + methyl end group	C=1C=CC(C1)CC
+	C=1C=CCC1 CC	chains=off,2,3,6; chains=off,2,3,6 isolate; chains=off,2,3,6 separate; chains=off,2,3,6 isolate separate
+	C C C=1C=CCC1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C1=CC=C[CH]1 [CH2]C	chains=6 isolate no-saturation
+> cyclopentadiene (conjugated ring) + C2 chain linker + methyl end group	C=1C=CC(C1)CCC
+	C=1C=CCC1 CCC	chains=off,3,6; chains=off,3,6 isolate; chains=off,3,6 separate; chains=off,3,6 isolate separate
+	C C C C=1C=CCC1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C=1C=CCC1 CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C1=CC=C[CH]1 [CH2]CC	chains=6 isolate no-saturation
+> cyclopentadiene (conjugated ring) + C5 chain linker + methyl end group	C=1C=CC(C1)CCCCCC
+	C=1C=CCC1 CCCCCC	chains=off,6; chains=off,6 isolate; chains=off,6 separate; chains=off,6 isolate separate
+	C C C C C C C=1C=CCC1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C=1C=CCC1 CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C=1C=CCC1 CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	C1=CC=C[CH]1 [CH2]CCCCC	chains=6 isolate no-saturation
+> cyclopentadiene (conjugated ring) + C9 chain linker (cut by max chain length) + methyl end group	C=1C=CC(C1)CCCCCCCCCC
+	C=1C=CCC1 CCCCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C C=1C=CCC1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C=1C=CCC1 CC CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C C=1C=CCC1 CCC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	C=1C=CCC1 CCCC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	C1=CC=C[CH]1 [CH2]CCC [CH2]CCCC[CH2]	chains=6 isolate no-saturation
+> cyclopentadiene (conjugated ring) + tertiary C linker + methyl end group	C=1C=CC(C1)C(C)C
+	C=1C=CC(C1)C(C)C	chains=any; chains=any isolate; chains=6 isolate no-saturation
+	*C(C)C C=1C=CCC1	chains=any separate
+	*C(*)* C C C=1C=CCC1	chains=any isolate separate
+> cyclopentadiene (conjugated ring) + quaternary C linker + methyl end group	C=1C=CC(C1)C(C)(C)C
+	C=1C=CC(C1)C(C)(C)C	chains=any; chains=any isolate; chains=6 isolate no-saturation
+	*C(C)(C)C C=1C=CCC1	chains=any separate
+	*C(*)(*)* C C C C=1C=CCC1	chains=any isolate separate
+> cyclopentadiene (conjugated ring) + quaternary C linker with ethyl + methyl end group	C=1C=CC(C1)C(C)(C)CC
+	C C=1C=CC(C1)C(C)(C)C	chains=any; chains=any isolate
+	*C(C)(C)C C C=1C=CCC1	chains=any separate
+	*C(*)(*)* C C C=1C=CCC1 CC	chains=off,2,3,6 isolate separate
+	*C(*)(*)* C C C C C=1C=CCC1	chains=1 isolate separate
+	[CH2]C(C)(C)C1C=CC=C1 [CH3]	chains=6 isolate no-saturation
+> cyclopentadiene (conjugated ring) + two adjacent tertiary C + methyl end group	C=1C=CC(C1)C(C)C(C)C
+	C=1C=CC(C1)C(C)C(C)C	chains=any
+	*C(*)* *C(C)C1C=CC=C1 C C	chains=any isolate
+	*C(C)C(C)C C=1C=CCC1	chains=any separate
+	*C(*)* *C(*)* C C C C=1C=CCC1	chains=any isolate separate
+	*C(*)* *C(C)C1C=CC=C1 [CH3] [CH3]	chains=6 isolate no-saturation
+> cyclopentadiene (conjugated ring) + two adjacent quaternary C + methyl end group	C=1C=CC(C1)C(C)(C)C(C)(C)C
+	C=1C=CC(C1)C(C)(C)C(C)(C)C	chains=any
+	*C(*)(*)* *C(C)(C)C1C=CC=C1 C C C	chains=any isolate
+	*C(C)(C)C(C)(C)C C=1C=CCC1	chains=any separate
+	*C(*)(*)* *C(*)(*)* C C C C C C=1C=CCC1	chains=any isolate separate
+	*C(*)(*)* *C(C)(C)C1C=CC=C1 [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> cyclopentadiene (conjugated ring) + double bond linker + methyl end group	C=1C=CC(C1)C=CC
+	C C=1C=CCC1 C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	C1=CC=C[CH]1 [CH3] [CH]=[CH]	chains=6 isolate no-saturation
+> cyclopentadiene (conjugated ring) + triple bond linker + methyl end group	C(#CC1C=CC=C1)C
+	C C#C C=1C=CCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	C1=CC=C[CH]1 [CH3] [C]#[C]	chains=6 isolate no-saturation
+> cyclopentadiene (conjugated ring) + C with exo-methylene (double bond branch) + methyl end group	C=C(C)C1C=CC=C1
+	C C=1C=CCC1 C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	C1=CC=C[CH]1 [CH3] [C]=C	chains=6 isolate no-saturation
+> cyclopentadiene (conjugated ring) + allene linker + methyl end group	C(=CC)=CC1C=CC=C1
+	C C(=C)=C C=1C=CCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	C1=CC=C[CH]1 [CH3] [CH]=C=[CH]	chains=6 isolate no-saturation
+> butadiene (conjugated D-S-D) + direct bond + methyl end group	C=CC=CC
+	C C=CC=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=CC=C	chains=6 isolate no-saturation
+> butadiene (conjugated D-S-D) + CH2 linker + methyl end group	C=CC=CCC
+	C=CC=C CC	chains=off,2,3,6; chains=off,2,3,6 isolate; chains=off,2,3,6 separate; chains=off,2,3,6 isolate separate
+	C C C=CC=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	[CH2]C [CH]=CC=C	chains=6 isolate no-saturation
+> butadiene (conjugated D-S-D) + C2 chain linker + methyl end group	C=CC=CCCC
+	C=CC=C CCC	chains=off,3,6; chains=off,3,6 isolate; chains=off,3,6 separate; chains=off,3,6 isolate separate
+	C C C C=CC=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C=CC=C CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	[CH2]CC [CH]=CC=C	chains=6 isolate no-saturation
+> butadiene (conjugated D-S-D) + C5 chain linker + methyl end group	C=CC=CCCCCCC
+	C=CC=C CCCCCC	chains=off,6; chains=off,6 isolate; chains=off,6 separate; chains=off,6 isolate separate
+	C C C C C C C=CC=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C=CC=C CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C=CC=C CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	[CH2]CCCCC [CH]=CC=C	chains=6 isolate no-saturation
+> butadiene (conjugated D-S-D) + C9 chain linker (cut by max chain length) + methyl end group	C=CC=CCCCCCCCCCC
+	C=CC=C CCCCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C C=CC=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C=CC=C CC CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C C=CC=C CCC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	C=CC=C CCCC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]CCC [CH2]CCCC[CH2] [CH]=CC=C	chains=6 isolate no-saturation
+> butadiene (conjugated D-S-D) + tertiary C linker + methyl end group	C=CC=CC(C)C
+	C=CC=CC(C)C	chains=any; chains=any separate
+	*C(*)* C C C=CC=C	chains=any isolate; chains=any isolate separate
+	*C(*)* [CH3] [CH3] [CH]=CC=C	chains=6 isolate no-saturation
+> butadiene (conjugated D-S-D) + quaternary C linker + methyl end group	C=CC=CC(C)(C)C
+	C=CC=CC(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* C C C C=CC=C	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* [CH3] [CH3] [CH3] [CH]=CC=C	chains=6 isolate no-saturation
+> butadiene (conjugated D-S-D) + quaternary C linker with ethyl + methyl end group	C=CC=CC(C)(C)CC
+	C C=CC=CC(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* C C C=CC=C CC	chains=off,2,3,6 isolate; chains=off,2,3,6 isolate separate
+	*C(*)(*)* C C C C C=CC=C	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* [CH2]C [CH3] [CH3] [CH]=CC=C	chains=6 isolate no-saturation
+> butadiene (conjugated D-S-D) + two adjacent tertiary C + methyl end group	C=CC=CC(C)C(C)C
+	C=CC=CC(C)C(C)C	chains=any; chains=any separate
+	*C(*)* *C(*)* C C C C=CC=C	chains=any isolate; chains=any isolate separate
+	*C(*)* *C(*)* [CH3] [CH3] [CH3] [CH]=CC=C	chains=6 isolate no-saturation
+> butadiene (conjugated D-S-D) + two adjacent quaternary C + methyl end group	C=CC=CC(C)(C)C(C)(C)C
+	C=CC=CC(C)(C)C(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* *C(*)(*)* C C C C C C=CC=C	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* *C(*)(*)* [CH3] [CH3] [CH3] [CH3] [CH3] [CH]=CC=C	chains=6 isolate no-saturation
+> butadiene (conjugated D-S-D) + double bond linker + methyl end group	C=CC=CC=CC
+	C C=CC=CC=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=CC=CC=C	chains=6 isolate no-saturation
+> butadiene (conjugated D-S-D) + triple bond linker + methyl end group	C(#CC)C=CC=C
+	C C#C C=CC=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=CC=C [C]#[C]	chains=6 isolate no-saturation
+> butadiene (conjugated D-S-D) + C with exo-methylene (double bond branch) + methyl end group	C=CC=CC(=C)C
+	C C=CC=CC=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [C](=C)C=CC=C	chains=6 isolate no-saturation
+> butadiene (conjugated D-S-D) + allene linker + methyl end group	C(=CC=CC=C)=CC
+	C C(=C)=CC=CC=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=C=CC=CC=C	chains=6 isolate no-saturation
+> hexatriene (conjugated D-S-D-S-D) + direct bond + methyl end group	C=CC=CC=CC
+	C C=CC=CC=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=CC=CC=C	chains=6 isolate no-saturation
+> hexatriene (conjugated D-S-D-S-D) + CH2 linker + methyl end group	C=CC=CC=CCC
+	C=CC=CC=C CC	chains=off,2,3,6; chains=off,2,3,6 isolate; chains=off,2,3,6 separate; chains=off,2,3,6 isolate separate
+	C C C=CC=CC=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	[CH2]C [CH]=CC=CC=C	chains=6 isolate no-saturation
+> hexatriene (conjugated D-S-D-S-D) + C2 chain linker + methyl end group	C=CC=CC=CCCC
+	C=CC=CC=C CCC	chains=off,3,6; chains=off,3,6 isolate; chains=off,3,6 separate; chains=off,3,6 isolate separate
+	C C C C=CC=CC=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C=CC=CC=C CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	[CH2]CC [CH]=CC=CC=C	chains=6 isolate no-saturation
+> hexatriene (conjugated D-S-D-S-D) + C5 chain linker + methyl end group	C=CC=CC=CCCCCCC
+	C=CC=CC=C CCCCCC	chains=off,6; chains=off,6 isolate; chains=off,6 separate; chains=off,6 isolate separate
+	C C C C C C C=CC=CC=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C=CC=CC=C CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C=CC=CC=C CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	[CH2]CCCCC [CH]=CC=CC=C	chains=6 isolate no-saturation
+> hexatriene (conjugated D-S-D-S-D) + C9 chain linker (cut by max chain length) + methyl end group	C=CC=CC=CCCCCCCCCCC
+	C=CC=CC=C CCCCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C C=CC=CC=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C=CC=CC=C CC CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C C=CC=CC=C CCC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	C=CC=CC=C CCCC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]CCC [CH2]CCCC[CH2] [CH]=CC=CC=C	chains=6 isolate no-saturation
+> hexatriene (conjugated D-S-D-S-D) + tertiary C linker + methyl end group	C=CC=CC=CC(C)C
+	C=CC=CC=CC(C)C	chains=any; chains=any separate
+	*C(*)* C C C=CC=CC=C	chains=any isolate; chains=any isolate separate
+	*C(*)* [CH3] [CH3] [CH]=CC=CC=C	chains=6 isolate no-saturation
+> hexatriene (conjugated D-S-D-S-D) + quaternary C linker + methyl end group	C=CC=CC=CC(C)(C)C
+	C=CC=CC=CC(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* C C C C=CC=CC=C	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* [CH3] [CH3] [CH3] [CH]=CC=CC=C	chains=6 isolate no-saturation
+> hexatriene (conjugated D-S-D-S-D) + quaternary C linker with ethyl + methyl end group	C=CC=CC=CC(C)(C)CC
+	C C=CC=CC=CC(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* C C C=CC=CC=C CC	chains=off,2,3,6 isolate; chains=off,2,3,6 isolate separate
+	*C(*)(*)* C C C C C=CC=CC=C	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* [CH2]C [CH3] [CH3] [CH]=CC=CC=C	chains=6 isolate no-saturation
+> hexatriene (conjugated D-S-D-S-D) + two adjacent tertiary C + methyl end group	C=CC=CC=CC(C)C(C)C
+	C=CC=CC=CC(C)C(C)C	chains=any; chains=any separate
+	*C(*)* *C(*)* C C C C=CC=CC=C	chains=any isolate; chains=any isolate separate
+	*C(*)* *C(*)* [CH3] [CH3] [CH3] [CH]=CC=CC=C	chains=6 isolate no-saturation
+> hexatriene (conjugated D-S-D-S-D) + two adjacent quaternary C + methyl end group	C=CC=CC=CC(C)(C)C(C)(C)C
+	C=CC=CC=CC(C)(C)C(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* *C(*)(*)* C C C C C C=CC=CC=C	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* *C(*)(*)* [CH3] [CH3] [CH3] [CH3] [CH3] [CH]=CC=CC=C	chains=6 isolate no-saturation
+> hexatriene (conjugated D-S-D-S-D) + double bond linker + methyl end group	C=CC=CC=CC=CC
+	C C=CC=CC=CC=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=CC=CC=CC=C	chains=6 isolate no-saturation
+> hexatriene (conjugated D-S-D-S-D) + triple bond linker + methyl end group	C(#CC)C=CC=CC=C
+	C C#C C=CC=CC=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=CC=CC=C [C]#[C]	chains=6 isolate no-saturation
+> hexatriene (conjugated D-S-D-S-D) + C with exo-methylene (double bond branch) + methyl end group	C=CC=CC=CC(=C)C
+	C C=CC=CC=CC=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [C](=C)C=CC=CC=C	chains=6 isolate no-saturation
+> hexatriene (conjugated D-S-D-S-D) + allene linker + methyl end group	C(=CC=CC=CC=C)=CC
+	C C(=C)=CC=CC=CC=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=C=CC=CC=CC=C	chains=6 isolate no-saturation
+> butadiyne (conjugated T-S-T) + direct bond + methyl end group	C#CC#CC
+	C C#CC#C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [C]#CC#C	chains=6 isolate no-saturation
+> butadiyne (conjugated T-S-T) + CH2 linker + methyl end group	C#CC#CCC
+	C#CC#C CC	chains=off,2,3,6; chains=off,2,3,6 isolate; chains=off,2,3,6 separate; chains=off,2,3,6 isolate separate
+	C C C#CC#C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	[CH2]C [C]#CC#C	chains=6 isolate no-saturation
+> butadiyne (conjugated T-S-T) + C2 chain linker + methyl end group	C#CC#CCCC
+	C#CC#C CCC	chains=off,3,6; chains=off,3,6 isolate; chains=off,3,6 separate; chains=off,3,6 isolate separate
+	C C C C#CC#C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C#CC#C CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	[CH2]CC [C]#CC#C	chains=6 isolate no-saturation
+> butadiyne (conjugated T-S-T) + C5 chain linker + methyl end group	C#CC#CCCCCCC
+	C#CC#C CCCCCC	chains=off,6; chains=off,6 isolate; chains=off,6 separate; chains=off,6 isolate separate
+	C C C C C C C#CC#C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C#CC#C CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C#CC#C CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	[CH2]CCCCC [C]#CC#C	chains=6 isolate no-saturation
+> butadiyne (conjugated T-S-T) + C9 chain linker (cut by max chain length) + methyl end group	C#CC#CCCCCCCCCCC
+	C#CC#C CCCCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C C#CC#C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C#CC#C CC CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C C#CC#C CCC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	C#CC#C CCCC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]CCC [CH2]CCCC[CH2] [C]#CC#C	chains=6 isolate no-saturation
+> butadiyne (conjugated T-S-T) + tertiary C linker + methyl end group	C#CC#CC(C)C
+	C#CC#CC(C)C	chains=any; chains=any separate
+	*C(*)* C C C#CC#C	chains=any isolate; chains=any isolate separate
+	*C(*)* [CH3] [CH3] [C]#CC#C	chains=6 isolate no-saturation
+> butadiyne (conjugated T-S-T) + quaternary C linker + methyl end group	C#CC#CC(C)(C)C
+	C#CC#CC(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* C C C C#CC#C	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* [CH3] [CH3] [CH3] [C]#CC#C	chains=6 isolate no-saturation
+> butadiyne (conjugated T-S-T) + quaternary C linker with ethyl + methyl end group	C#CC#CC(C)(C)CC
+	C C#CC#CC(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* C C C#CC#C CC	chains=off,2,3,6 isolate; chains=off,2,3,6 isolate separate
+	*C(*)(*)* C C C C C#CC#C	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* [CH2]C [CH3] [CH3] [C]#CC#C	chains=6 isolate no-saturation
+> butadiyne (conjugated T-S-T) + two adjacent tertiary C + methyl end group	C#CC#CC(C)C(C)C
+	C#CC#CC(C)C(C)C	chains=any; chains=any separate
+	*C(*)* *C(*)* C C C C#CC#C	chains=any isolate; chains=any isolate separate
+	*C(*)* *C(*)* [CH3] [CH3] [CH3] [C]#CC#C	chains=6 isolate no-saturation
+> butadiyne (conjugated T-S-T) + two adjacent quaternary C + methyl end group	C#CC#CC(C)(C)C(C)(C)C
+	C#CC#CC(C)(C)C(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* *C(*)(*)* C C C C C C#CC#C	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* *C(*)(*)* [CH3] [CH3] [CH3] [CH3] [CH3] [C]#CC#C	chains=6 isolate no-saturation
+> butadiyne (conjugated T-S-T) + double bond linker + methyl end group	C#CC#CC=CC
+	C C#CC#C C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=[CH] [C]#CC#C	chains=6 isolate no-saturation
+> butadiyne (conjugated T-S-T) + triple bond linker + methyl end group	C#CC#CC#CC
+	C C#CC#CC#C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [C]#CC#CC#C	chains=6 isolate no-saturation
+> butadiyne (conjugated T-S-T) + C with exo-methylene (double bond branch) + methyl end group	C#CC#CC(=C)C
+	C C#CC#C C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [C]#CC#C [C]=C	chains=6 isolate no-saturation
+> butadiyne (conjugated T-S-T) + allene linker + methyl end group	C#CC#CC=C=CC
+	C C#CC#C C(=C)=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=C=[CH] [C]#CC#C	chains=6 isolate no-saturation
+> butenyne (D-S-T, not conjugated) + direct bond + methyl end group	C(#CC)C=C
+	C C#C C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=C [C]#[C]	chains=6 isolate no-saturation
+> butenyne (D-S-T, not conjugated) + CH2 linker + methyl end group	C(#CCC)C=C
+	C#C C=C CC	chains=off,2,3,6; chains=off,2,3,6 isolate; chains=off,2,3,6 separate; chains=off,2,3,6 isolate separate
+	C C C#C C=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	[CH2]C [CH]=C [C]#[C]	chains=6 isolate no-saturation
+> butenyne (D-S-T, not conjugated) + C2 chain linker + methyl end group	C(#CCCC)C=C
+	C#C C=C CCC	chains=off,3,6; chains=off,3,6 isolate; chains=off,3,6 separate; chains=off,3,6 isolate separate
+	C C C C#C C=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C#C C=C CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	[CH2]CC [CH]=C [C]#[C]	chains=6 isolate no-saturation
+> butenyne (D-S-T, not conjugated) + C5 chain linker + methyl end group	C(#CCCCCCC)C=C
+	C#C C=C CCCCCC	chains=off,6; chains=off,6 isolate; chains=off,6 separate; chains=off,6 isolate separate
+	C C C C C C C#C C=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C#C C=C CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C#C C=C CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	[CH2]CCCCC [CH]=C [C]#[C]	chains=6 isolate no-saturation
+> butenyne (D-S-T, not conjugated) + C9 chain linker (cut by max chain length) + methyl end group	C(#CCCCCCCCCCC)C=C
+	C#C C=C CCCCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C C#C C=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C#C C=C CC CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C C#C C=C CCC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	C#C C=C CCCC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]CCC [CH2]CCCC[CH2] [CH]=C [C]#[C]	chains=6 isolate no-saturation
+> butenyne (D-S-T, not conjugated) + tertiary C linker + methyl end group	C(#CC(C)C)C=C
+	*C(C)C C#C C=C	chains=any; chains=any separate
+	*C(*)* C C C#C C=C	chains=any isolate; chains=any isolate separate
+	*C(*)* [CH3] [CH3] [CH]=C [C]#[C]	chains=6 isolate no-saturation
+> butenyne (D-S-T, not conjugated) + quaternary C linker + methyl end group	C(#CC(C)(C)C)C=C
+	*C(C)(C)C C#C C=C	chains=any; chains=any separate
+	*C(*)(*)* C C C C#C C=C	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* [CH3] [CH3] [CH3] [CH]=C [C]#[C]	chains=6 isolate no-saturation
+> butenyne (D-S-T, not conjugated) + quaternary C linker with ethyl + methyl end group	C(#CC(C)(C)CC)C=C
+	*C(C)(C)C C C#C C=C	chains=any; chains=any separate
+	*C(*)(*)* C C C#C C=C CC	chains=off,2,3,6 isolate; chains=off,2,3,6 isolate separate
+	*C(*)(*)* C C C C C#C C=C	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* [CH2]C [CH3] [CH3] [CH]=C [C]#[C]	chains=6 isolate no-saturation
+> butenyne (D-S-T, not conjugated) + two adjacent tertiary C + methyl end group	C(#CC(C)C(C)C)C=C
+	*C(C)C(C)C C#C C=C	chains=any; chains=any separate
+	*C(*)* *C(*)* C C C C#C C=C	chains=any isolate; chains=any isolate separate
+	*C(*)* *C(*)* [CH3] [CH3] [CH3] [CH]=C [C]#[C]	chains=6 isolate no-saturation
+> butenyne (D-S-T, not conjugated) + two adjacent quaternary C + methyl end group	C(#CC(C)(C)C(C)(C)C)C=C
+	*C(C)(C)C(C)(C)C C#C C=C	chains=any; chains=any separate
+	*C(*)(*)* *C(*)(*)* C C C C C C#C C=C	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* *C(*)(*)* [CH3] [CH3] [CH3] [CH3] [CH3] [CH]=C [C]#[C]	chains=6 isolate no-saturation
+> butenyne (D-S-T, not conjugated) + double bond linker + methyl end group	C(#CC=CC)C=C
+	C C#C C=C C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=C [CH]=[CH] [C]#[C]	chains=6 isolate no-saturation
+> butenyne (D-S-T, not conjugated) + triple bond linker + methyl end group	C(C#CC)#CC=C
+	C C#CC#C C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=C [C]#CC#[C]	chains=6 isolate no-saturation
+> butenyne (D-S-T, not conjugated) + C with exo-methylene (double bond branch) + methyl end group	C(#CC(=C)C)C=C
+	C C#C C=C C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=C [C]#[C] [C]=C	chains=6 isolate no-saturation
+> butenyne (D-S-T, not conjugated) + allene linker + methyl end group	C(#CC=C)C=C=CC
+	C C#C C(=C)=C C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=C [CH]=C=[CH] [C]#[C]	chains=6 isolate no-saturation
+> isolated double bond + direct bond + methyl end group	C=CC
+	C C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=C	chains=6 isolate no-saturation
+> isolated double bond + CH2 linker + methyl end group	C=CCC
+	C=C CC	chains=off,2,3,6; chains=off,2,3,6 isolate; chains=off,2,3,6 separate; chains=off,2,3,6 isolate separate
+	C C C=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	[CH2]C [CH]=C	chains=6 isolate no-saturation
+> isolated double bond + C2 chain linker + methyl end group	C=CCCC
+	C=C CCC	chains=off,3,6; chains=off,3,6 isolate; chains=off,3,6 separate; chains=off,3,6 isolate separate
+	C C C C=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C=C CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	[CH2]CC [CH]=C	chains=6 isolate no-saturation
+> isolated double bond + C5 chain linker + methyl end group	C=CCCCCCC
+	C=C CCCCCC	chains=off,6; chains=off,6 isolate; chains=off,6 separate; chains=off,6 isolate separate
+	C C C C C C C=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C=C CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C=C CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	[CH2]CCCCC [CH]=C	chains=6 isolate no-saturation
+> isolated double bond + C9 chain linker (cut by max chain length) + methyl end group	C=CCCCCCCCCCC
+	C=C CCCCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C C=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C=C CC CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C C=C CCC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	C=C CCCC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]CCC [CH2]CCCC[CH2] [CH]=C	chains=6 isolate no-saturation
+> isolated double bond + tertiary C linker + methyl end group	C=CC(C)C
+	*C(C)C C=C	chains=any; chains=any separate
+	*C(*)* C C C=C	chains=any isolate; chains=any isolate separate
+	*C(*)* [CH3] [CH3] [CH]=C	chains=6 isolate no-saturation
+> isolated double bond + quaternary C linker + methyl end group	C=CC(C)(C)C
+	*C(C)(C)C C=C	chains=any; chains=any separate
+	*C(*)(*)* C C C C=C	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* [CH3] [CH3] [CH3] [CH]=C	chains=6 isolate no-saturation
+> isolated double bond + quaternary C linker with ethyl + methyl end group	C=CC(C)(C)CC
+	*C(C)(C)C C C=C	chains=any; chains=any separate
+	*C(*)(*)* C C C=C CC	chains=off,2,3,6 isolate; chains=off,2,3,6 isolate separate
+	*C(*)(*)* C C C C C=C	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* [CH2]C [CH3] [CH3] [CH]=C	chains=6 isolate no-saturation
+> isolated double bond + two adjacent tertiary C + methyl end group	C=CC(C)C(C)C
+	*C(C)C(C)C C=C	chains=any; chains=any separate
+	*C(*)* *C(*)* C C C C=C	chains=any isolate; chains=any isolate separate
+	*C(*)* *C(*)* [CH3] [CH3] [CH3] [CH]=C	chains=6 isolate no-saturation
+> isolated double bond + two adjacent quaternary C + methyl end group	C=CC(C)(C)C(C)(C)C
+	*C(C)(C)C(C)(C)C C=C	chains=any; chains=any separate
+	*C(*)(*)* *C(*)(*)* C C C C C C=C	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* *C(*)(*)* [CH3] [CH3] [CH3] [CH3] [CH3] [CH]=C	chains=6 isolate no-saturation
+> isolated double bond + double bond linker + methyl end group	C=CC=CC
+	C C=CC=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=CC=C	chains=6 isolate no-saturation
+> isolated double bond + triple bond linker + methyl end group	C(#CC)C=C
+	C C#C C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=C [C]#[C]	chains=6 isolate no-saturation
+> isolated double bond + C with exo-methylene (double bond branch) + methyl end group	C=CC(=C)C
+	C C=CC=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [C](=C)C=C	chains=6 isolate no-saturation
+> isolated double bond + allene linker + methyl end group	C(=CC=C)=CC
+	C C(=C)=CC=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=C=CC=C	chains=6 isolate no-saturation
+> isolated triple bond + direct bond + methyl end group	C#CC
+	C C#C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [C]#C	chains=6 isolate no-saturation
+> isolated triple bond + CH2 linker + methyl end group	C#CCC
+	C#C CC	chains=off,2,3,6; chains=off,2,3,6 isolate; chains=off,2,3,6 separate; chains=off,2,3,6 isolate separate
+	C C C#C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	[CH2]C [C]#C	chains=6 isolate no-saturation
+> isolated triple bond + C2 chain linker + methyl end group	C#CCCC
+	C#C CCC	chains=off,3,6; chains=off,3,6 isolate; chains=off,3,6 separate; chains=off,3,6 isolate separate
+	C C C C#C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C#C CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	[CH2]CC [C]#C	chains=6 isolate no-saturation
+> isolated triple bond + C5 chain linker + methyl end group	C#CCCCCCC
+	C#C CCCCCC	chains=off,6; chains=off,6 isolate; chains=off,6 separate; chains=off,6 isolate separate
+	C C C C C C C#C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C#C CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C#C CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	[CH2]CCCCC [C]#C	chains=6 isolate no-saturation
+> isolated triple bond + C9 chain linker (cut by max chain length) + methyl end group	C#CCCCCCCCCCC
+	C#C CCCCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C C#C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C#C CC CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C C#C CCC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	C#C CCCC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]CCC [CH2]CCCC[CH2] [C]#C	chains=6 isolate no-saturation
+> isolated triple bond + tertiary C linker + methyl end group	C#CC(C)C
+	*C(C)C C#C	chains=any; chains=any separate
+	*C(*)* C C C#C	chains=any isolate; chains=any isolate separate
+	*C(*)* [CH3] [CH3] [C]#C	chains=6 isolate no-saturation
+> isolated triple bond + quaternary C linker + methyl end group	C#CC(C)(C)C
+	*C(C)(C)C C#C	chains=any; chains=any separate
+	*C(*)(*)* C C C C#C	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* [CH3] [CH3] [CH3] [C]#C	chains=6 isolate no-saturation
+> isolated triple bond + quaternary C linker with ethyl + methyl end group	C#CC(C)(C)CC
+	*C(C)(C)C C C#C	chains=any; chains=any separate
+	*C(*)(*)* C C C#C CC	chains=off,2,3,6 isolate; chains=off,2,3,6 isolate separate
+	*C(*)(*)* C C C C C#C	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* [CH2]C [CH3] [CH3] [C]#C	chains=6 isolate no-saturation
+> isolated triple bond + two adjacent tertiary C + methyl end group	C#CC(C)C(C)C
+	*C(C)C(C)C C#C	chains=any; chains=any separate
+	*C(*)* *C(*)* C C C C#C	chains=any isolate; chains=any isolate separate
+	*C(*)* *C(*)* [CH3] [CH3] [CH3] [C]#C	chains=6 isolate no-saturation
+> isolated triple bond + two adjacent quaternary C + methyl end group	C#CC(C)(C)C(C)(C)C
+	*C(C)(C)C(C)(C)C C#C	chains=any; chains=any separate
+	*C(*)(*)* *C(*)(*)* C C C C C C#C	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* *C(*)(*)* [CH3] [CH3] [CH3] [CH3] [CH3] [C]#C	chains=6 isolate no-saturation
+> isolated triple bond + double bond linker + methyl end group	C#CC=CC
+	C C#C C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=[CH] [C]#C	chains=6 isolate no-saturation
+> isolated triple bond + triple bond linker + methyl end group	C#CC#CC
+	C C#CC#C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [C]#CC#C	chains=6 isolate no-saturation
+> isolated triple bond + C with exo-methylene (double bond branch) + methyl end group	C#CC(=C)C
+	C C#C C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [C]#C [C]=C	chains=6 isolate no-saturation
+> isolated triple bond + allene linker + methyl end group	C#CC=C=CC
+	C C#C C(=C)=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=C=[CH] [C]#C	chains=6 isolate no-saturation
+> allene (cumulated double bonds) + direct bond + methyl end group	C(=C)=CC
+	C C(=C)=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=C=C	chains=6 isolate no-saturation
+> allene (cumulated double bonds) + CH2 linker + methyl end group	C(=C)=CCC
+	C(=C)=C CC	chains=off,2,3,6; chains=off,2,3,6 isolate; chains=off,2,3,6 separate; chains=off,2,3,6 isolate separate
+	C C C(=C)=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	[CH2]C [CH]=C=C	chains=6 isolate no-saturation
+> allene (cumulated double bonds) + C2 chain linker + methyl end group	C(=C)=CCCC
+	C(=C)=C CCC	chains=off,3,6; chains=off,3,6 isolate; chains=off,3,6 separate; chains=off,3,6 isolate separate
+	C C C C(=C)=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C(=C)=C CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	[CH2]CC [CH]=C=C	chains=6 isolate no-saturation
+> allene (cumulated double bonds) + C5 chain linker + methyl end group	C(=C)=CCCCCCC
+	C(=C)=C CCCCCC	chains=off,6; chains=off,6 isolate; chains=off,6 separate; chains=off,6 isolate separate
+	C C C C C C C(=C)=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C(=C)=C CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C(=C)=C CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	[CH2]CCCCC [CH]=C=C	chains=6 isolate no-saturation
+> allene (cumulated double bonds) + C9 chain linker (cut by max chain length) + methyl end group	C(=C)=CCCCCCCCCCC
+	C(=C)=C CCCCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C C(=C)=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C(=C)=C CC CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C C(=C)=C CCC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	C(=C)=C CCCC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]CCC [CH2]CCCC[CH2] [CH]=C=C	chains=6 isolate no-saturation
+> allene (cumulated double bonds) + tertiary C linker + methyl end group	C(=C)=CC(C)C
+	*C(C)C C(=C)=C	chains=any; chains=any separate
+	*C(*)* C C C(=C)=C	chains=any isolate; chains=any isolate separate
+	*C(*)* [CH3] [CH3] [CH]=C=C	chains=6 isolate no-saturation
+> allene (cumulated double bonds) + quaternary C linker + methyl end group	C(=C)=CC(C)(C)C
+	*C(C)(C)C C(=C)=C	chains=any; chains=any separate
+	*C(*)(*)* C C C C(=C)=C	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* [CH3] [CH3] [CH3] [CH]=C=C	chains=6 isolate no-saturation
+> allene (cumulated double bonds) + quaternary C linker with ethyl + methyl end group	C(=C)=CC(C)(C)CC
+	*C(C)(C)C C C(=C)=C	chains=any; chains=any separate
+	*C(*)(*)* C C C(=C)=C CC	chains=off,2,3,6 isolate; chains=off,2,3,6 isolate separate
+	*C(*)(*)* C C C C C(=C)=C	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* [CH2]C [CH3] [CH3] [CH]=C=C	chains=6 isolate no-saturation
+> allene (cumulated double bonds) + two adjacent tertiary C + methyl end group	C(=C)=CC(C)C(C)C
+	*C(C)C(C)C C(=C)=C	chains=any; chains=any separate
+	*C(*)* *C(*)* C C C C(=C)=C	chains=any isolate; chains=any isolate separate
+	*C(*)* *C(*)* [CH3] [CH3] [CH3] [CH]=C=C	chains=6 isolate no-saturation
+> allene (cumulated double bonds) + two adjacent quaternary C + methyl end group	C(=C)=CC(C)(C)C(C)(C)C
+	*C(C)(C)C(C)(C)C C(=C)=C	chains=any; chains=any separate
+	*C(*)(*)* *C(*)(*)* C C C C C C(=C)=C	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* *C(*)(*)* [CH3] [CH3] [CH3] [CH3] [CH3] [CH]=C=C	chains=6 isolate no-saturation
+> allene (cumulated double bonds) + double bond linker + methyl end group	C(=C)=CC=CC
+	C C(=C)=CC=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=CC=C=C	chains=6 isolate no-saturation
+> allene (cumulated double bonds) + triple bond linker + methyl end group	C(#CC)C=C=C
+	C C#C C(=C)=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=C=C [C]#[C]	chains=6 isolate no-saturation
+> allene (cumulated double bonds) + C with exo-methylene (double bond branch) + methyl end group	C(=C)=CC(=C)C
+	C C(=C)=CC=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	C(=C)=C[C]=C [CH3]	chains=6 isolate no-saturation
+> allene (cumulated double bonds) + allene linker + methyl end group	C(=C)=CC=C=CC
+	C C(=C)=CC=C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=C=CC=C=C	chains=6 isolate no-saturation
+> single aromatic remnant atom (no aromatic bond) + direct bond + methyl end group	cC
+	C c	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [cH2]	chains=6 isolate no-saturation
+> single aromatic remnant atom (no aromatic bond) + CH2 linker + methyl end group	cCC
+	CC c	chains=off,2,3,6; chains=off,2,3,6 isolate; chains=off,2,3,6 separate; chains=off,2,3,6 isolate separate
+	C C c	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	[CH2]C [cH2]	chains=6 isolate no-saturation
+> single aromatic remnant atom (no aromatic bond) + C2 chain linker + methyl end group	cCCC
+	CCC c	chains=off,3,6; chains=off,3,6 isolate; chains=off,3,6 separate; chains=off,3,6 isolate separate
+	C C C c	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C CC c	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	[CH2]CC [cH2]	chains=6 isolate no-saturation
+> single aromatic remnant atom (no aromatic bond) + C5 chain linker + methyl end group	cCCCCCC
+	CCCCCC c	chains=off,6; chains=off,6 isolate; chains=off,6 separate; chains=off,6 isolate separate
+	C C C C C C c	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	CC CC CC c	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	CCC CCC c	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	[CH2]CCCCC [cH2]	chains=6 isolate no-saturation
+> single aromatic remnant atom (no aromatic bond) + C9 chain linker (cut by max chain length) + methyl end group	cCCCCCCCCCC
+	CCCCCCCCCC c	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C c	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	CC CC CC CC CC c	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C CCC CCC CCC c	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	CCCC CCCCCC c	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]CCC [CH2]CCCC[CH2] [cH2]	chains=6 isolate no-saturation
+> single aromatic remnant atom (no aromatic bond) + tertiary C linker + methyl end group	cC(C)C
+	cC(C)C	chains=any; chains=any separate
+	*C(*)* C C c	chains=any isolate; chains=any isolate separate
+	*C(*)* [CH3] [CH3] [cH2]	chains=6 isolate no-saturation
+> single aromatic remnant atom (no aromatic bond) + quaternary C linker + methyl end group	cC(C)(C)C
+	cC(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* C C C c	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* [CH3] [CH3] [CH3] [cH2]	chains=6 isolate no-saturation
+> single aromatic remnant atom (no aromatic bond) + quaternary C linker with ethyl + methyl end group	cC(C)(C)CC
+	C cC(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* C C CC c	chains=off,2,3,6 isolate; chains=off,2,3,6 isolate separate
+	*C(*)(*)* C C C C c	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* [CH2]C [CH3] [CH3] [cH2]	chains=6 isolate no-saturation
+> single aromatic remnant atom (no aromatic bond) + two adjacent tertiary C + methyl end group	cC(C)C(C)C
+	cC(C)C(C)C	chains=any; chains=any separate
+	*C(*)* *C(*)* C C C c	chains=any isolate; chains=any isolate separate
+	*C(*)* *C(*)* [CH3] [CH3] [CH3] [cH2]	chains=6 isolate no-saturation
+> single aromatic remnant atom (no aromatic bond) + two adjacent quaternary C + methyl end group	cC(C)(C)C(C)(C)C
+	cC(C)(C)C(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* *C(*)(*)* C C C C C c	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* *C(*)(*)* [CH3] [CH3] [CH3] [CH3] [CH3] [cH2]	chains=6 isolate no-saturation
+> single aromatic remnant atom (no aromatic bond) + double bond linker + methyl end group	cC=CC
+	C cC=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=Cc	chains=6 isolate no-saturation
+> single aromatic remnant atom (no aromatic bond) + triple bond linker + methyl end group	C(#CC)c
+	C C#C c	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [C]#[C] [cH2]	chains=6 isolate no-saturation
+> single aromatic remnant atom (no aromatic bond) + C with exo-methylene (double bond branch) + methyl end group	cC(=C)C
+	C cC=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [C](c)=C	chains=6 isolate no-saturation
+> single aromatic remnant atom (no aromatic bond) + allene linker + methyl end group	C(=Cc)=CC
+	C C(=C)=Cc	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=C=Cc	chains=6 isolate no-saturation
+> aromatic remnant, 2 atoms (kekulizable) + direct bond + methyl end group	ccC
+	C cc	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [cH]c	chains=6 isolate no-saturation
+> aromatic remnant, 2 atoms (kekulizable) + CH2 linker + methyl end group	ccCC
+	CC cc	chains=off,2,3,6; chains=off,2,3,6 isolate; chains=off,2,3,6 separate; chains=off,2,3,6 isolate separate
+	C C cc	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	[CH2]C [cH]c	chains=6 isolate no-saturation
+> aromatic remnant, 2 atoms (kekulizable) + C2 chain linker + methyl end group	ccCCC
+	CCC cc	chains=off,3,6; chains=off,3,6 isolate; chains=off,3,6 separate; chains=off,3,6 isolate separate
+	C C C cc	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C CC cc	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	[CH2]CC [cH]c	chains=6 isolate no-saturation
+> aromatic remnant, 2 atoms (kekulizable) + C5 chain linker + methyl end group	ccCCCCCC
+	CCCCCC cc	chains=off,6; chains=off,6 isolate; chains=off,6 separate; chains=off,6 isolate separate
+	C C C C C C cc	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	CC CC CC cc	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	CCC CCC cc	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	[CH2]CCCCC [cH]c	chains=6 isolate no-saturation
+> aromatic remnant, 2 atoms (kekulizable) + C9 chain linker (cut by max chain length) + methyl end group	ccCCCCCCCCCC
+	CCCCCCCCCC cc	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C cc	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	CC CC CC CC CC cc	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C CCC CCC CCC cc	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	CCCC CCCCCC cc	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]CCC [CH2]CCCC[CH2] [cH]c	chains=6 isolate no-saturation
+> aromatic remnant, 2 atoms (kekulizable) + tertiary C linker + methyl end group	ccC(C)C
+	ccC(C)C	chains=any; chains=any separate
+	*C(*)* C C cc	chains=any isolate; chains=any isolate separate
+	*C(*)* [CH3] [CH3] [cH]c	chains=6 isolate no-saturation
+> aromatic remnant, 2 atoms (kekulizable) + quaternary C linker + methyl end group	ccC(C)(C)C
+	ccC(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* C C C cc	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* [CH3] [CH3] [CH3] [cH]c	chains=6 isolate no-saturation
+> aromatic remnant, 2 atoms (kekulizable) + quaternary C linker with ethyl + methyl end group	ccC(C)(C)CC
+	C ccC(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* C C CC cc	chains=off,2,3,6 isolate; chains=off,2,3,6 isolate separate
+	*C(*)(*)* C C C C cc	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* [CH2]C [CH3] [CH3] [cH]c	chains=6 isolate no-saturation
+> aromatic remnant, 2 atoms (kekulizable) + two adjacent tertiary C + methyl end group	ccC(C)C(C)C
+	ccC(C)C(C)C	chains=any; chains=any separate
+	*C(*)* *C(*)* C C C cc	chains=any isolate; chains=any isolate separate
+	*C(*)* *C(*)* [CH3] [CH3] [CH3] [cH]c	chains=6 isolate no-saturation
+> aromatic remnant, 2 atoms (kekulizable) + two adjacent quaternary C + methyl end group	ccC(C)(C)C(C)(C)C
+	ccC(C)(C)C(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* *C(*)(*)* C C C C C cc	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* *C(*)(*)* [CH3] [CH3] [CH3] [CH3] [CH3] [cH]c	chains=6 isolate no-saturation
+> aromatic remnant, 2 atoms (kekulizable) + double bond linker + methyl end group	ccC=CC
+	C ccC=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=Ccc	chains=6 isolate no-saturation
+> aromatic remnant, 2 atoms (kekulizable) + triple bond linker + methyl end group	C(#CC)cc
+	C C#C cc	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [C]#[C] [cH]c	chains=6 isolate no-saturation
+> aromatic remnant, 2 atoms (kekulizable) + C with exo-methylene (double bond branch) + methyl end group	ccC(=C)C
+	C ccC=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [C](=C)cc	chains=6 isolate no-saturation
+> aromatic remnant, 2 atoms (kekulizable) + allene linker + methyl end group	C(=Ccc)=CC
+	C C(=C)=Ccc	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=C=Ccc	chains=6 isolate no-saturation
+> aromatic remnant, 3 atoms (not kekulizable) + direct bond + methyl end group	cccC
+	C ccc	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [cH]cc	chains=6 isolate no-saturation
+> aromatic remnant, 3 atoms (not kekulizable) + CH2 linker + methyl end group	cccCC
+	CC ccc	chains=off,2,3,6; chains=off,2,3,6 isolate; chains=off,2,3,6 separate; chains=off,2,3,6 isolate separate
+	C C ccc	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	[CH2]C [cH]cc	chains=6 isolate no-saturation
+> aromatic remnant, 3 atoms (not kekulizable) + C2 chain linker + methyl end group	cccCCC
+	CCC ccc	chains=off,3,6; chains=off,3,6 isolate; chains=off,3,6 separate; chains=off,3,6 isolate separate
+	C C C ccc	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C CC ccc	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	[CH2]CC [cH]cc	chains=6 isolate no-saturation
+> aromatic remnant, 3 atoms (not kekulizable) + C5 chain linker + methyl end group	cccCCCCCC
+	CCCCCC ccc	chains=off,6; chains=off,6 isolate; chains=off,6 separate; chains=off,6 isolate separate
+	C C C C C C ccc	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	CC CC CC ccc	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	CCC CCC ccc	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	[CH2]CCCCC [cH]cc	chains=6 isolate no-saturation
+> aromatic remnant, 3 atoms (not kekulizable) + C9 chain linker (cut by max chain length) + methyl end group	cccCCCCCCCCCC
+	CCCCCCCCCC ccc	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C ccc	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	CC CC CC CC CC ccc	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C CCC CCC CCC ccc	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	CCCC CCCCCC ccc	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]CCC [CH2]CCCC[CH2] [cH]cc	chains=6 isolate no-saturation
+> aromatic remnant, 3 atoms (not kekulizable) + tertiary C linker + methyl end group	cccC(C)C
+	cccC(C)C	chains=any; chains=any separate
+	*C(*)* C C ccc	chains=any isolate; chains=any isolate separate
+	*C(*)* [CH3] [CH3] [cH]cc	chains=6 isolate no-saturation
+> aromatic remnant, 3 atoms (not kekulizable) + quaternary C linker + methyl end group	cccC(C)(C)C
+	cccC(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* C C C ccc	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* [CH3] [CH3] [CH3] [cH]cc	chains=6 isolate no-saturation
+> aromatic remnant, 3 atoms (not kekulizable) + quaternary C linker with ethyl + methyl end group	cccC(C)(C)CC
+	C cccC(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* C C CC ccc	chains=off,2,3,6 isolate; chains=off,2,3,6 isolate separate
+	*C(*)(*)* C C C C ccc	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* [CH2]C [CH3] [CH3] [cH]cc	chains=6 isolate no-saturation
+> aromatic remnant, 3 atoms (not kekulizable) + two adjacent tertiary C + methyl end group	cccC(C)C(C)C
+	cccC(C)C(C)C	chains=any; chains=any separate
+	*C(*)* *C(*)* C C C ccc	chains=any isolate; chains=any isolate separate
+	*C(*)* *C(*)* [CH3] [CH3] [CH3] [cH]cc	chains=6 isolate no-saturation
+> aromatic remnant, 3 atoms (not kekulizable) + two adjacent quaternary C + methyl end group	cccC(C)(C)C(C)(C)C
+	cccC(C)(C)C(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* *C(*)(*)* C C C C C ccc	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* *C(*)(*)* [CH3] [CH3] [CH3] [CH3] [CH3] [cH]cc	chains=6 isolate no-saturation
+> aromatic remnant, 3 atoms (not kekulizable) + double bond linker + methyl end group	cccC=CC
+	C cccC=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=Cccc	chains=6 isolate no-saturation
+> aromatic remnant, 3 atoms (not kekulizable) + triple bond linker + methyl end group	C(#CC)ccc
+	C C#C ccc	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [C]#[C] [cH]cc	chains=6 isolate no-saturation
+> aromatic remnant, 3 atoms (not kekulizable) + C with exo-methylene (double bond branch) + methyl end group	cccC(=C)C
+	C cccC=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [C](=C)ccc	chains=6 isolate no-saturation
+> aromatic remnant, 3 atoms (not kekulizable) + allene linker + methyl end group	C(=Cccc)=CC
+	C C(=C)=Cccc	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=C=Cccc	chains=6 isolate no-saturation
+> aromatic remnant, 5 atoms (not kekulizable) + direct bond + methyl end group	cccccC
+	C ccccc	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [cH]cccc	chains=6 isolate no-saturation
+> aromatic remnant, 5 atoms (not kekulizable) + CH2 linker + methyl end group	cccccCC
+	CC ccccc	chains=off,2,3,6; chains=off,2,3,6 isolate; chains=off,2,3,6 separate; chains=off,2,3,6 isolate separate
+	C C ccccc	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	[CH2]C [cH]cccc	chains=6 isolate no-saturation
+> aromatic remnant, 5 atoms (not kekulizable) + C2 chain linker + methyl end group	cccccCCC
+	CCC ccccc	chains=off,3,6; chains=off,3,6 isolate; chains=off,3,6 separate; chains=off,3,6 isolate separate
+	C C C ccccc	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C CC ccccc	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	[CH2]CC [cH]cccc	chains=6 isolate no-saturation
+> aromatic remnant, 5 atoms (not kekulizable) + C5 chain linker + methyl end group	cccccCCCCCC
+	CCCCCC ccccc	chains=off,6; chains=off,6 isolate; chains=off,6 separate; chains=off,6 isolate separate
+	C C C C C C ccccc	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	CC CC CC ccccc	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	CCC CCC ccccc	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	[CH2]CCCCC [cH]cccc	chains=6 isolate no-saturation
+> aromatic remnant, 5 atoms (not kekulizable) + C9 chain linker (cut by max chain length) + methyl end group	cccccCCCCCCCCCC
+	CCCCCCCCCC ccccc	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C ccccc	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	CC CC CC CC CC ccccc	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C CCC CCC CCC ccccc	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	CCCC CCCCCC ccccc	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]CCC [CH2]CCCC[CH2] [cH]cccc	chains=6 isolate no-saturation
+> aromatic remnant, 5 atoms (not kekulizable) + tertiary C linker + methyl end group	cccccC(C)C
+	cccccC(C)C	chains=any; chains=any separate
+	*C(*)* C C ccccc	chains=any isolate; chains=any isolate separate
+	*C(*)* [CH3] [CH3] [cH]cccc	chains=6 isolate no-saturation
+> aromatic remnant, 5 atoms (not kekulizable) + quaternary C linker + methyl end group	cccccC(C)(C)C
+	cccccC(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* C C C ccccc	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* [CH3] [CH3] [CH3] [cH]cccc	chains=6 isolate no-saturation
+> aromatic remnant, 5 atoms (not kekulizable) + quaternary C linker with ethyl + methyl end group	cccccC(C)(C)CC
+	C cccccC(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* C C CC ccccc	chains=off,2,3,6 isolate; chains=off,2,3,6 isolate separate
+	*C(*)(*)* C C C C ccccc	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* [CH2]C [CH3] [CH3] [cH]cccc	chains=6 isolate no-saturation
+> aromatic remnant, 5 atoms (not kekulizable) + two adjacent tertiary C + methyl end group	cccccC(C)C(C)C
+	cccccC(C)C(C)C	chains=any; chains=any separate
+	*C(*)* *C(*)* C C C ccccc	chains=any isolate; chains=any isolate separate
+	*C(*)* *C(*)* [CH3] [CH3] [CH3] [cH]cccc	chains=6 isolate no-saturation
+> aromatic remnant, 5 atoms (not kekulizable) + two adjacent quaternary C + methyl end group	cccccC(C)(C)C(C)(C)C
+	cccccC(C)(C)C(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* *C(*)(*)* C C C C C ccccc	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* *C(*)(*)* [CH3] [CH3] [CH3] [CH3] [CH3] [cH]cccc	chains=6 isolate no-saturation
+> aromatic remnant, 5 atoms (not kekulizable) + double bond linker + methyl end group	cccccC=CC
+	C cccccC=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=Cccccc	chains=6 isolate no-saturation
+> aromatic remnant, 5 atoms (not kekulizable) + triple bond linker + methyl end group	C(#CC)ccccc
+	C C#C ccccc	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [C]#[C] [cH]cccc	chains=6 isolate no-saturation
+> aromatic remnant, 5 atoms (not kekulizable) + C with exo-methylene (double bond branch) + methyl end group	cccccC(=C)C
+	C cccccC=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [C](=C)ccccc	chains=6 isolate no-saturation
+> aromatic remnant, 5 atoms (not kekulizable) + allene linker + methyl end group	C(=Cccccc)=CC
+	C C(=C)=Cccccc	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH]=C=Cccccc	chains=6 isolate no-saturation
+> tetrahedral stereo center + direct bond + methyl end group	CC[C@H](C)CC
+	C C CC(C)C	chains=any; chains=any separate
+	*C(*)* C CC CC	chains=off,2,3,6 isolate; chains=off,2,3,6 isolate separate
+	*C(*)* C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)* [CH2]C [CH2]C [CH3]	chains=6 isolate no-saturation
+> tetrahedral stereo center + CH2 linker + methyl end group	CCC[C@@H](C)CC
+	C CC CC(C)C	chains=off,2,3,6; chains=off,2,3,6 separate
+	C C C CC(C)C	chains=1; chains=1 separate
+	*C(*)* C CC CCC	chains=off,3,6 isolate; chains=off,3,6 isolate separate
+	*C(*)* C C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)* C C CC CC	chains=2 isolate; chains=2 isolate separate
+	*C(*)* [CH2]C [CH2]CC [CH3]	chains=6 isolate no-saturation
+> tetrahedral stereo center + C2 chain linker + methyl end group	CCCC[C@@H](C)CC
+	C CC(C)C CCC	chains=off,3,6; chains=off,3,6 separate
+	C C C C CC(C)C	chains=1; chains=1 separate
+	C C CC CC(C)C	chains=2; chains=2 separate
+	*C(*)* C CC CCCC	chains=off,6 isolate; chains=off,6 isolate separate
+	*C(*)* C C C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)* C CC CC CC	chains=2 isolate; chains=2 isolate separate
+	*C(*)* C C CC CCC	chains=3 isolate; chains=3 isolate separate
+	*C(*)* [CH2]C [CH2]CCC [CH3]	chains=6 isolate no-saturation
+> tetrahedral stereo center + C5 chain linker + methyl end group	CCCCCCC[C@@H](C)CC
+	C CC(C)C CCCCCC	chains=off,6; chains=off,6 separate
+	C C C C C C C CC(C)C	chains=1; chains=1 separate
+	C CC CC CC CC(C)C	chains=2; chains=2 separate
+	C CC(C)C CCC CCC	chains=3; chains=3 separate
+	*C(*)* C CC CCCCCCC	chains=off isolate; chains=off isolate separate
+	*C(*)* C C C C C C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)* C C CC CC CC CC	chains=2 isolate; chains=2 isolate separate
+	*C(*)* C C CC CCC CCC	chains=3 isolate; chains=3 isolate separate
+	*C(*)* C C CC CCCCCC	chains=6 isolate; chains=6 isolate separate
+	*C(*)* [CH2]C [CH2]CCCC[CH2] [CH3] [CH3]	chains=6 isolate no-saturation
+> tetrahedral stereo center + C9 chain linker (cut by max chain length) + methyl end group	CCCCCCCCCCC[C@@H](C)CC
+	C CC(C)C CCCCCCCCCC	chains=off; chains=off separate
+	C C C C C C C C C C C CC(C)C	chains=1; chains=1 separate
+	C CC CC CC CC CC CC(C)C	chains=2; chains=2 separate
+	C C CC(C)C CCC CCC CCC	chains=3; chains=3 separate
+	C CC(C)C CCCC CCCCCC	chains=6; chains=6 separate
+	*C(*)* C CC CCCCCCCCCCC	chains=off isolate; chains=off isolate separate
+	*C(*)* C C C C C C C C C C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)* C C CC CC CC CC CC CC	chains=2 isolate; chains=2 isolate separate
+	*C(*)* C CC CC CCC CCC CCC	chains=3 isolate; chains=3 isolate separate
+	*C(*)* C CC CCCCC CCCCCC	chains=6 isolate; chains=6 isolate separate
+	*C(*)* [CH2]C [CH2]CCCC [CH2]CCCC[CH2] [CH3]	chains=6 isolate no-saturation
+> tetrahedral stereo center + tertiary C linker + methyl end group	CC[C@H](C)CC(C)C
+	C CC(C)CC(C)C	chains=any; chains=any separate
+	*C(*)* *C(*)* C C C C CC	chains=off,2,3,6 isolate; chains=off,2,3,6 isolate separate
+	*C(*)* *C(*)* C C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)* *C(*)* [CH2] [CH2]C [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> tetrahedral stereo center + quaternary C linker + methyl end group	CC[C@H](C)CC(C)(C)C
+	C CC(C)CC(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* *C(*)* C C C C C CC	chains=off,2,3,6 isolate; chains=off,2,3,6 isolate separate
+	*C(*)(*)* *C(*)* C C C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* *C(*)* [CH2] [CH2]C [CH3] [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> tetrahedral stereo center + quaternary C linker with ethyl + methyl end group	CC[C@H](C)CC(C)(C)CC
+	C C CC(C)CC(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* *C(*)* C C C C CC CC	chains=off,2,3,6 isolate; chains=off,2,3,6 isolate separate
+	*C(*)(*)* *C(*)* C C C C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* *C(*)* [CH2] [CH2]C [CH2]C [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> tetrahedral stereo center + two adjacent tertiary C + methyl end group	CC[C@H](C)CC(C)C(C)C
+	C CC(C)CC(C)C(C)C	chains=any; chains=any separate
+	*C(*)* *C(*)* *C(*)* C C C C C CC	chains=off,2,3,6 isolate; chains=off,2,3,6 isolate separate
+	*C(*)* *C(*)* *C(*)* C C C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)* *C(*)* *C(*)* [CH2] [CH2]C [CH3] [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> tetrahedral stereo center + two adjacent quaternary C + methyl end group	CC[C@H](C)CC(C)(C)C(C)(C)C
+	C CC(C)CC(C)(C)C(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* *C(*)(*)* *C(*)* C C C C C C C CC	chains=off,2,3,6 isolate; chains=off,2,3,6 isolate separate
+	*C(*)(*)* *C(*)(*)* *C(*)* C C C C C C C C C	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* *C(*)(*)* *C(*)* [CH2] [CH2]C [CH3] [CH3] [CH3] [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> tetrahedral stereo center + double bond linker + methyl end group	CC=CC[C@@H](C)CC
+	C C C=C CC(C)C	chains=any; chains=any separate
+	*C(*)* C C C C=C CC	chains=off,2,3,6 isolate; chains=off,2,3,6 isolate separate
+	*C(*)* C C C C C C=C	chains=1 isolate; chains=1 isolate separate
+	*C(*)* [CH2] [CH2]C [CH3] [CH3] [CH]=[CH]	chains=6 isolate no-saturation
+> tetrahedral stereo center + triple bond linker + methyl end group	CC#CC[C@@H](C)CC
+	C C C#C CC(C)C	chains=any; chains=any separate
+	*C(*)* C C C C#C CC	chains=off,2,3,6 isolate; chains=off,2,3,6 isolate separate
+	*C(*)* C C C C C C#C	chains=1 isolate; chains=1 isolate separate
+	*C(*)* [CH2] [CH2]C [CH3] [CH3] [C]#[C]	chains=6 isolate no-saturation
+> tetrahedral stereo center + C with exo-methylene (double bond branch) + methyl end group	CC[C@H](C)CC(=C)C
+	C C C=C CC(C)C	chains=any; chains=any separate
+	*C(*)* C C C C=C CC	chains=off,2,3,6 isolate; chains=off,2,3,6 isolate separate
+	*C(*)* C C C C C C=C	chains=1 isolate; chains=1 isolate separate
+	*C(*)* [CH2] [CH2]C [CH3] [CH3] [C]=C	chains=6 isolate no-saturation
+> tetrahedral stereo center + allene linker + methyl end group	CC=C=CC[C@@H](C)CC
+	C C C(=C)=C CC(C)C	chains=any; chains=any separate
+	*C(*)* C C C C(=C)=C CC	chains=off,2,3,6 isolate; chains=off,2,3,6 isolate separate
+	*C(*)* C C C C C C(=C)=C	chains=1 isolate; chains=1 isolate separate
+	*C(*)* [CH2] [CH2]C [CH3] [CH3] [CH]=C=[CH]	chains=6 isolate no-saturation
+> E double bond (stereo) + direct bond + methyl end group	C/C=C/CC
+	C C=C CC	chains=off,2,3,6; chains=off,2,3,6 isolate; chains=off,2,3,6 separate; chains=off,2,3,6 isolate separate
+	C C C C=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	[CH2]C [CH3] [CH]=[CH]	chains=6 isolate no-saturation
+> E double bond (stereo) + CH2 linker + methyl end group	C/C=C/CCC
+	C C=C CCC	chains=off,3,6; chains=off,3,6 isolate; chains=off,3,6 separate; chains=off,3,6 isolate separate
+	C C C C C=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C C=C CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	[CH2]CC [CH3] [CH]=[CH]	chains=6 isolate no-saturation
+> E double bond (stereo) + C2 chain linker + methyl end group	C/C=C/CCCC
+	C C=C CCCC	chains=off,6; chains=off,6 isolate; chains=off,6 separate; chains=off,6 isolate separate
+	C C C C C C=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C=C CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C C C=C CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	[CH2]CCC [CH3] [CH]=[CH]	chains=6 isolate no-saturation
+> E double bond (stereo) + C5 chain linker + methyl end group	C/C=C/CCCCCCC
+	C C=C CCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C C=C CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C C C=C CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	C C C=C CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]CCCC[CH2] [CH3] [CH3] [CH]=[CH]	chains=6 isolate no-saturation
+> E double bond (stereo) + C9 chain linker (cut by max chain length) + methyl end group	C/C=C/CCCCCCCCCCC
+	C C=C CCCCCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C C C C=C	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C C=C CC CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C C=C CC CCC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	C C=C CCCCC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]CCCC [CH2]CCCC[CH2] [CH3] [CH]=[CH]	chains=6 isolate no-saturation
+> E double bond (stereo) + tertiary C linker + methyl end group	C/C=C/CC(C)C
+	C C=C CC(C)C	chains=any; chains=any separate
+	*C(*)* C C C C C=C	chains=any isolate; chains=any isolate separate
+	*C(*)* [CH2] [CH3] [CH3] [CH3] [CH]=[CH]	chains=6 isolate no-saturation
+> E double bond (stereo) + quaternary C linker + methyl end group	C/C=C/CC(C)(C)C
+	C C=C CC(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* C C C C C C=C	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* [CH2] [CH3] [CH3] [CH3] [CH3] [CH]=[CH]	chains=6 isolate no-saturation
+> E double bond (stereo) + quaternary C linker with ethyl + methyl end group	C/C=C/CC(C)(C)CC
+	C C C=C CC(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* C C C C C=C CC	chains=off,2,3,6 isolate; chains=off,2,3,6 isolate separate
+	*C(*)(*)* C C C C C C C=C	chains=1 isolate; chains=1 isolate separate
+	*C(*)(*)* [CH2] [CH2]C [CH3] [CH3] [CH3] [CH]=[CH]	chains=6 isolate no-saturation
+> E double bond (stereo) + two adjacent tertiary C + methyl end group	C/C=C/CC(C)C(C)C
+	C C=C CC(C)C(C)C	chains=any; chains=any separate
+	*C(*)* *C(*)* C C C C C C=C	chains=any isolate; chains=any isolate separate
+	*C(*)* *C(*)* [CH2] [CH3] [CH3] [CH3] [CH3] [CH]=[CH]	chains=6 isolate no-saturation
+> E double bond (stereo) + two adjacent quaternary C + methyl end group	C/C=C/CC(C)(C)C(C)(C)C
+	C C=C CC(C)(C)C(C)(C)C	chains=any; chains=any separate
+	*C(*)(*)* *C(*)(*)* C C C C C C C C=C	chains=any isolate; chains=any isolate separate
+	*C(*)(*)* *C(*)(*)* [CH2] [CH3] [CH3] [CH3] [CH3] [CH3] [CH3] [CH]=[CH]	chains=6 isolate no-saturation
+> E double bond (stereo) + double bond linker + methyl end group	C/C=C/CC=CC
+	C C C C=C C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH2] [CH3] [CH3] [CH]=[CH] [CH]=[CH]	chains=6 isolate no-saturation
+> E double bond (stereo) + triple bond linker + methyl end group	C/C=C/CC#CC
+	C C C C#C C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH2] [CH3] [CH3] [CH]=[CH] [C]#[C]	chains=6 isolate no-saturation
+> E double bond (stereo) + C with exo-methylene (double bond branch) + methyl end group	C/C=C/CC(=C)C
+	C C C C=C C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH2] [CH3] [CH3] [CH]=[CH] [C]=C	chains=6 isolate no-saturation
+> E double bond (stereo) + allene linker + methyl end group	C/C=C/CC=C=CC
+	C C C C(=C)=C C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH2] [CH3] [CH3] [CH]=C=[CH] [CH]=[CH]	chains=6 isolate no-saturation
+> trans-disubstituted cyclohexane (ring stereo centers) + direct bond + methyl end group	C[C@@H]1CC[C@H](C)C(C)C1
+	C C C C1CCCCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH3] [CH3] [CH]1[CH]CC[CH]C1	chains=6 isolate no-saturation
+> trans-disubstituted cyclohexane (ring stereo centers) + CH2 linker + methyl end group	CCC1C[C@H](C)CC[C@@H]1C
+	C C C1CCCCC1 CC	chains=off,2,3,6; chains=off,2,3,6 isolate; chains=off,2,3,6 separate; chains=off,2,3,6 isolate separate
+	C C C C C1CCCCC1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	[CH2]C [CH3] [CH3] [CH]1[CH]CC[CH]C1	chains=6 isolate no-saturation
+> trans-disubstituted cyclohexane (ring stereo centers) + C2 chain linker + methyl end group	CCCC1C[C@H](C)CC[C@@H]1C
+	C C C1CCCCC1 CCC	chains=off,3,6; chains=off,3,6 isolate; chains=off,3,6 separate; chains=off,3,6 isolate separate
+	C C C C C C1CCCCC1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C C C1CCCCC1 CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	[CH2]CC [CH3] [CH3] [CH]1[CH]CC[CH]C1	chains=6 isolate no-saturation
+> trans-disubstituted cyclohexane (ring stereo centers) + C5 chain linker + methyl end group	CCCCCCC1C[C@H](C)CC[C@@H]1C
+	C C C1CCCCC1 CCCCCC	chains=off,6; chains=off,6 isolate; chains=off,6 separate; chains=off,6 isolate separate
+	C C C C C C C C C1CCCCC1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C C1CCCCC1 CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C C C1CCCCC1 CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	[CH2]CCCCC [CH3] [CH3] [CH]1[CH]CC[CH]C1	chains=6 isolate no-saturation
+> trans-disubstituted cyclohexane (ring stereo centers) + C9 chain linker (cut by max chain length) + methyl end group	CCCCCCCCCCC1C[C@H](C)CC[C@@H]1C
+	C C C1CCCCC1 CCCCCCCCCC	chains=off; chains=off isolate; chains=off separate; chains=off isolate separate
+	C C C C C C C C C C C C C1CCCCC1	chains=1; chains=1 isolate; chains=1 separate; chains=1 isolate separate
+	C C C1CCCCC1 CC CC CC CC CC	chains=2; chains=2 isolate; chains=2 separate; chains=2 isolate separate
+	C C C C1CCCCC1 CCC CCC CCC	chains=3; chains=3 isolate; chains=3 separate; chains=3 isolate separate
+	C C C1CCCCC1 CCCC CCCCCC	chains=6; chains=6 isolate; chains=6 separate; chains=6 isolate separate
+	[CH2]CCC [CH2]CCCC[CH2] [CH3] [CH3] [CH]1[CH]CC[CH]C1	chains=6 isolate no-saturation
+> trans-disubstituted cyclohexane (ring stereo centers) + tertiary C linker + methyl end group	CC(C)C1C[C@H](C)CC[C@@H]1C
+	C C CC(C)C1CCCCC1	chains=any; chains=any isolate
+	*C(C)C C C C1CCCCC1	chains=any separate
+	*C(*)* C C C C C1CCCCC1	chains=any isolate separate
+	[CH3] [CH3] [CH]1CC[CH]C(C1)C(C)C	chains=6 isolate no-saturation
+> trans-disubstituted cyclohexane (ring stereo centers) + quaternary C linker + methyl end group	C[C@@H]1CC[C@H](C)C(C1)C(C)(C)C
+	C C CC(C)(C)C1CCCCC1	chains=any; chains=any isolate
+	*C(C)(C)C C C C1CCCCC1	chains=any separate
+	*C(*)(*)* C C C C C C1CCCCC1	chains=any isolate separate
+	[CH3] [CH3] [CH]1CC[CH]C(C1)C(C)(C)C	chains=6 isolate no-saturation
+> trans-disubstituted cyclohexane (ring stereo centers) + quaternary C linker with ethyl + methyl end group	CCC(C)(C)C1C[C@H](C)CC[C@@H]1C
+	C C C CC(C)(C)C1CCCCC1	chains=any; chains=any isolate
+	*C(C)(C)C C C C C1CCCCC1	chains=any separate
+	*C(*)(*)* C C C C C1CCCCC1 CC	chains=off,2,3,6 isolate separate
+	*C(*)(*)* C C C C C C C1CCCCC1	chains=1 isolate separate
+	[CH2]C(C)(C)C1[CH]CC[CH]C1 [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> trans-disubstituted cyclohexane (ring stereo centers) + two adjacent tertiary C + methyl end group	CC(C)C(C)C1C[C@H](C)CC[C@@H]1C
+	C C CC(C)C(C)C1CCCCC1	chains=any
+	*C(*)* *C(C)C1CCCCC1 C C C C	chains=any isolate
+	*C(C)C(C)C C C C1CCCCC1	chains=any separate
+	*C(*)* *C(*)* C C C C C C1CCCCC1	chains=any isolate separate
+	*C(*)* *C(C)C1[CH]CC[CH]C1 [CH3] [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> trans-disubstituted cyclohexane (ring stereo centers) + two adjacent quaternary C + methyl end group	C[C@@H]1CC[C@H](C)C(C1)C(C)(C)C(C)(C)C
+	C C CC(C)(C)C(C)(C)C1CCCCC1	chains=any
+	*C(*)(*)* *C(C)(C)C1CCCCC1 C C C C C	chains=any isolate
+	*C(C)(C)C(C)(C)C C C C1CCCCC1	chains=any separate
+	*C(*)(*)* *C(*)(*)* C C C C C C C C1CCCCC1	chains=any isolate separate
+	*C(*)(*)* *C(C)(C)C1[CH]CC[CH]C1 [CH3] [CH3] [CH3] [CH3] [CH3]	chains=6 isolate no-saturation
+> trans-disubstituted cyclohexane (ring stereo centers) + double bond linker + methyl end group	CC=CC1C[C@H](C)CC[C@@H]1C
+	C C C C1CCCCC1 C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH3] [CH3] [CH]1[CH]CC[CH]C1 [CH]=[CH]	chains=6 isolate no-saturation
+> trans-disubstituted cyclohexane (ring stereo centers) + triple bond linker + methyl end group	CC#CC1C[C@H](C)CC[C@@H]1C
+	C C C C#C C1CCCCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH3] [CH3] [CH]1[CH]CC[CH]C1 [C]#[C]	chains=6 isolate no-saturation
+> trans-disubstituted cyclohexane (ring stereo centers) + C with exo-methylene (double bond branch) + methyl end group	C=C(C)C1C[C@H](C)CC[C@@H]1C
+	C C C C1CCCCC1 C=C	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH3] [CH3] [CH]1[CH]CC[CH]C1 [C]=C	chains=6 isolate no-saturation
+> trans-disubstituted cyclohexane (ring stereo centers) + allene linker + methyl end group	CC=C=CC1C[C@H](C)CC[C@@H]1C
+	C C C C(=C)=C C1CCCCC1	chains=any; chains=any isolate; chains=any separate; chains=any isolate separate
+	[CH3] [CH3] [CH3] [CH]1[CH]CC[CH]C1 [CH]=C=[CH]	chains=6 isolate no-saturation
