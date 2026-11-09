@@ -83,23 +83,23 @@ public class RECAPFragmenterTest {
             Assertions.assertTrue(tmpFragmenter.getSettingNameToTooltipTextMap().containsKey(tmpSetting.getName()));
         }
         Assertions.assertEquals(RECAPFragmenter.SATURATION_OPTION_DEFAULT, tmpFragmenter.getSaturationSetting());
-        Assertions.assertEquals(RECAPFragmenter.MINIMUM_TERMINAL_FRAGMENT_SIZE_DEFAULT,
-                tmpFragmenter.getMinimumTerminalFragmentSizeSetting());
+        Assertions.assertEquals(RECAPFragmenter.SMALL_GROUP_MAXIMUM_CARBON_ATOMS_DEFAULT,
+                tmpFragmenter.getSmallGroupMaximumCarbonAtomsSetting());
         Assertions.assertTrue(tmpFragmenter.getReturnUnfragmentedMoleculesSetting());
         tmpFragmenter.setSaturationSetting(RECAPFragmenter.SaturationOption.HYDROGEN_SATURATION);
-        tmpFragmenter.setMinimumTerminalFragmentSizeSetting(2);
+        tmpFragmenter.setSmallGroupMaximumCarbonAtomsSetting(2);
         tmpFragmenter.setReturnUnfragmentedMoleculesSetting(false);
         RECAPFragmenter tmpCopy = (RECAPFragmenter) tmpFragmenter.copy();
         Assertions.assertEquals(RECAPFragmenter.SaturationOption.HYDROGEN_SATURATION, tmpCopy.getSaturationSetting());
-        Assertions.assertEquals(2, tmpCopy.getMinimumTerminalFragmentSizeSetting());
+        Assertions.assertEquals(2, tmpCopy.getSmallGroupMaximumCarbonAtomsSetting());
         Assertions.assertFalse(tmpCopy.getReturnUnfragmentedMoleculesSetting());
         tmpFragmenter.restoreDefaultSettings();
         Assertions.assertEquals(RECAPFragmenter.SATURATION_OPTION_DEFAULT, tmpFragmenter.getSaturationSetting());
-        Assertions.assertEquals(RECAPFragmenter.MINIMUM_TERMINAL_FRAGMENT_SIZE_DEFAULT,
-                tmpFragmenter.getMinimumTerminalFragmentSizeSetting());
+        Assertions.assertEquals(RECAPFragmenter.SMALL_GROUP_MAXIMUM_CARBON_ATOMS_DEFAULT,
+                tmpFragmenter.getSmallGroupMaximumCarbonAtomsSetting());
         Assertions.assertTrue(tmpFragmenter.getReturnUnfragmentedMoleculesSetting());
         Assertions.assertThrows(NullPointerException.class, () -> tmpFragmenter.setSaturationSetting(null));
-        Assertions.assertThrows(IllegalArgumentException.class, () -> tmpFragmenter.setMinimumTerminalFragmentSizeSetting(0));
+        Assertions.assertThrows(IllegalArgumentException.class, () -> tmpFragmenter.setSmallGroupMaximumCarbonAtomsSetting(-1));
         List<String> tmpBondTypeNames = RECAPFragmenter.getBondTypeNames();
         Assertions.assertEquals(11, tmpBondTypeNames.size());
         Assertions.assertEquals(11, new HashSet<>(tmpBondTypeNames).size());
@@ -134,7 +134,7 @@ public class RECAPFragmenterTest {
         //1 amide
         this.assertFragments("CCCCCC(=O)NCCCCC", "[1*]C(=O)CCCCC", "[1*]NCCCCC");
         //2 ester, the oxygen atom stays at the alcohol part
-        this.assertFragments("CCCCC(=O)OCCCCC", "[2*]C(=O)CCCC", "[2*]OCCCCC");
+        this.assertFragments("CCCCCC(=O)OCCCCC", "[2*]C(=O)CCCCC", "[2*]OCCCCC");
         //3 amine, all three bonds of a tertiary amine
         this.assertFragments("CCCCCN(CCCCC)CCCCC", "[3*]N([3*])[3*]", "[3*]CCCCC", "[3*]CCCCC", "[3*]CCCCC");
         //4 urea, both bonds
@@ -156,8 +156,28 @@ public class RECAPFragmenterTest {
         this.assertFragments("c1ccccc1-c1ccccn1", "[10*]c1ccccc1", "[10*]c1ccccn1");
         //11 sulphonamide
         this.assertFragments("CCCCCNS(=O)(=O)c1ccccc1", "[11*]NCCCCC", "[11*]S(=O)(=O)c1ccccc1");
-        //carbamate: amide (1) and ester (2) bonds, the carbonyl group links both parts
-        this.assertFragments("CC(C)(C)OC(=O)NCCCCC", "[1*]C([2*])=O", "[1*]NCCCCC", "[2*]OC(C)(C)C");
+        //carbamate: the amide bond (1) is cleaved, the tert-butoxy group is a small terminal group (ester, 2)
+        this.assertFragments("CC(C)(C)OC(=O)NCCCCC", "[1*]C(=O)OC(C)(C)C", "[1*]NCCCCC");
+    }
+    //
+    /**
+     * Tests molecules whose fragments are shown in the original publication (Figures 9 and 10): isopropylamino
+     * (propranolol), dimethylamino (the most frequent fragment) and benzhydryl (diphenhydramine), the piperidine fragment
+     * of pethidine analogues with the ethyl ester, 1-(2-methoxyphenyl)piperazine, tert-butylamino (salbutamol), and the
+     * type 8 bond of uracil.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    public void publicationFragmentsTest() throws Exception {
+        this.assertFragments("CC(C)NCC(O)COc1cccc2ccccc12", "[3*]NC(C)C", "[3*]CC(O)C[5*]", "[5*]Oc1cccc2ccccc12");
+        this.assertFragments("CN(C)CCOC(c1ccccc1)c1ccccc1", "[3*]N(C)C", "[3*]CC[5*]", "[5*]O[5*]",
+                "[5*]C(c1ccccc1)c1ccccc1");
+        this.assertFragments("CCOC(=O)C1(c2ccccc2)CCN(CCc2ccccc2)CC1", "[3*]N1CCC(C(=O)OCC)(c2ccccc2)CC1",
+                "[3*]CCc1ccccc1");
+        this.assertFragments("COc1ccccc1N1CCN(CCCCc2ccccc2)CC1", "[3*]N1CCN(c2ccccc2OC)CC1", "[3*]CCCCc1ccccc1");
+        this.assertFragments("CC(C)(C)NCC(O)c1ccc(O)c(CO)c1", "[3*]NC(C)(C)C", "[3*]CC(O)c1ccc(O)c(CO)c1");
+        this.assertFragments("O=c1ccn(CCCCC)c(=O)[nH]1", "[8*]n1ccc(=O)[nH]c1=O", "[8*]CCCCC");
     }
     //
     /**
@@ -169,10 +189,13 @@ public class RECAPFragmenterTest {
     @Test
     public void notCleavedTest() throws Exception {
         String[] tmpUnfragmentedMolecules = {
-                //small terminal groups (fewer than five heavy atoms): methyl, ethyl, propyl, butyl, methoxy, acetyl,
-                //dimethylamino, amino, hydroxy, trimethylammonium
-                "Cc1ccccc1", "CCOc1ccccc1", "COc1ccccc1", "CCCCN(CCCC)CCCC", "CC(=O)NCCCCC", "CN(C)Cc1ccccc1",
-                "NCc1ccccc1", "OCC1CCCCC1", "CCCCCC[N+](C)(C)C", "NS(=O)(=O)c1ccccc1", "OC(=O)c1ccccc1",
+                //small terminal groups: methyl, ethyl, butyl, methoxy, ethoxy, ethyl and methyl esters, acetate,
+                //acetyl and butyryl amides, mesyl, amino
+                "CCOc1ccccc1", "COc1ccccc1", "CCCCN(CCCC)CCCC", "CCOC(=O)c1ccccc1", "COC(=O)C1CCCCC1",
+                "CC(=O)OCC1CCCCC1", "CC(=O)NCCCCC", "CCCC(=O)NCCCCC", "CS(=O)(=O)NCCCCC", "NCc1ccccc1",
+                "NS(=O)(=O)c1ccccc1", "NC(=O)c1ccccc1",
+                //no RECAP bond types: alkyl-aryl bonds, alcohols, carboxylic acids
+                "Cc1ccccc1", "OCC1CCCCC1", "OC(=O)c1ccccc1",
                 //no RECAP bond types: aryl ethers and amines, ketones, thioethers, alkyl-aryl bonds, ring bonds
                 "c1ccccc1Oc1ccccc1", "c1ccccc1N1CCCCC1", "O=C(c1ccccc1)c1ccccc1", "CCCCCSCCCCC", "CCCCCc1ccccc1",
                 "O=C1CCCCN1", "C1CCOC1", "c1ccc2ccccc2c1"};
@@ -186,23 +209,31 @@ public class RECAPFragmenterTest {
     }
     //
     /**
-     * Tests the setting for the minimum size of terminal fragments.
+     * Tests the small terminal groups and the setting for their maximum size.
      *
      * @throws Exception if anything goes wrong
      */
     @Test
-    public void minimumTerminalFragmentSizeTest() throws Exception {
+    public void smallTerminalGroupTest() throws Exception {
         RECAPFragmenter tmpFragmenter = new RECAPFragmenter();
-        tmpFragmenter.setMinimumTerminalFragmentSizeSetting(4);
-        this.assertFragments(tmpFragmenter, "CCCCN(CCCC)CCCC", false, "[3*]N([3*])[3*]", "[3*]CCCC", "[3*]CCCC", "[3*]CCCC");
-        //the propyl groups are too small, but the pentyl group can be cleaved off the dipropylamino part
+        //the propyl groups are small, but the pentyl group can be cleaved off the dipropylamino part, since alkylated
+        //amino groups are not small
         this.assertFragments(tmpFragmenter, "CCCCCN(CCC)CCC", false, "[3*]CCCCC", "[3*]N(CCC)CCC");
-        tmpFragmenter.setMinimumTerminalFragmentSizeSetting(1);
+        //trimethylammonium is cleaved off, the methyl groups are not
+        this.assertFragments(tmpFragmenter, "CCCCCC[N+](C)(C)C", false, "[7*]CCCCCC", "[7*][N+](C)(C)C");
+        //rings are no small groups
+        this.assertFragments(tmpFragmenter, "C1CC1N(C1CC1)C1CC1", false, "[3*]N([3*])[3*]", "[3*]C1CC1", "[3*]C1CC1",
+                "[3*]C1CC1");
+        tmpFragmenter.setSmallGroupMaximumCarbonAtomsSetting(3);
+        this.assertFragments(tmpFragmenter, "CCCCN(CCCC)CCCC", false, "[3*]N([3*])[3*]", "[3*]CCCC", "[3*]CCCC", "[3*]CCCC");
+        tmpFragmenter.setSmallGroupMaximumCarbonAtomsSetting(0);
         this.assertFragments(tmpFragmenter, "COc1ccccc1", false, "[5*]C", "[5*]Oc1ccccc1");
+        //the amino group is protected independent of the setting
+        this.assertFragments(tmpFragmenter, "NCC1CCCCC1", false, "NCC1CCCCC1");
         //a linking fragment is allowed independent of its size, here the single oxygen atom
-        tmpFragmenter.setMinimumTerminalFragmentSizeSetting(8);
+        tmpFragmenter.setSmallGroupMaximumCarbonAtomsSetting(7);
         this.assertFragments(tmpFragmenter, "CCCCCCCCOCCCCCCCC", false, "[5*]O[5*]", "[5*]CCCCCCCC", "[5*]CCCCCCCC");
-        tmpFragmenter.setMinimumTerminalFragmentSizeSetting(9);
+        tmpFragmenter.setSmallGroupMaximumCarbonAtomsSetting(8);
         this.assertFragments(tmpFragmenter, "CCCCCCCCOCCCCCCCC", false, "CCCCCCCCOCCCCCCCC");
     }
     //

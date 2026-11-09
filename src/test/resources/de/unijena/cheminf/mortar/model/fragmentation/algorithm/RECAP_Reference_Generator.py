@@ -3,17 +3,17 @@ MORTAR - MOlecule fRagmenTAtion fRamework, test data generator (MIT licence, see
 
 Independent reference implementation of the RECAP fragmentation (Lewell et al., J. Chem. Inf. Comput. Sci. 1998, 38,
 511-522) as implemented in the MORTAR class RECAPFragmenter: the same eleven bond rules (SMARTS), the same assignment of
-bond types (lowest bond type number first), the same selection of the bonds to cleave (no terminal fragments below the
-minimum size), and simultaneous cleavage. It uses the RDKit substructure matcher, so that the CDK-based implementation
+bond types (lowest bond type number first), the same selection of the bonds to cleave (no small terminal groups are
+cleaved off), and simultaneous cleavage. It uses the RDKit substructure matcher, so that the CDK-based implementation
 can be cross-validated against an independent SMARTS engine, see RECAPFragmenterReferenceTest. Each dummy atom carries
 the number of the bond type as isotope, e.g. [5*]Oc1ccc(F)cc1.
 
 Usage: python -I RECAP_Reference_Generator.py <input .sdf|.smi> <output .tsv> [--every N] [--max N] [--rdkit]
-       [--min-terminal-size N] [--comment TEXT]
+       [--small-group-carbons N] [--comment TEXT]
   --every N              use only every N-th molecule of the input
   --max N                stop after N molecules
   --rdkit                add a column with the leaf fragments of the RECAP implementation of the RDKit
-  --min-terminal-size N  minimum number of heavy atoms of terminal fragments (default 5)
+  --small-group-carbons N  maximum number of carbon atoms of small terminal groups (default 4)
   --comment              add a comment line to the header of the output, e.g. the source and licence of the input data
 
 The reference file of the BIOFACQUIM data set in the MORTAR test resources was generated with RDKit 2025.03.3 by
@@ -79,34 +79,51 @@ def find_recap_bonds(mol):
     return found
 
 
-def is_small_terminal_part(mol, start, cleaved, min_size):
-    seen = {start}
-    queue = deque([start])
-    heavy = 0
+def is_small_terminal_group(mol, point, cleaved, max_carbons):
+    """True if the part containing the cleavage point is a small terminal group: one attachment point, and an amino
+    group (NH2) for nitrogen, an acyclic hydrocarbon group with at most max_carbons carbon atoms for an alkyl carbon
+    atom, or otherwise (oxygen, carbonyl, sulfonyl) the cleavage point with its double-bonded oxygen atoms and hydrogen
+    or such a hydrocarbon group"""
+    atom = mol.GetAtomWithIdx(point)
+    head = {point}
+    for bond in atom.GetBonds():
+        other = bond.GetOtherAtom(atom)
+        if bond.GetIdx() not in cleaved and bond.GetBondType() == Chem.BondType.DOUBLE and other.GetAtomicNum() == 8:
+            head.add(other.GetIdx())
+    is_nitrogen = atom.GetAtomicNum() == 7
+    is_alkyl_carbon = atom.GetAtomicNum() == 6 and len(head) == 1
+    seen = {point}
+    queue = deque([point])
+    part = []
     attachments = 0
     while queue:
-        atom = mol.GetAtomWithIdx(queue.popleft())
-        if atom.GetAtomicNum() == 0:
+        current = mol.GetAtomWithIdx(queue.popleft())
+        if current.GetAtomicNum() == 0:
             attachments += 1
-        elif atom.GetAtomicNum() != 1:
-            heavy += 1
-        for bond in atom.GetBonds():
-            other = bond.GetOtherAtomIdx(atom.GetIdx())
+        else:
+            part.append(current)
+        for bond in current.GetBonds():
+            other = bond.GetOtherAtomIdx(current.GetIdx())
             if bond.GetIdx() in cleaved:
                 attachments += 1
             elif other not in seen:
                 seen.add(other)
                 queue.append(other)
-    return attachments == 1 and heavy < min_size
+    if attachments != 1:
+        return False
+    if is_nitrogen:
+        return len(part) == len(head)
+    tail = [a for a in part if is_alkyl_carbon or a.GetIdx() not in head]
+    return all(a.GetAtomicNum() == 6 and not a.IsInRing() for a in tail) and len(tail) <= max_carbons
 
 
-def select_bonds(mol, bonds, min_size):
+def select_bonds(mol, bonds, max_carbons):
     cleaved = set()
     for idx in sorted(bonds, key=lambda i: (bonds[i], i)):
         cleaved.add(idx)
         bond = mol.GetBondWithIdx(idx)
-        if is_small_terminal_part(mol, bond.GetBeginAtomIdx(), cleaved, min_size) \
-                or is_small_terminal_part(mol, bond.GetEndAtomIdx(), cleaved, min_size):
+        if is_small_terminal_group(mol, bond.GetBeginAtomIdx(), cleaved, max_carbons) \
+                or is_small_terminal_group(mol, bond.GetEndAtomIdx(), cleaved, max_carbons):
             cleaved.discard(idx)
     return {idx: bonds[idx] for idx in cleaved}
 
@@ -159,12 +176,12 @@ def main():
     args = sys.argv[1:]
     every = int(args[args.index('--every') + 1]) if '--every' in args else 1
     maximum = int(args[args.index('--max') + 1]) if '--max' in args else 0
-    min_size = int(args[args.index('--min-terminal-size') + 1]) if '--min-terminal-size' in args else 5
+    max_carbons = int(args[args.index('--small-group-carbons') + 1]) if '--small-group-carbons' in args else 4
     with_rdkit = '--rdkit' in args
     with open(args[1], 'w') as out:
-        out.write('# RECAP reference fragments (rules of MORTAR RECAPFragmenter, minimum terminal fragment size %d) generated'
-                  ' by RECAP_Reference_Generator.py with RDKit %s from %s\n'
-                  % (min_size, rdBase.rdkitVersion, os.path.basename(args[0])))
+        out.write('# RECAP reference fragments (rules of MORTAR RECAPFragmenter, small terminal groups up to %d carbon atoms)'
+                  ' generated by RECAP_Reference_Generator.py with RDKit %s from %s\n'
+                  % (max_carbons, rdBase.rdkitVersion, os.path.basename(args[0])))
         if '--comment' in args:
             out.write('# %s\n' % args[args.index('--comment') + 1])
         out.write('# name\tinput SMILES\tRECAP fragments\tcleaved bonds (type:begin-end)'
@@ -175,7 +192,7 @@ def main():
             mol = Chem.MolFromSmiles(smiles)
             if mol is None:
                 continue
-            bonds = select_bonds(mol, find_recap_bonds(mol), min_size)
+            bonds = select_bonds(mol, find_recap_bonds(mol), max_carbons)
             cut = ' '.join('%d:%d-%d' % (bonds[i], mol.GetBondWithIdx(i).GetBeginAtomIdx(),
                                          mol.GetBondWithIdx(i).GetEndAtomIdx()) for i in sorted(bonds))
             row = [name, smiles, '.'.join(fragment(mol, bonds)), cut]

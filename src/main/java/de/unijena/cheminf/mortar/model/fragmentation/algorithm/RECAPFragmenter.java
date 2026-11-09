@@ -94,26 +94,34 @@ import java.util.logging.Logger;
  * </ol>
  * Ring bonds are never cleaved. If a bond matches more than one rule, the rule with the lowest number is applied.
  *
- * <p><b>Sources and reconstruction of the rules.</b> The publication (Lewell et al. 1998) is not freely available.
- * The rules are therefore implemented according to the presentation of the authors (Daylight EMUG 1997), which
- * shows the eleven bond types with the cleaved bonds, states that small fragments are avoided, and gives the
- * fragmentation of cisapride as example (see references). The SMARTS of the rules are formulated in this class; the
- * following details are derived from the presentation:
+ * <p><b>Rules of the publication and their formulation.</b> The publication (Lewell et al. 1998) shows the eleven
+ * bond types as structure drawings (Figure 2) and states that the SMARTS of the program can be defined by the user;
+ * the SMARTS are therefore formulated in this class. The following details follow from the text and the fragments
+ * shown in the publication:
  * <ul>
+ *     <li>All susceptible bonds are cleaved in a single pass, so no intermediate structures occur; only acyclic bonds
+ *     are cleaved.</li>
  *     <li>All bonds of the central atom of a group can be cleaved (both bonds of ureas and dialkyl ethers, all bonds
  *     of tertiary amines and quaternary ammonium ions), so fragments that link two or more other fragments, e.g. a
  *     single nitrogen or carbonyl group, are retained.</li>
- *     <li>Ethers and amines are only cleaved at the bond to an sp3 carbon atom: in cisapride, the oxygen atom of the
- *     aryl ether remains at the fluorophenyl ring, and the methoxy groups are not cleaved off.</li>
- *     <li>Small terminal fragments are avoided: a bond is not cleaved if one of the two resulting parts is a terminal
- *     fragment (only one attachment point) with fewer heavy atoms than the minimum size of terminal fragments
- *     (setting, default {@value #MINIMUM_TERMINAL_FRAGMENT_SIZE_DEFAULT}). In cisapride, methyl, methoxy and amino
- *     groups are not cleaved off, and in the ranitidine example of the presentation, the dimethylamino group is
- *     kept. The default protects alkyl groups up to butyl. Linking fragments of any size, like the propyl linker of
- *     cisapride, are allowed.</li>
- *     <li>The attachment points are labelled with the number of the bond type, as in the cisapride example.</li>
+ *     <li>Ethers and amines are only cleaved at the bond to an sp3 carbon atom: oxygen atoms of aryl ethers remain at
+ *     the aromatic ring (e.g. in the cisapride example, Figure 3), and aryl-nitrogen bonds are not cleaved (e.g. the
+ *     fragment 1-(2-methoxyphenyl)piperazine in Figure 9), but bonds of aliphatic ring carbon atoms to ether oxygen
+ *     atoms are (e.g. sugars in Figures 8 and 9).</li>
+ *     <li>Small terminal groups are not cleaved off: according to the text, a terminal fragment that contains only
+ *     small functional groups (hydrogen, methyl, ethyl, propyl, butyl) is left uncleaved, so that e.g. the methoxy
+ *     groups of cisapride remain at the fragments. The fragments of the publication show that this also applies to
+ *     ethyl and methyl esters and acetates, which are not cleaved (Figure 9), but not to alkylated amino groups:
+ *     dimethylamino is the most frequent fragment, and diethylamino, isopropylamino and tert-butylamino are frequent
+ *     fragments (Figures 9 and 10). Therefore, a terminal part (one attachment point) is not cleaved off if it is an
+ *     acyclic hydrocarbon group with at most four carbon atoms (setting, default
+ *     {@value #SMALL_GROUP_MAXIMUM_CARBON_ATOMS_DEFAULT}), if it is an oxygen atom, a carbonyl or a sulfonyl group
+ *     with hydrogen or such a hydrocarbon group (e.g. methoxy, ethoxy, formyl, acetyl, mesyl), or if it is an amino
+ *     group (NH2). Linking fragments of any size, like the propyl linker of cisapride, are allowed.</li>
+ *     <li>The attachment points are labelled with the number of the bond type ("isotopic" labels).</li>
+ *     <li>If a bond matches more than one rule, the lowest bond type number is assigned; e.g. bonds of the aromatic
+ *     nitrogen atoms of pyrimidinones (uracil) are of type 8, as in Figure 9.</li>
  * </ul>
- * The details of the publication that the presentation does not show may differ from this reconstruction.
  *
  * <p><b>Algorithm.</b>
  * <ol>
@@ -122,9 +130,9 @@ import java.util.logging.Logger;
  *     <li>Every acyclic, non-aromatic single or double bond is tested against the rules in the order of their numbers;
  *     the atom environments are evaluated lazily and only once per atom.</li>
  *     <li>The cleavable bonds are processed in the order of their bond type number (and bond index); a bond is cleaved
- *     unless its cleavage, together with the bonds cleaved before, creates a terminal fragment below the minimum size.
- *     Since further cleavages only split fragments, no small terminal fragment is created. All accepted bonds are
- *     cleaved simultaneously, so every heavy atom of the molecule is contained in exactly one fragment.</li>
+ *     unless its cleavage, together with the bonds cleaved before, cuts off a small terminal group. Since further
+ *     cleavages only split fragments, no small terminal group is cut off. All accepted bonds are cleaved
+ *     simultaneously, so every heavy atom of the molecule is contained in exactly one fragment.</li>
  *     <li>Each cleaved bond is replaced by two bonds of the same order to new link atoms. A link atom is a pseudo atom
  *     carrying the number of the bond type as mass number (resulting in SMILES like [5*]Oc1ccc(F)cc1, if the mass
  *     number is encoded) and as property {@link #BOND_TYPE_PROPERTY_KEY}. Alternatively, open valences can be
@@ -133,13 +141,14 @@ import java.util.logging.Logger;
  *     (or hydrogen atom) at their position, and stereo elements that lost their stereogenicity are removed.</li>
  * </ol>
  * Pseudo atoms of the input, e.g. attachment points of a preceding fragmentation in a pipeline, count as attachment
- * points and not as heavy atoms in the size check.
+ * points in the check for small terminal groups.
  *
  * <p><b>Differences to the RECAP implementation of the RDKit.</b> The RDKit implementation removes the oxygen atom of
  * cleaved ethers, the nitrogen atom of cleaved amines and the carbonyl group of cleaved ureas, cleaves aryl ethers
  * and aryl amines, cleaves the hydroxy group off carboxylic acids, has no rule for quaternary nitrogen atoms, and only
- * forbids fragments that consist of one to three carbon atoms. Its function RecapDecompose applies the rules
- * hierarchically and returns all unique leaf fragments, which can overlap; the multiplicity of fragments is lost.
+ * forbids fragments that consist of one to three carbon atoms (so e.g. methoxy, acetyl and butyl groups are cleaved
+ * off). Its function RecapDecompose applies the rules hierarchically and returns all unique leaf fragments, which can
+ * overlap, whereas the publication cleaves all bonds in a single pass; the multiplicity of fragments is lost.
  *
  * <p><b>Note on bond types in MORTAR.</b> MORTAR identifies fragments by their unique SMILES code without isotope
  * information, so link atoms are written as '*' and fragments that differ only in their bond types are counted as
@@ -223,10 +232,10 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
      */
     public static final boolean RETURN_UNFRAGMENTED_MOLECULES_OPTION_DEFAULT = true;
     /**
-     * Default minimum number of heavy atoms of a terminal fragment (fragment with one attachment point); smaller
-     * terminal fragments are not cleaved off. The default protects alkyl groups up to butyl.
+     * Default maximum number of carbon atoms of the small terminal groups that are not cleaved off: methyl, ethyl,
+     * propyl, and butyl, as in the original publication.
      */
-    public static final int MINIMUM_TERMINAL_FRAGMENT_SIZE_DEFAULT = 5;
+    public static final int SMALL_GROUP_MAXIMUM_CARBON_ATOMS_DEFAULT = 4;
     /**
      * Key of the atom property of link atoms that holds the number of their RECAP bond type (Integer, 1 to 11).
      */
@@ -326,9 +335,9 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
      */
     private final SimpleBooleanProperty returnUnfragmentedMoleculesSetting;
     /**
-     * Setting for the minimum number of heavy atoms of terminal fragments.
+     * Setting for the maximum number of carbon atoms of small terminal groups that are not cleaved off.
      */
-    private final SimpleIntegerProperty minimumTerminalFragmentSizeSetting;
+    private final SimpleIntegerProperty smallGroupMaximumCarbonAtomsSetting;
     /**
      * All settings of this fragmenter, encapsulated in JavaFX properties for binding in GUI.
      */
@@ -400,16 +409,16 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
                 Message.get("RECAPFragmenter.saturationSetting.tooltip"));
         this.settingNameDisplayNameMap.put(this.saturationSetting.getName(),
                 Message.get("RECAPFragmenter.saturationSetting.displayName"));
-        this.minimumTerminalFragmentSizeSetting = new SimpleIntegerProperty(this,
-                "Minimum size of terminal fragments setting",
-                RECAPFragmenter.MINIMUM_TERMINAL_FRAGMENT_SIZE_DEFAULT) {
+        this.smallGroupMaximumCarbonAtomsSetting = new SimpleIntegerProperty(this,
+                "Maximum size of small terminal groups setting",
+                RECAPFragmenter.SMALL_GROUP_MAXIMUM_CARBON_ATOMS_DEFAULT) {
             @Override
             public void set(int newValue) {
-                if (newValue > 0) {
+                if (newValue >= 0) {
                     super.set(newValue);
                 } else {
                     IllegalArgumentException tmpException = new IllegalArgumentException(
-                            "The minimum size of terminal fragments must be positive.");
+                            "The maximum size of small terminal groups must not be negative.");
                     RECAPFragmenter.LOGGER.log(Level.WARNING, tmpException.toString(), tmpException);
                     GuiUtil.guiExceptionAlert(Message.get("Fragmenter.IllegalSettingValue.Title"),
                             Message.get("Fragmenter.IllegalSettingValue.Header"),
@@ -420,10 +429,10 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
                 }
             }
         };
-        this.settingNameTooltipTextMap.put(this.minimumTerminalFragmentSizeSetting.getName(),
-                Message.get("RECAPFragmenter.minimumTerminalFragmentSizeSetting.tooltip"));
-        this.settingNameDisplayNameMap.put(this.minimumTerminalFragmentSizeSetting.getName(),
-                Message.get("RECAPFragmenter.minimumTerminalFragmentSizeSetting.displayName"));
+        this.settingNameTooltipTextMap.put(this.smallGroupMaximumCarbonAtomsSetting.getName(),
+                Message.get("RECAPFragmenter.smallGroupMaximumCarbonAtomsSetting.tooltip"));
+        this.settingNameDisplayNameMap.put(this.smallGroupMaximumCarbonAtomsSetting.getName(),
+                Message.get("RECAPFragmenter.smallGroupMaximumCarbonAtomsSetting.displayName"));
         this.returnUnfragmentedMoleculesSetting = new SimpleBooleanProperty(this,
                 "Return unfragmented molecules setting",
                 RECAPFragmenter.RETURN_UNFRAGMENTED_MOLECULES_OPTION_DEFAULT);
@@ -433,7 +442,7 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
                 Message.get("RECAPFragmenter.returnUnfragmentedMoleculesSetting.displayName"));
         this.settings = new ArrayList<>(tmpNumberOfSettings);
         this.settings.add(this.saturationSetting);
-        this.settings.add(this.minimumTerminalFragmentSizeSetting);
+        this.settings.add(this.smallGroupMaximumCarbonAtomsSetting);
         this.settings.add(this.returnUnfragmentedMoleculesSetting);
     }
     //</editor-fold>
@@ -458,21 +467,22 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
     }
     //
     /**
-     * Returns the minimum number of heavy atoms of terminal fragments; smaller terminal fragments are not cleaved off.
+     * Returns the maximum number of carbon atoms of the small terminal groups that are not cleaved off (see class
+     * documentation).
      *
-     * @return minimum size of terminal fragments
+     * @return maximum size of small terminal groups in carbon atoms
      */
-    public int getMinimumTerminalFragmentSizeSetting() {
-        return this.minimumTerminalFragmentSizeSetting.get();
+    public int getSmallGroupMaximumCarbonAtomsSetting() {
+        return this.smallGroupMaximumCarbonAtomsSetting.get();
     }
     //
     /**
-     * Returns the property object of the setting for the minimum size of terminal fragments.
+     * Returns the property object of the setting for the maximum size of small terminal groups.
      *
      * @return property object of the setting
      */
-    public SimpleIntegerProperty minimumTerminalFragmentSizeSettingProperty() {
-        return this.minimumTerminalFragmentSizeSetting;
+    public SimpleIntegerProperty smallGroupMaximumCarbonAtomsSettingProperty() {
+        return this.smallGroupMaximumCarbonAtomsSetting;
     }
     //
     /**
@@ -520,16 +530,17 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
     }
     //
     /**
-     * Sets the minimum number of heavy atoms of terminal fragments; smaller terminal fragments are not cleaved off.
+     * Sets the maximum number of carbon atoms of the small terminal groups that are not cleaved off (see class
+     * documentation). With 0, only hydrogen-terminated groups (e.g. amino, formyl) are protected.
      *
-     * @param aSize minimum size, must be positive
-     * @throws IllegalArgumentException if the given size is not positive
+     * @param aSize maximum size of small terminal groups in carbon atoms, must not be negative
+     * @throws IllegalArgumentException if the given size is negative
      */
-    public void setMinimumTerminalFragmentSizeSetting(int aSize) throws IllegalArgumentException {
-        if (aSize <= 0) {
-            throw new IllegalArgumentException("The minimum size of terminal fragments must be positive.");
+    public void setSmallGroupMaximumCarbonAtomsSetting(int aSize) throws IllegalArgumentException {
+        if (aSize < 0) {
+            throw new IllegalArgumentException("The maximum size of small terminal groups must not be negative.");
         }
-        this.minimumTerminalFragmentSizeSetting.set(aSize);
+        this.smallGroupMaximumCarbonAtomsSetting.set(aSize);
     }
     //
     /**
@@ -573,7 +584,7 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
     public IMoleculeFragmenter copy() {
         RECAPFragmenter tmpCopy = new RECAPFragmenter();
         tmpCopy.setSaturationSetting(this.getSaturationSetting());
-        tmpCopy.setMinimumTerminalFragmentSizeSetting(this.getMinimumTerminalFragmentSizeSetting());
+        tmpCopy.setSmallGroupMaximumCarbonAtomsSetting(this.getSmallGroupMaximumCarbonAtomsSetting());
         tmpCopy.setReturnUnfragmentedMoleculesSetting(this.getReturnUnfragmentedMoleculesSetting());
         return tmpCopy;
     }
@@ -581,7 +592,7 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
     @Override
     public void restoreDefaultSettings() {
         this.saturationSetting.set(RECAPFragmenter.SATURATION_OPTION_DEFAULT);
-        this.minimumTerminalFragmentSizeSetting.set(RECAPFragmenter.MINIMUM_TERMINAL_FRAGMENT_SIZE_DEFAULT);
+        this.smallGroupMaximumCarbonAtomsSetting.set(RECAPFragmenter.SMALL_GROUP_MAXIMUM_CARBON_ATOMS_DEFAULT);
         this.returnUnfragmentedMoleculesSetting.set(RECAPFragmenter.RETURN_UNFRAGMENTED_MOLECULES_OPTION_DEFAULT);
     }
     //
@@ -727,10 +738,10 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
     }
     //
     /**
-     * Selects the bonds to cleave from the given cleavable bonds, so that no small terminal fragment is created. The
+     * Selects the bonds to cleave from the given cleavable bonds, so that no small terminal group is cleaved off. The
      * bonds are processed in the order of their bond type (and bond index); a bond is selected unless one of the two
-     * parts that result from its cleavage, together with the bonds selected before, is a terminal fragment (one
-     * attachment point) with fewer heavy atoms than the minimum size of terminal fragments.
+     * parts that result from its cleavage, together with the bonds selected before, is a small terminal group, see
+     * {@link #isSmallTerminalGroup(IAtomContainer, int, int[][], GraphUtil.EdgeToBondMap, boolean[], int)}.
      *
      * @param aPreparedMolecule molecule prepared with {@link #prepareMolecule(IAtomContainer)}
      * @param aRECAPBondList cleavable bonds of the molecule
@@ -747,15 +758,15 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
         GraphUtil.EdgeToBondMap tmpEdgeToBondMap = GraphUtil.EdgeToBondMap.withSpaceFor(aPreparedMolecule);
         int[][] tmpAdjacencyList = GraphUtil.toAdjList(aPreparedMolecule, tmpEdgeToBondMap);
         boolean[] tmpIsCleaved = new boolean[aPreparedMolecule.getBondCount()];
-        int tmpMinimumSize = this.minimumTerminalFragmentSizeSetting.get();
+        int tmpMaximumCarbonAtoms = this.smallGroupMaximumCarbonAtomsSetting.get();
         List<RECAPBond> tmpSelectedBonds = new ArrayList<>(tmpCandidates.size());
         for (RECAPBond tmpCandidate : tmpCandidates) {
             int tmpBondIndex = tmpCandidate.bond().getIndex();
             tmpIsCleaved[tmpBondIndex] = true;
-            if (RECAPFragmenter.isSmallTerminalPart(aPreparedMolecule, tmpCandidate.bond().getBegin().getIndex(),
-                    tmpAdjacencyList, tmpEdgeToBondMap, tmpIsCleaved, tmpMinimumSize)
-                    || RECAPFragmenter.isSmallTerminalPart(aPreparedMolecule, tmpCandidate.bond().getEnd().getIndex(),
-                    tmpAdjacencyList, tmpEdgeToBondMap, tmpIsCleaved, tmpMinimumSize)) {
+            if (RECAPFragmenter.isSmallTerminalGroup(aPreparedMolecule, tmpCandidate.bond().getBegin().getIndex(),
+                    tmpAdjacencyList, tmpEdgeToBondMap, tmpIsCleaved, tmpMaximumCarbonAtoms)
+                    || RECAPFragmenter.isSmallTerminalGroup(aPreparedMolecule, tmpCandidate.bond().getEnd().getIndex(),
+                    tmpAdjacencyList, tmpEdgeToBondMap, tmpIsCleaved, tmpMaximumCarbonAtoms)) {
                 tmpIsCleaved[tmpBondIndex] = false;
             } else {
                 tmpSelectedBonds.add(tmpCandidate);
@@ -789,34 +800,70 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
     }
     //
     /**
-     * Determines the part of the molecule that contains the given atom when the marked bonds are cleaved, and returns
-     * whether it is a small terminal fragment: it has exactly one attachment point (cleaved bond or pseudo atom of the
-     * input) and fewer heavy atoms (pseudo atoms not counted) than the given minimum size.
+     * Determines the part of the molecule that contains the given atom of a cleaved bond (the cleavage point) when the
+     * marked bonds are cleaved, and returns whether it is a small terminal group that must not be cleaved off. The
+     * part must be terminal, i.e. have exactly one attachment point (cleaved bond or pseudo atom of the input), and
+     * <ul>
+     *     <li>if the cleavage point is a nitrogen atom: consist of the nitrogen atom with hydrogen atoms only
+     *     (amino group); nitrogen atoms with alkyl groups, e.g. dimethylamino, are cleaved off;</li>
+     *     <li>if the cleavage point is a carbon atom without double-bonded oxygen atom: be an acyclic hydrocarbon group
+     *     with at most the given number of carbon atoms (methyl, ethyl, propyl, butyl);</li>
+     *     <li>otherwise, i.e. for oxygen atoms and carbonyl or sulfonyl groups: consist of the cleavage point (with its
+     *     double-bonded oxygen atoms) and hydrogen atoms or an acyclic hydrocarbon group with at most the given number
+     *     of carbon atoms (e.g. methoxy, ethoxy, formyl, acetyl, mesyl).</li>
+     * </ul>
+     * Pseudo atoms of the input count as attachment points.
      *
      * @param aMolecule the prepared molecule
-     * @param aStartAtomIndex index of an atom of the part
+     * @param aCleavagePointIndex index of the atom of the cleaved bond in the part
      * @param anAdjacencyList adjacency list of the molecule
      * @param anEdgeToBondMap map of the edges of the adjacency list to the bonds
      * @param anIsCleavedArray cleaved bonds by bond index
-     * @param aMinimumSize minimum number of heavy atoms of a terminal fragment
-     * @return true if the part is a terminal fragment below the minimum size
+     * @param aMaximumCarbonAtoms maximum number of carbon atoms of a small terminal group
+     * @return true if the part is a small terminal group
      */
-    private static boolean isSmallTerminalPart(IAtomContainer aMolecule, int aStartAtomIndex, int[][] anAdjacencyList,
-                                               GraphUtil.EdgeToBondMap anEdgeToBondMap, boolean[] anIsCleavedArray,
-                                               int aMinimumSize) {
+    private static boolean isSmallTerminalGroup(IAtomContainer aMolecule, int aCleavagePointIndex, int[][] anAdjacencyList,
+                                                GraphUtil.EdgeToBondMap anEdgeToBondMap, boolean[] anIsCleavedArray,
+                                                int aMaximumCarbonAtoms) {
+        IAtom tmpCleavagePoint = aMolecule.getAtom(aCleavagePointIndex);
+        //the cleavage point and the oxygen atoms double-bonded to it (carbonyl, sulfonyl) form the "head" of the group
+        Set<Integer> tmpHeadAtoms = new HashSet<>(4);
+        tmpHeadAtoms.add(aCleavagePointIndex);
+        for (int tmpNeighbour : anAdjacencyList[aCleavagePointIndex]) {
+            IBond tmpBond = anEdgeToBondMap.get(aCleavagePointIndex, tmpNeighbour);
+            IAtom tmpNeighbourAtom = aMolecule.getAtom(tmpNeighbour);
+            if (!anIsCleavedArray[tmpBond.getIndex()] && tmpBond.getOrder() == IBond.Order.DOUBLE
+                    && Objects.equals(tmpNeighbourAtom.getAtomicNumber(), 8)) {
+                tmpHeadAtoms.add(tmpNeighbour);
+            }
+        }
+        boolean tmpIsNitrogen = Objects.equals(tmpCleavagePoint.getAtomicNumber(), 7);
+        boolean tmpIsAlkylCarbon = Objects.equals(tmpCleavagePoint.getAtomicNumber(), 6) && tmpHeadAtoms.size() == 1;
+        //a small group has at most the head atoms and the carbon atoms of the alkyl group
+        int tmpMaximumPartSize = tmpHeadAtoms.size() + aMaximumCarbonAtoms;
         boolean[] tmpIsVisited = new boolean[anAdjacencyList.length];
         Deque<Integer> tmpQueue = new ArrayDeque<>();
-        tmpQueue.add(aStartAtomIndex);
-        tmpIsVisited[aStartAtomIndex] = true;
-        int tmpHeavyAtoms = 0;
+        tmpQueue.add(aCleavagePointIndex);
+        tmpIsVisited[aCleavagePointIndex] = true;
+        int tmpPartSize = 0;
         int tmpAttachmentPoints = 0;
+        //atoms of the group except the head atoms (for an alkyl carbon cleavage point, including it)
+        int tmpTailCarbonAtoms = 0;
+        boolean tmpIsTailHydrocarbon = true;
         while (!tmpQueue.isEmpty()) {
             int tmpAtomIndex = tmpQueue.poll();
             IAtom tmpAtom = aMolecule.getAtom(tmpAtomIndex);
             if (tmpAtom instanceof IPseudoAtom) {
                 tmpAttachmentPoints++;
-            } else if (tmpAtom.getAtomicNumber() == null || tmpAtom.getAtomicNumber() != 1) {
-                tmpHeavyAtoms++;
+            } else {
+                tmpPartSize++;
+                if (tmpIsAlkylCarbon || !tmpHeadAtoms.contains(tmpAtomIndex)) {
+                    if (Objects.equals(tmpAtom.getAtomicNumber(), 6) && !tmpAtom.isInRing()) {
+                        tmpTailCarbonAtoms++;
+                    } else {
+                        tmpIsTailHydrocarbon = false;
+                    }
+                }
             }
             for (int tmpNeighbour : anAdjacencyList[tmpAtomIndex]) {
                 if (anIsCleavedArray[anEdgeToBondMap.get(tmpAtomIndex, tmpNeighbour).getIndex()]) {
@@ -826,12 +873,18 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
                     tmpQueue.add(tmpNeighbour);
                 }
             }
-            //the part is neither terminal nor small anymore, no further search needed
-            if (tmpAttachmentPoints > 1 || tmpHeavyAtoms >= aMinimumSize) {
+            //the part is not a small terminal group, no further search needed
+            if (tmpAttachmentPoints > 1 || !tmpIsTailHydrocarbon || tmpPartSize > tmpMaximumPartSize) {
                 return false;
             }
         }
-        return tmpAttachmentPoints == 1 && tmpHeavyAtoms < aMinimumSize;
+        if (tmpAttachmentPoints != 1) {
+            return false;
+        }
+        if (tmpIsNitrogen) {
+            return tmpPartSize == tmpHeadAtoms.size();
+        }
+        return tmpTailCarbonAtoms <= aMaximumCarbonAtoms;
     }
     //
     /**
