@@ -1,0 +1,244 @@
+# Hand-written test molecules for the CRUSH rules, input of CRUSH_Reference_Generator.py for CRUSH_Rule_Cases.tsv. Per
+# rule (numbers of Table 1 of the publication) at least three molecules with a valid step of the rule (positive) and two
+# without (negative), and molecules for ring bonds, protected atoms, the minimum fragment size, charges, stereochemistry,
+# salts, and pseudo atoms. The last four molecules are the example data set of the authors (Example_dataset.csv of
+# https://doi.org/10.5281/zenodo.18665641, MIT licence, COCONUT identifiers).
+# name	SMILES	rule	expectation	description
+r01_pos_1	CCCC(=O)NCCC	1	positive	secondary amide
+r01_pos_2	O=C(NCC)c1ccccc1	1	positive	benzamide, aromatic carbon as atom 1
+r01_pos_3	CC(=O)N1CCCCC1	1	positive	tertiary amide with ring nitrogen, acyclic C-N bond
+r01_pos_4	CN(C)C(=O)CCc1ccccc1	1	positive	dimethylamide, the amine part has three heavy atoms
+r01_neg_1	CCCC(=O)NC	1	negative	the methylamino part is too small
+r01_neg_2	O=C1CCCCN1	1	negative	lactam, carbonyl carbon in a ring
+r01_neg_3	C(=O)NCCCC	1	negative	formamide, no carbon atom bonded to the carbonyl carbon
+r01_neg_4	CCCCNC(=O)NCCCC	1	negative	urea, no carbon atom bonded to the carbonyl carbon
+r02_pos_1	CCCC(=O)OCCC	2	positive	ester
+r02_pos_2	O=C(OCC)c1ccccc1	2	positive	ethyl benzoate
+r02_pos_3	CC(=O)OC1CCCCC1	2	positive	acetate of a ring alcohol
+r02_neg_1	CCCC(=O)OC	2	negative	methyl ester, the methoxy part is too small
+r02_neg_2	O=C1CCCCO1	2	negative	lactone
+r02_neg_3	CCCC(=O)O	2	negative	carboxylic acid
+r02_neg_4	CCCOC(=O)OCCC	2	negative	carbonate, no carbon atom bonded to the carbonyl carbon
+r03_pos_1	CCCN(CCC)CCC	3	positive	tertiary amine
+r03_pos_2	CCCCN1CCCCC1	3	positive	N-alkyl piperidine, ring bonds of the match are not cleaved
+r03_pos_3	CN(C)CCCc1ccccc1	3	positive	dimethylamino group as a fragment with three heavy atoms
+r03_pos_4	CCCC[NH+](CCC)CCC	3	positive	protonated tertiary amine (N+X4 with hydrogen)
+r03_neg_1	CCCNCCC	3	negative	secondary amine
+r03_neg_2	CCCN(CCC)c1ccccc1	3	negative	aryl amine, only two sp3 carbon atoms
+r03_neg_3	CN1CCCCC1	3	negative	N-methyl piperidine, methyl too small, ring bonds not cleaved
+r03_neg_4	CCN(CC)CC	3	negative	triethylamine, the ethyl parts are too small
+r04_pos_1	CCCN1CCOCC1	4	positive	N-propyl morpholine
+r04_pos_2	O=C1CCCN1CCC	4	positive	N-propyl pyrrolidinone
+r04_pos_3	CCCCN1CCN(C)CC1	4	positive	N-butyl piperazine
+r04_neg_1	CCCC(=O)N1CCCCC1	4	negative	acyl piperidine, the carbon atom has a double bond
+r04_neg_2	C1CCNCC1	4	negative	piperidine, nitrogen atom with degree 2
+r04_neg_3	CCCCn1ccnc1	4	negative	aromatic nitrogen atom
+r05_pos_1	CCCNC(=O)NCCC	5	positive	N,N'-dipropyl urea
+r05_pos_2	O=C(NCC)N1CCCCC1	5	positive	urea with a ring nitrogen atom
+r05_pos_3	NC(=O)NCCC	5	positive	propyl urea, the carbamoyl part has three heavy atoms
+r05_neg_1	CNC(=O)NC	5	negative	N,N'-dimethyl urea, the parts are too small
+r05_neg_2	O=C1NCCCN1	5	negative	cyclic urea
+r05_neg_3	CCCC(=O)NCCC	5	negative	amide
+r06_pos_1	CCCOCCC	6	positive	dialkyl ether
+r06_pos_2	CCOCC1CCCCC1	6	positive	ether with a ring carbon atom as atom 5
+r06_pos_3	CCCOc1ccccc1	6	positive	aryl alkyl ether, both directions
+r06_pos_4	CCCOC(=O)CC	6	positive	ester oxygen atom as ether oxygen atom
+r06_neg_1	COCCC	6	negative	methyl ether, atom 1 or atom 5 missing
+r06_neg_2	C1CCOCC1	6	negative	tetrahydropyran, ring oxygen atom
+r06_neg_3	CC(C)(C)OC	6	negative	tert-butyl methyl ether, atom 5 missing
+r07_pos_1	CCCCC1CCCO1	7	positive	2-butyl tetrahydrofuran (ring bond matches are not cleaved)
+r07_pos_2	CCCOC1CCCCO1	7	positive	acetal
+r07_pos_3	CCCC1CCCCN1	7	positive	2-propyl piperidine
+r07_neg_1	CCCCC1CCCCC1	7	negative	no heteroatom in the ring
+r07_neg_2	CCCCC1CCOC1	7	negative	3-substituted tetrahydrofuran
+r07_neg_3	CC1CCCO1	7	negative	2-methyl tetrahydrofuran, methyl too small
+r08_pos_1	CCCC=CCCC	8	positive	oct-4-ene, the double bond is cleaved
+r08_pos_2	CCCC(CCC)=C1CCCCC1	8	positive	exocyclic double bond at a ring carbon atom
+r08_pos_3	CC(C)C=CC(C)C	8	positive	branched olefin
+r08_neg_1	CCCC=C	8	negative	terminal olefin, methylene too small
+r08_neg_2	C1=CCCCC1	8	negative	ring double bond
+r08_neg_3	C=Cc1ccccc1	8	negative	styrene, methylene too small
+r09_pos_1	CCCC[N+](C)(C)CCCC	9	positive	quaternary ammonium
+r09_pos_2	C[N+](C)(C)CCCCC	9	positive	trimethylammonium as a fragment
+r09_pos_3	CCC[N+]1(CCC)CCCC1	9	positive	quaternary ring nitrogen atom
+r09_neg_1	CCCC[NH+](C)C	9	negative	protonated amine, hydrogen at the nitrogen atom
+r09_neg_2	C[N+](C)(C)C	9	negative	tetramethylammonium, methyl too small
+r09_neg_3	CCCC[n+]1ccccc1	9	negative	aromatic nitrogen atom
+r10_pos_1	CCCCn1ccnc1	10	positive	N-butyl imidazole, neutral aromatic nitrogen atom (hydrogen added)
+r10_pos_2	CCCC[n+]1ccccc1	10	positive	N-butyl pyridinium
+r10_pos_3	CCCn1cccc1	10	positive	N-propyl pyrrole
+r10_pos_4	CCCC(=O)n1ccnc1	10	positive	N-acyl imidazole
+r10_neg_1	Cn1ccnc1	10	negative	N-methyl imidazole, methyl too small
+r10_neg_2	CCCCc1ccncc1	10	negative	alkyl bonded to an aromatic carbon atom
+r10_neg_3	c1ccc(-n2cccc2)cc1	10	negative	aryl bonded to the aromatic nitrogen atom
+r11_pos_1	CCCN1CCCC1=O	11	positive	N-propyl pyrrolidinone
+r11_pos_2	CCCCN1CCCCCC1=O	11	positive	N-butyl caprolactam
+r11_pos_3	O=C1CCCCN1CC(C)C	11	positive	N-isobutyl piperidinone
+r11_neg_1	O=C1CCCN1	11	negative	no substituent at the nitrogen atom
+r11_neg_2	CN1CCCC1=O	11	negative	methyl too small
+r11_neg_3	CCCN1C(=O)CCC1=O	11	negative	succinimide, no ring carbon atom without double bond at the nitrogen atom
+r12_pos_1	c1ccc(-c2ccccc2)cc1	12	positive	biphenyl
+r12_pos_2	c1ccc(-c2ccncc2)cc1	12	positive	4-phenyl pyridine
+r12_pos_3	Cc1ccc(-c2cccs2)cc1	12	positive	2-aryl thiophene
+r12_pos_4	c1ccc(-c2ccc3ccccc3c2)cc1	12	positive	2-phenyl naphthalene, the atoms of the bond are not protected
+r12_neg_1	c1ccc2ccccc2c1	12	negative	naphthalene, ring bonds only
+r12_neg_2	c1ccc(Cc2ccccc2)cc1	12	negative	diphenylmethane
+r12_neg_3	c1ccc(-c2cccc3ccccc23)cc1	12	negative	1-phenyl naphthalene, neighbour of a fused ring atom protected
+r13_pos_1	CCCS(=O)(=O)NCCC	13	positive	sulphonamide
+r13_pos_2	Cc1ccc(S(=O)(=O)NCC)cc1	13	positive	tosyl amide
+r13_pos_3	CCCNS(=O)(=O)c1ccccc1	13	positive	benzenesulphonamide
+r13_neg_1	CCCS(=O)(=O)N	13	negative	primary sulphonamide
+r13_neg_2	O=S(=O)(N1CCCCC1)c1ccccc1	13	negative	ring nitrogen atom, no acyclic bond to a carbon atom
+r13_neg_3	CCCS(=O)(=O)NC(=O)CC	13	negative	N-acyl sulphonamide
+r14_pos_1	CCCc1ccccc1	14	positive	propyl benzene
+r14_pos_2	CC(C)Cc1ccccc1	14	positive	isobutyl benzene
+r14_pos_3	c1ccc(CC2CCCCC2)cc1	14	positive	cyclohexylmethyl benzene
+r14_neg_1	Cc1ccccc1	14	negative	toluene, methyl too small
+r14_pos_4	OCCCc1ccccc1	14	positive	3-phenylpropanol, the benzylic carbon atom has no heteroatom
+r14_neg_3	OCc1ccccc1	14	negative	benzyl alcohol, carbon atom bonded to a heteroatom
+r14_neg_4	CCC(=O)c1ccccc1	14	negative	propiophenone, sp2 carbon atom
+r15_pos_1	CCCNc1ccccc1	15	positive	N-propyl aniline
+r15_pos_2	c1ccc(N2CCCCC2)cc1	15	positive	N-phenyl piperidine
+r15_pos_3	CC(=O)Nc1ccccc1	15	positive	acetanilide
+r15_neg_1	Nc1ccccc1	15	negative	aniline, amino group too small
+r15_neg_2	CNc1ccccc1	15	negative	N-methyl aniline, too small
+r15_neg_3	c1ccc2c(c1)NCC2	15	negative	indoline, ring bond
+r16_pos_1	CCCC#CCCC	16	positive	oct-4-yne, the triple bond is cleaved
+r16_pos_2	CCCC#CC1CCCCC1	16	positive	cyclohexyl alkyne
+r16_pos_3	CC(C)(O)C#CC(C)(C)O	16	positive	alkynediol
+r16_neg_1	CCCC#C	16	negative	terminal alkyne, too small
+r16_neg_2	N#CCCC	16	negative	nitrile
+r16_neg_3	CC#CC	16	negative	but-2-yne, too small
+r17_pos_1	CCCSCCC	17	positive	dialkyl sulfide
+r17_pos_2	CCSCCC	17	positive	ethyl propyl sulfide, only the propyl side
+r17_pos_3	CC(C)SCC(=O)OC	17	positive	thioether of an ester
+r17_neg_1	C1CCSC1	17	negative	tetrahydrothiophene
+r17_neg_2	CCCSc1ccccc1	17	negative	aryl sulfide, aromatic ring carbon atom
+r17_neg_3	CSC	17	negative	dimethyl sulfide, too small
+r18_pos_1	CCCOC(=O)NCCC	18	positive	carbamate
+r18_pos_2	CC(C)(C)OC(=O)N1CCCCC1	18	positive	Boc piperidine
+r18_pos_3	O=C(NCCC)Oc1ccccc1	18	positive	phenyl carbamate
+r18_neg_1	COC(=O)NC	18	negative	too small
+r18_neg_2	O=C1OCCN1	18	negative	oxazolidinone, ring carbonyl carbon atom
+r18_neg_3	CCCNC(=O)CCC	18	negative	amide, no second oxygen atom
+r19_neg_1	CCCOC(=O)NCCC	19	negative	carbamate, the carbonyl fragment C=O has only two heavy atoms (inactive at minimum size 3)
+r19_neg_2	CC(C)(C)OC(=O)NCc1ccccc1	19	negative	Boc benzylamine, carbonyl fragment too small
+r19_neg_3	CCCOC(=O)NC(=O)NCCC	19	negative	acyl urea nitrogen atom excluded
+r19_neg_4	O=C1OCCN1	19	negative	oxazolidinone
+r20_pos_1	CCCS(=O)(=O)NC(=O)CCC	20	positive	N-acyl sulphonamide
+r20_pos_2	Cc1ccc(S(=O)(=O)NC(=O)CC)cc1	20	positive	N-propionyl tosyl amide
+r20_pos_3	CS(=O)(=O)NC(=O)c1ccccc1	20	positive	N-benzoyl mesyl amide
+r20_neg_1	CCCS(=O)(=O)NCCC	20	negative	sulphonamide without acyl group
+r20_neg_2	CCCS(=O)(=O)NC=O	20	negative	formyl too small
+r20_neg_3	NS(=O)(=O)NC(=O)CC	20	negative	sulphamide, no carbon atom at the sulfur atom
+r21_pos_1	CCCS(=O)(=O)Oc1ccccc1	21	positive	aryl sulphonate
+r21_pos_2	Cc1ccc(S(=O)(=O)Oc2ccccc2)cc1	21	positive	phenyl tosylate
+r21_pos_3	CS(=O)(=O)Oc1ccc(C)cc1	21	positive	aryl mesylate
+r21_neg_1	CCCS(=O)(=O)OCCC	21	negative	alkyl sulphonate
+r21_neg_2	CCCS(=O)(=O)O	21	negative	sulphonic acid
+r21_neg_3	CCCS(=O)Oc1ccccc1	21	negative	sulphinate
+r22_pos_1	c1ccc(-n2cccc2)cc1	22	positive	N-phenyl pyrrole, neutral aromatic nitrogen atom (hydrogen added)
+r22_pos_2	c1ccc(-n2ccnc2)cc1	22	positive	N-phenyl imidazole
+r22_pos_3	Cc1ccc(-n2nccn2)cc1	22	positive	2-aryl 1,2,3-triazole
+r22_pos_4	c1ccc(-[n+]2ccccc2)cc1	22	positive	N-phenyl pyridinium, cationic aromatic nitrogen atom
+r22_neg_1	c1ccc2[nH]ccc2c1	22	negative	indole
+r22_neg_2	CCCn1cccc1	22	negative	aliphatic carbon atom at the aromatic nitrogen atom
+r23_pos_1	c1ccn(-n2cccc2)c1	23	positive	1,1'-bipyrrole
+r23_pos_2	c1nncn1-n1cccc1	23	positive	4-(pyrrol-1-yl)-1,2,4-triazole
+r23_pos_3	c1ccn(-n2ccnc2)c1	23	positive	1-(pyrrol-1-yl)imidazole
+r23_neg_1	c1ccc2[nH]ncc2c1	23	negative	indazole, ring bond
+r23_neg_2	c1ccn(-c2ccccc2)c1	23	negative	N-aryl pyrrole
+r24_pos_1	CCCc1ccccc1	24	positive	propyl benzene
+r24_pos_2	CCC(=O)c1ccccc1	24	positive	propiophenone
+r24_pos_3	OC(=O)Cc1ccccc1	24	positive	phenylacetic acid
+r24_neg_1	Cc1ccccc1	24	negative	toluene, too small
+r24_neg_2	c1ccc(C2CCCCC2)cc1	24	negative	cyclohexyl benzene, ring carbon atom
+r24_neg_3	c1ccc2c(c1)CCC2	24	negative	indane
+r25_pos_1	CCCCCC	25	positive	hexane
+r25_pos_2	CCCC=CCCC	25	positive	oct-4-ene, the double bond matches as well
+r25_pos_3	CCCC(C)(C)CCC	25	positive	quaternary carbon atom
+r25_neg_1	CCCCC	25	negative	pentane, too small
+r25_neg_2	CCCC(=O)CCC	25	negative	ketone, carbonyl carbon atom excluded
+r25_neg_3	C1CCCCC1	25	negative	cyclohexane
+r26_pos_1	CCCOCCC	26	positive	ether
+r26_pos_2	CCCNCCC	26	positive	amine
+r26_pos_3	CCCSCCC	26	positive	sulfide
+r26_pos_4	CCCC=NOCCC	26	positive	oxime ether, also the C=N double bond
+r26_neg_1	CCCCC1CCCO1	26	negative	only ring heteroatom
+r26_neg_2	COC	26	negative	too small
+r26_neg_3	COc1ccccc1	26	negative	anisole, methyl too small
+r27_pos_1	CCCS(=O)(=O)OCCC	27	positive	alkyl sulphonate
+r27_pos_2	Cc1ccc(S(=O)(=O)OCC(C)C)cc1	27	positive	isobutyl tosylate
+r27_pos_3	CS(=O)(=O)OCCCC	27	positive	butyl mesylate
+r27_neg_1	CS(=O)(=O)OC	27	negative	methyl mesylate, too small
+r27_neg_2	CCCS(=O)(=O)Oc1ccccc1	27	negative	aryl sulphonate
+r27_neg_3	O=S1(=O)CCCO1	27	negative	sultone, ring bonds
+r28_pos_1	CCCSSCCC	28	positive	dipropyl disulfide
+r28_pos_2	CC(C)SSC(C)C	28	positive	diisopropyl disulfide
+r28_pos_3	OC(=O)CCSSCCC(=O)O	28	positive	dithiodipropionic acid
+r28_neg_1	CSSC	28	negative	dimethyl disulfide, too small
+r28_neg_2	OC(=O)CCCCC1CCSS1	28	negative	lipoic acid, ring disulfide bond
+r29_pos_1	CCC=Cc1ccccc1	29	positive	1-phenylbutene
+r29_pos_2	C/C=C/c1ccc(O)cc1	29	positive	E-propenyl phenol, the configuration is lost
+r29_pos_3	CC(C)=Cc1ccccc1	29	positive	2-methylpropenyl benzene
+r29_neg_1	C=Cc1ccccc1	29	negative	styrene, too small
+r29_neg_2	c1ccc2c(c1)C=CC2	29	negative	indene, ring bond
+r30_pos_1	CCCOc1ccccc1	30	positive	propyl phenyl ether
+r30_pos_2	CC(=O)Oc1ccccc1	30	positive	phenyl acetate
+r30_pos_3	c1ccc(Oc2ccccc2)cc1	30	positive	diphenyl ether
+r30_neg_1	Oc1ccccc1	30	negative	phenol, too small
+r30_neg_2	COc1ccccc1	30	negative	anisole, too small
+r30_neg_3	c1ccc2c(c1)OCO2	30	negative	benzodioxole, ring bonds and fused ring atoms
+r31_pos_1	CCCNc1ccccc1	31	positive	N-propyl aniline
+r31_pos_2	CC(=O)Nc1ccccc1	31	positive	acetanilide
+r31_pos_3	c1ccc(N2CCOCC2)cc1	31	positive	N-phenyl morpholine
+r31_neg_1	Nc1ccccc1	31	negative	aniline, too small
+r31_neg_2	c1ccc2c(c1)NCC2	31	negative	indoline, ring bond
+r32_pos_1	CCCSc1ccccc1	32	positive	propyl phenyl sulfide
+r32_pos_2	CS(=O)(=O)c1ccccc1	32	positive	methyl phenyl sulfone
+r32_pos_3	c1ccc(Sc2ccccc2)cc1	32	positive	diphenyl sulfide
+r32_neg_1	Sc1ccccc1	32	negative	thiophenol, too small
+r32_neg_2	c1ccc2c(c1)SCC2	32	negative	2,3-dihydrobenzothiophene, ring bond
+r33_pos_1	CCCC#Cc1ccccc1	33	positive	1-phenylpentyne
+r33_pos_2	CC(C)(O)C#Cc1ccccc1	33	positive	aryl propargyl alcohol
+r33_pos_3	C(#Cc1ccccc1)c1ccccc1	33	positive	diphenylacetylene
+r33_neg_1	C#Cc1ccccc1	33	negative	ethynyl benzene, too small
+r33_neg_2	N#Cc1ccccc1	33	negative	benzonitrile
+ring_1	OC(=O)CCCCC1CCSS1	28	negative	lipoic acid: ring bond matches of rules 7 and 28 (overlapping products in the published procedure)
+ring_2	CCCCN1CCCCC1	3	positive	N-butyl piperidine: rule 3 matches ring bonds, which are not cleaved
+ring_3	CCCO[C@@H]1O[C@H](CO)[C@@H](O)[C@H](O)[C@H]1O	7	positive	propyl glucoside: ring bond matches of rule 7 at the anomeric carbon atom
+ring_4	CCCCC1CCC2CCCCC2C1	0	-	decalin with butyl group
+protected_fused_1	CCCCc1cccc2ccccc12	14	negative	1-butyl naphthalene: neighbour of a fused ring atom, rules 14 and 24 skipped
+protected_fused_2	CCCCc1ccc2ccccc2c1	14	positive	2-butyl naphthalene: not protected
+protected_spiro_1	CCCOC1CCCCC12CCCC2	6	negative	spiro compound, ring carbon atom next to the spiro atom protected, rule 6 skipped
+protected_spiro_2	CCCOCC1CCC2(CC1)CCCC2	6	positive	spiro compound, substituent two bonds away from the spiro atom
+protected_bridged_1	CCCOC1CC2CCC1C2	6	negative	2-norbornyl propyl ether: bridgehead neighbour protected, rule 6 skipped
+protected_bridged_2	CCCC(=O)NC12CC3CC(CC(C3)C1)C2	1	negative	adamantyl amide: the nitrogen atom is a neighbour of a protected atom
+protected_neighbour_1	CCCOCc1cccc2ccccc12	6	negative	1-naphthylmethyl ether: the benzylic carbon atom is protected as neighbour, so rule 6 is skipped as a whole
+protected_neighbour_2	CCCOCCc1cccc2ccccc12	6	positive	2-(1-naphthyl)ethyl ether: the matched atoms are not protected
+size_1	CCOCC	6	negative	diethyl ether, all parts too small
+size_2	CCCOCC	6	positive	ethyl propyl ether, only the cleavage at the propyl side
+size_3	CCCC(=O)OCC	2	positive	ethyl ester, the ethoxy part has three heavy atoms
+charged_1	CCCC[N+](C)(C)CCCC.[Cl-]	9	positive	quaternary ammonium salt
+charged_2	CCCCCCC(=O)[O-].[Na+]	25	positive	carboxylate salt
+charged_3	CCCCS(=O)(=O)[O-]	26	positive	sulphonate anion
+charged_4	CCC[N+](=O)[O-]	26	positive	nitro compound
+charged_5	C[n+]1ccc(-c2cc[n+](C)cc2)cc1	12	positive	paraquat dication
+stereo_1	CCCC[C@](C)(CC)OCCC	6	positive	quaternary stereocentre at the cleaved bond, configuration kept
+stereo_2	CCC[C@H](O)COCCC	6	positive	stereocentre next to the cleaved bond
+stereo_3	CCC/C(=C/CC)OCCC	26	positive	stereo double bond at the cleaved bond, configuration kept with respect to the remaining substituent
+stereo_4	CCC/C=C/COCCC	6	positive	stereo double bond next to the cleaved bond
+stereo_5	CCCC/C=C/CCCC	8	positive	cleaved stereo double bond
+stereo_6	CCCC[C@@H](C)OCCCC	6	positive	stereocentre with hydrogen at the cleaved bond, lost by the cleavage
+stereo_7	C[C@H](N)C(=O)N[C@@H](CC(C)C)C(=O)O	1	positive	dipeptide Ala-Leu
+salt_1	CCCCCCCC(=O)OCCCC.[K+].[Br-]	2	positive	ester with counter ions
+salt_2	CCCCN(CCCC)CCCC.Cl	3	positive	amine hydrochloride written as two components
+pseudo_1	*CCCOCCC	6	positive	pseudo atom at the end of a chain
+pseudo_2	*C1CCCO1	7	negative	rule 7 matches the bond to the pseudo atom, which has no heavy atom
+pseudo_3	*c1ccc(CCCC)cc1	14	positive	pseudo atom at an aromatic ring
+X2_1	CCCCn1cccc1	10	positive	neutral aromatic nitrogen atom: unparsable product in the published procedure, cleaved here
+X3_1	CCCOc1cccs1	6	positive	thienyl ether: unparsable product of the ether rule in the published procedure, cleaved here
+CNP0282693.1	COC1=CC=CC2=C1C(=O)C1=C(O)C3=C(C[C@@](O)(C(=O)CO)C[C@@H]3O[C@H]3C[C@H](N)C[C@H](C)O3)C(O)=C1C2=O	0	example	example data set of the authors
+CNP0214016.1	COC1=CC2=CC(=C1Cl)N(C)C(=O)C[C@H](OC(=O)[C@H](C)N(C)C(C)=O)[C@]1(C)O[C@H]1[C@H](C)[C@@H]1C[C@@](O)(NC(=O)O1)[C@H](OC)/C=C/C=C(\C)C2	0	example	example data set of the authors
+CNP0185052.1	NC1=NC(N)=C2N=C(CNC3=CC=C(C(=O)N[C@@H](CCCNC(=O)C4=CC=CC=C4C(=O)O)C(=O)O)C=C3)C=NC2=N1	0	example	example data set of the authors
+CNP0074548.1	CO/N=C(\C(=O)N[C@@H]1C(=O)N2C(C(=O)[O-])=C(COC(N)=O)CS[C@H]12)C1=CC=CO1.[Na+]	0	example	example data set of the authors
