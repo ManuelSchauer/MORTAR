@@ -30,6 +30,7 @@ import de.unijena.cheminf.mortar.model.util.ChemUtil;
 import javafx.beans.property.Property;
 
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.openscience.cdk.exception.CDKException;
 import org.openscience.cdk.interfaces.IAtom;
@@ -45,6 +46,9 @@ import org.openscience.cdk.smiles.SmilesParser;
 import org.openscience.cdk.stereo.Stereocenters;
 import org.openscience.cdk.tools.manipulator.AtomContainerManipulator;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -679,6 +683,68 @@ public class RECAPFragmenterTest {
                 RECAPFragmenterTest.toStereoSmilesOfFragments(tmpFragmenter.fragmentMolecule(tmpStar), false),
                 RECAPFragmenterTest.toStereoSmilesOfFragments(
                         RECAPFragmenterTest.fragmentsOf(tmpRoot.getLeaves()), false));
+    }
+    //
+    /**
+     * Tests the rules in SMIRKS notation: there are eleven SMIRKS for the default and for the strict rules, each with
+     * the two mapped atoms of the cleaved bond on the left side and the two link atoms with the bond type number on the
+     * right side; the rules for amines, ethers and biaryls have no strict functional group exclusions, all others have.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    public void bondTypeSmirksTest() throws Exception {
+        List<String> tmpSmirksList = RECAPFragmenter.getBondTypeSmirks(false);
+        List<String> tmpStrictSmirksList = RECAPFragmenter.getBondTypeSmirks(true);
+        Assertions.assertEquals(11, tmpSmirksList.size());
+        Assertions.assertEquals(11, tmpStrictSmirksList.size());
+        Assertions.assertEquals(RECAPFragmenter.getBondTypeNames().size(), tmpSmirksList.size());
+        Assertions.assertEquals("[C;$(C=O);!$(C(~[#7])~[#7]):1]-!@[#7;+0:2]>>[*:1]-[1*].[*:2]-[1*]", tmpSmirksList.get(0));
+        Assertions.assertEquals("[C;!$(C(=*)=*):1]=!@[C;!$(C(=*)=*):2]>>[*:1]=[6*].[*:2]=[6*]", tmpSmirksList.get(5));
+        Assertions.assertEquals("[c:1]-!@[c:2]>>[*:1]-[10*].[*:2]-[10*]", tmpSmirksList.get(9));
+        for (int i = 0; i < tmpSmirksList.size(); i++) {
+            int tmpBondType = i + 1;
+            for (String tmpSmirks : new String[] {tmpSmirksList.get(i), tmpStrictSmirksList.get(i)}) {
+                String tmpBond = tmpBondType == 6 ? "=" : "-";
+                Assertions.assertTrue(tmpSmirks.endsWith(String.format(">>[*:1]%s[%d*].[*:2]%s[%d*]", tmpBond,
+                        tmpBondType, tmpBond, tmpBondType)), tmpSmirks);
+                String tmpLeftSide = tmpSmirks.substring(0, tmpSmirks.indexOf(">>"));
+                Assertions.assertTrue(tmpLeftSide.contains(":1]" + tmpBond + "!@["), tmpSmirks);
+                Assertions.assertTrue(tmpLeftSide.endsWith(":2]"), tmpSmirks);
+                //the left side is a valid SMARTS pattern of two atoms
+                Assertions.assertDoesNotThrow(() -> SmartsPattern.create(tmpLeftSide), tmpSmirks);
+            }
+            boolean tmpHasStrictExclusions = tmpBondType != 3 && tmpBondType != 5 && tmpBondType != 10;
+            Assertions.assertEquals(tmpHasStrictExclusions, !tmpSmirksList.get(i).equals(tmpStrictSmirksList.get(i)),
+                    tmpSmirksList.get(i));
+        }
+        //the lists cannot be altered
+        Assertions.assertThrows(UnsupportedOperationException.class, () -> tmpSmirksList.add(""));
+    }
+    //
+    /**
+     * Tests that the SMIRKS of the default rules listed in the class documentation of the RECAPFragmenter are the ones
+     * created from the rules in use, so that the documentation cannot deviate from the implementation. Skipped if the
+     * source file is not available, i.e. if the test is not run from the project directory.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    public void bondTypeSmirksDocumentationTest() throws Exception {
+        Path tmpSourceFile = Path.of("src", "main", "java", "de", "unijena", "cheminf", "mortar", "model",
+                "fragmentation", "algorithm", "RECAPFragmenter.java");
+        Assumptions.assumeTrue(Files.isRegularFile(tmpSourceFile), "Source file of the RECAPFragmenter not found.");
+        List<String> tmpSourceLines = Files.readAllLines(tmpSourceFile, StandardCharsets.UTF_8);
+        List<String> tmpSmirksList = RECAPFragmenter.getBondTypeSmirks(false);
+        for (int i = 0; i < tmpSmirksList.size(); i++) {
+            String tmpDocumentationLine = String.format(" * %2d  %s", i + 1, tmpSmirksList.get(i));
+            Assertions.assertTrue(tmpSourceLines.contains(tmpDocumentationLine),
+                    "Not in the class documentation: " + tmpDocumentationLine);
+        }
+        //no further SMIRKS are listed
+        long tmpDocumentedSmirks = tmpSourceLines.stream()
+                .filter(aLine -> aLine.startsWith(" * ") && aLine.contains(">>[*:1]")).count();
+        Assertions.assertEquals(tmpSmirksList.size(), tmpDocumentedSmirks);
     }
     //
     /**

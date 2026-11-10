@@ -134,6 +134,31 @@ import java.util.logging.Logger;
  *     nitrogen atoms of pyrimidinones (uracil) are of type 8, as in Figure 9.</li>
  * </ul>
  *
+ * <p><b>Rules in SMIRKS notation.</b> Every rule can be written as a SMIRKS with two mapped atoms, the atoms of the
+ * cleaved bond: the left side is the acyclic bond with the environments of its two atoms, the right side replaces it
+ * by two bonds to link atoms that carry the number of the bond type. The eleven rules of the list above are (see
+ * {@link #getBondTypeSmirks(boolean)}, which also returns the rules with the strict functional group exclusions
+ * described below):
+ * <pre>{@code
+ *  1  [C;$(C=O);!$(C(~[#7])~[#7]):1]-!@[#7;+0:2]>>[*:1]-[1*].[*:2]-[1*]
+ *  2  [C;$(C=O):1]-!@[O;D2;$(O([#6])[#6]):2]>>[*:1]-[2*].[*:2]-[2*]
+ *  3  [C;X4:1]-!@[N;+0;X3;!$(N[#6]=,#[#7,#8,#16]);!$(N[#7,#8,#15,#16]):2]>>[*:1]-[3*].[*:2]-[3*]
+ *  4  [#7;+0:1]-!@[C;$(C(=O)(~[#7])~[#7]):2]>>[*:1]-[4*].[*:2]-[4*]
+ *  5  [C;X4:1]-!@[O;D2;+0;$(O([#6])[#6]);!$(O[#6]=,#[#7,#8,#16]):2]>>[*:1]-[5*].[*:2]-[5*]
+ *  6  [C;!$(C(=*)=*):1]=!@[C;!$(C(=*)=*):2]>>[*:1]=[6*].[*:2]=[6*]
+ *  7  [N+;D4;!$([N+]~[!#6]):1]-!@[#6:2]>>[*:1]-[7*].[*:2]-[7*]
+ *  8  [n:1]-!@[C:2]>>[*:1]-[8*].[*:2]-[8*]
+ *  9  [N;R;$(N@C=O):1]-!@[C:2]>>[*:1]-[9*].[*:2]-[9*]
+ * 10  [c:1]-!@[c:2]>>[*:1]-[10*].[*:2]-[10*]
+ * 11  [#7;+0:1]-!@[S;X4;$(S(=O)=O):2]>>[*:1]-[11*].[*:2]-[11*]
+ * }</pre>
+ * The SMIRKS are a notation of the rules; they are not applied one after the other as reactions. All rules are
+ * matched on the intact molecule, a bond that matches several rules is assigned the lowest bond type number, bonds
+ * whose cleavage would cut off a small terminal group are skipped, and the remaining bonds are cleaved simultaneously
+ * (see below). A sequential application as reactions gives other fragments, since every cleavage changes the
+ * environments of the neighbouring atoms: e.g. the nitrogen atom of a cleaved amide is not acylated anymore, so that
+ * rule 3 would cleave it off its sp3 carbon atom afterwards.
+ *
  * <p><b>Algorithm.</b>
  * <ol>
  *     <li>Explicit hydrogen atoms are suppressed, and ring membership and aromaticity are perceived with the Daylight
@@ -497,11 +522,24 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
      *
      * @param bondType number of the RECAP bond type, 1 to 11
      * @param name name of the bond type
-     * @param leftEnvironment SMARTS of the left atom
+     * @param leftEnvironment SMARTS of the left atom, one atom in square brackets
      * @param order order of the bond, single or double
-     * @param rightEnvironment SMARTS of the right atom
+     * @param rightEnvironment SMARTS of the right atom, one atom in square brackets
      */
     private record BondRule(int bondType, String name, String leftEnvironment, IBond.Order order, String rightEnvironment) {
+        /**
+         * Returns this rule in SMIRKS notation, see {@link RECAPFragmenter#getBondTypeSmirks(boolean)}: the atom maps 1
+         * and 2 are inserted into the environments of the left and the right atom.
+         *
+         * @return SMIRKS of the rule
+         */
+        String toSmirks() {
+            String tmpBond = this.order == IBond.Order.DOUBLE ? "=" : "-";
+            return String.format("%s:1]%s!@%s:2]>>[*:1]%s[%d*].[*:2]%s[%d*]",
+                    this.leftEnvironment.substring(0, this.leftEnvironment.length() - 1), tmpBond,
+                    this.rightEnvironment.substring(0, this.rightEnvironment.length() - 1),
+                    tmpBond, this.bondType, tmpBond, this.bondType);
+        }
     }
     //
     /**
@@ -819,6 +857,28 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
             tmpNames.add(tmpRule.name());
         }
         return Collections.unmodifiableList(tmpNames);
+    }
+    //
+    /**
+     * Returns all RECAP bond rules in SMIRKS notation, in the order of their bond type numbers (index 0 is bond type
+     * 1), e.g. {@code [C;X4:1]-!@[N;...:2]>>[*:1]-[3*].[*:2]-[3*]} for amines. The atoms with the maps 1 and 2 are the
+     * atoms of the cleaved bond with their environments; the right side replaces the bond by two bonds to link atoms
+     * that carry the bond type number. The SMIRKS are created from the rule definitions that the fragmenter matches, so
+     * they always describe the rules in use. They are a notation only: the fragmenter matches all rules on the intact
+     * molecule, assigns the lowest bond type number to a bond that matches several rules, skips bonds that would cut
+     * off a small terminal group, and cleaves all remaining bonds simultaneously (see class documentation), which a
+     * sequential application of the SMIRKS as reactions does not reproduce.
+     *
+     * @param isStrict true for the rules with the strict functional group exclusions (see class documentation)
+     * @return unmodifiable list of the eleven rules as SMIRKS
+     */
+    public static List<String> getBondTypeSmirks(boolean isStrict) {
+        List<BondRule> tmpRules = isStrict ? RECAPFragmenter.STRICT_RULES : RECAPFragmenter.RULES;
+        List<String> tmpSmirksList = new ArrayList<>(tmpRules.size());
+        for (BondRule tmpRule : tmpRules) {
+            tmpSmirksList.add(tmpRule.toSmirks());
+        }
+        return Collections.unmodifiableList(tmpSmirksList);
     }
     //</editor-fold>
     //

@@ -31,7 +31,9 @@ import org.junit.jupiter.api.Test;
 import org.openscience.cdk.exception.CDKException;
 import org.openscience.cdk.interfaces.IAtom;
 import org.openscience.cdk.interfaces.IAtomContainer;
+import org.openscience.cdk.interfaces.IBond;
 import org.openscience.cdk.interfaces.IPseudoAtom;
+import org.openscience.cdk.smarts.SmartsPattern;
 import org.openscience.cdk.smiles.SmiFlavor;
 import org.openscience.cdk.smiles.SmilesGenerator;
 
@@ -46,7 +48,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
+import java.util.TreeMap;
 
 /**
  * Cross-validates the {@link RECAPFragmenter} against an independent reference implementation of the same RECAP rules
@@ -242,6 +246,70 @@ public class RECAPFragmenterReferenceTest {
         Assertions.assertTrue(tmpMolecules > 550);
         //the canonical atom order of the CDK differs from the atom order of the input SMILES, written by the RDKit
         Assertions.assertTrue(tmpReorderedMolecules > tmpMolecules / 2);
+        Assertions.assertEquals("", tmpMismatches.toString());
+    }
+    //
+    /**
+     * Checks for all molecules of the BIOFACQUIM data set that the rules in SMIRKS notation (see
+     * {@link RECAPFragmenter#getBondTypeSmirks(boolean)}) describe the rules that the fragmenter applies, with default
+     * and with strict functional group rules: the left side of every SMIRKS is matched as a SMARTS pattern of the CDK
+     * on the prepared molecule, the bond between its two mapped atoms is assigned the bond type of the first rule that
+     * matches it, and these bonds and bond types are compared to the ones that the fragmenter identifies.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    public void biofacquimSmirksTest() throws Exception {
+        int tmpMolecules = 0;
+        int tmpBonds = 0;
+        StringBuilder tmpMismatches = new StringBuilder();
+        for (boolean tmpIsStrict : new boolean[] {false, true}) {
+            RECAPFragmenter tmpFragmenter = new RECAPFragmenter();
+            tmpFragmenter.setStrictFunctionalGroupsSetting(tmpIsStrict);
+            List<String> tmpSmirksList = RECAPFragmenter.getBondTypeSmirks(tmpIsStrict);
+            List<SmartsPattern> tmpPatterns = new ArrayList<>(tmpSmirksList.size());
+            for (String tmpSmirks : tmpSmirksList) {
+                //the molecules are prepared by the fragmenter
+                tmpPatterns.add(SmartsPattern.create(tmpSmirks.substring(0, tmpSmirks.indexOf(">>"))).setPrepare(false));
+            }
+            try (InputStream tmpStream = RECAPFragmenterReferenceTest.class.getResourceAsStream(
+                    RECAPFragmenterReferenceTest.BIOFACQUIM_REFERENCE_FILE)) {
+                Objects.requireNonNull(tmpStream, "Reference file not found.");
+                BufferedReader tmpReader = new BufferedReader(new InputStreamReader(tmpStream, StandardCharsets.UTF_8));
+                String tmpLine;
+                while ((tmpLine = tmpReader.readLine()) != null) {
+                    if (tmpLine.isBlank() || tmpLine.startsWith("#")) {
+                        continue;
+                    }
+                    String[] tmpColumns = tmpLine.split("\t", -1);
+                    tmpMolecules++;
+                    IAtomContainer tmpMolecule = RECAPFragmenterTest.parse(tmpColumns[1]);
+                    tmpFragmenter.prepareMolecule(tmpMolecule);
+                    //bond index -> bond type
+                    Map<Integer, Integer> tmpFragmenterBonds = new TreeMap<>();
+                    for (RECAPFragmenter.RECAPBond tmpRECAPBond : tmpFragmenter.findRECAPBonds(tmpMolecule)) {
+                        tmpFragmenterBonds.put(tmpRECAPBond.bond().getIndex(), tmpRECAPBond.bondType());
+                    }
+                    Map<Integer, Integer> tmpSmirksBonds = new TreeMap<>();
+                    for (int i = 0; i < tmpPatterns.size(); i++) {
+                        for (int[] tmpMapping : tmpPatterns.get(i).matchAll(tmpMolecule)) {
+                            IBond tmpBond = tmpMolecule.getBond(tmpMolecule.getAtom(tmpMapping[0]),
+                                    tmpMolecule.getAtom(tmpMapping[1]));
+                            //the rule with the lowest bond type number is applied
+                            tmpSmirksBonds.putIfAbsent(tmpBond.getIndex(), i + 1);
+                        }
+                    }
+                    tmpBonds += tmpFragmenterBonds.size();
+                    if (!tmpFragmenterBonds.equals(tmpSmirksBonds)) {
+                        tmpMismatches.append(String.format("%s %s (strict %s)%n  fragmenter: %s%n  SMIRKS: %s%n",
+                                tmpColumns[0], tmpColumns[1], tmpIsStrict, tmpFragmenterBonds, tmpSmirksBonds));
+                    }
+                }
+            }
+        }
+        System.out.printf("%d molecules (default and strict), %d RECAP bonds%n", tmpMolecules, tmpBonds);
+        Assertions.assertTrue(tmpMolecules > 1100);
+        Assertions.assertTrue(tmpBonds > 1000);
         Assertions.assertEquals("", tmpMismatches.toString());
     }
     //
