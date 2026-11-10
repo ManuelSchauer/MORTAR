@@ -37,6 +37,7 @@ import javafx.beans.property.Property;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.SimpleIntegerProperty;
 
+import org.openscience.cdk.aromaticity.Kekulization;
 import org.openscience.cdk.exception.CDKException;
 import org.openscience.cdk.graph.ConnectedComponents;
 import org.openscience.cdk.graph.ConnectivityChecker;
@@ -97,6 +98,8 @@ import java.util.logging.Logger;
  *     <li>sulphonamide: nitrogen - sulfonyl sulfur</li>
  * </ol>
  * Ring bonds are never cleaved. If a bond matches more than one rule, the rule with the lowest number is applied.
+ * Protonated amines, e.g. of salts drawn as [NH+] or [NH3+], are not cleaved as amines, since rule 3 requires a neutral
+ * nitrogen atom (only quaternary ammonium ions with four carbon substituents are cleaved, by rule 7).
  *
  * <p><b>Rules of the publication and their formulation.</b> The publication (Lewell et al. 1998) shows the eleven
  * bond types as structure drawings (Figure 2) and states that the SMARTS of the program can be defined by the user;
@@ -115,13 +118,17 @@ import java.util.logging.Logger;
  *     <li>Small terminal groups are not cleaved off: according to the text, a terminal fragment that contains only
  *     small functional groups (hydrogen, methyl, ethyl, propyl, butyl) is left uncleaved, so that e.g. the methoxy
  *     groups of cisapride remain at the fragments. The fragments of the publication show that this also applies to
- *     ethyl and methyl esters and acetates, which are not cleaved (Figure 9), but not to alkylated amino groups:
+ *     ethyl and methyl esters and acetates, which are not cleaved (Figure 9), and to N-methyl amides (the fragment
+ *     indole-CH2-CH([1]NH)-C(=O)-NH-CH3 in Figure 12), but not to alkylated amino groups at amine bonds:
  *     dimethylamino is the most frequent fragment, and diethylamino, isopropylamino and tert-butylamino are frequent
  *     fragments (Figures 9 and 10). Therefore, a terminal part (one attachment point) is not cleaved off if it is an
  *     acyclic hydrocarbon group with at most four carbon atoms (setting, default
- *     {@value #SMALL_GROUP_MAXIMUM_CARBON_ATOMS_DEFAULT}), if it is an oxygen atom, a carbonyl or a sulfonyl group
- *     with hydrogen or such a hydrocarbon group (e.g. methoxy, ethoxy, formyl, acetyl, mesyl), or if it is an amino
- *     group (NH2). Linking fragments of any size, like the propyl linker of cisapride, are allowed.</li>
+ *     {@value #SMALL_GROUP_MAXIMUM_CARBON_ATOMS_DEFAULT}), if it is an oxygen atom, a carbonyl or a sulfonyl group, or
+ *     the nitrogen atom of an amide, urea or sulphonamide bond, with hydrogen or such a hydrocarbon group (e.g.
+ *     methoxy, ethoxy, formyl, acetyl, mesyl, the N-methyl and N,N-diethyl groups of amides), or if it is an amino
+ *     group (NH2) at any other bond type. Explicit hydrogen atoms that remain after the suppression of hydrogen atoms
+ *     (isotopes) are treated like implicit ones, so e.g. a deuterated methoxy group is kept like a methoxy group.
+ *     Linking fragments of any size, like the propyl linker of cisapride, are allowed.</li>
  *     <li>The attachment points are labelled with the number of the bond type ("isotopic" labels).</li>
  *     <li>If a bond matches more than one rule, the lowest bond type number is assigned; e.g. bonds of the aromatic
  *     nitrogen atoms of pyrimidinones (uracil) are of type 8, as in Figure 9.</li>
@@ -130,7 +137,9 @@ import java.util.logging.Logger;
  * <p><b>Algorithm.</b>
  * <ol>
  *     <li>Explicit hydrogen atoms are suppressed, and ring membership and aromaticity are perceived with the Daylight
- *     model, on which the SMARTS semantics of the rules are based.</li>
+ *     model, on which the SMARTS semantics of the rules are based. Since the aromaticity perception needs the bond
+ *     orders, a Kekulé structure is assigned first if bond orders are unset (e.g. the aromatic bonds of a molecule
+ *     whose kekulization failed on import); molecules that cannot be kekulized are not fragmented.</li>
  *     <li>Every acyclic, non-aromatic single or double bond is tested against the rules in the order of their numbers;
  *     the atom environments are evaluated lazily and only once per atom.</li>
  *     <li>The cleavable bonds are processed in the order of their bond type number (and bond index); a bond is cleaved
@@ -149,12 +158,13 @@ import java.util.logging.Logger;
  *
  * <p><b>Strict functional groups (setting, default off).</b> The rules of the publication also cleave bonds that are
  * part of larger functional groups. With the strict setting, the following bonds are not cleaved in addition: amides
- * and esters of carbamates, carbonates, haloformates and 1,2-dicarbonyl compounds, anhydrides, imides, acyl ureas and
- * ureas at imide nitrogen atoms, hydrazides, hydroxamic acids, N-acyl sulphonamides, sulphamides and sulphamates, acyl
- * ammonium ions, bonds of lactam nitrogen atoms in cyclic ureas, carbamates, imides, amidines and hydrazides, bonds of
- * aromatic and lactam nitrogen atoms to carbonyl, imidoyl and thiocarbonyl carbon atoms, olefins with a nitrogen,
- * oxygen or sulfur substituent (e.g. enol ethers, enamines), and carbon-carbon double bonds that are conjugated with
- * another carbon-carbon double or triple bond (polyenes, which would otherwise be cut into two-carbon fragments).
+ * and esters of carbamates, carbonates, haloformates and 1,2-dicarbonyl compounds, anhydrides, imides, acyl ureas,
+ * sulphonyl ureas and ureas at imide nitrogen atoms, hydrazides, hydroxamic acids, N-acyl sulphonamides, sulphamides
+ * and sulphamates, acyl ammonium ions, bonds of lactam nitrogen atoms in cyclic ureas, carbamates, imides, amidines and
+ * hydrazides, bonds of aromatic and lactam nitrogen atoms to carbonyl, imidoyl and thiocarbonyl carbon atoms, olefins
+ * with a nitrogen, oxygen or sulfur substituent (e.g. enol ethers, enamines), and carbon-carbon double bonds that are
+ * conjugated with another carbon-carbon double or triple bond (polyenes, which would otherwise be cut into two-carbon
+ * fragments).
  * Double bonds conjugated with a carbonyl group or an aromatic ring are still cleaved, since they are formed by
  * olefinations like the Horner-Wadsworth-Emmons or Wittig reaction. The exclusions follow the test cases of the RECAP
  * re-implementation for the CDK by Jonas Schaub (see the test resource RECAP_Rule_Cases.tsv).
@@ -165,7 +175,10 @@ import java.util.logging.Logger;
  * small terminal group is cut off. Every set of atoms is represented by one node only, so the hierarchy is a directed
  * acyclic graph whose leaves usually are the single-pass fragments; fragments that occur several times in the molecule
  * are kept as separate nodes. Since the number of nodes grows exponentially with the number of RECAP bonds around a
- * common core, molecules with more than {@value #MAXIMUM_HIERARCHY_NODE_COUNT} nodes are rejected.
+ * common core, and the total size of the fragments grows with the third power of the number of RECAP bonds in a
+ * chain, molecules whose hierarchy has more than {@value #MAXIMUM_HIERARCHY_NODE_COUNT} nodes or more than
+ * {@value #MAXIMUM_HIERARCHY_ATOM_COUNT} atoms in the fragments of all nodes together are rejected before the fragments
+ * are created, which bounds the memory consumption (about 1 KB per fragment atom).
  *
  * <p><b>Differences to the RECAP implementation of the RDKit.</b> The RDKit implementation removes the oxygen atom of
  * cleaved ethers, the nitrogen atom of cleaved amines and the carbonyl group of cleaved ureas, cleaves aryl ethers
@@ -441,6 +454,15 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
      * for k substituents), so molecules whose hierarchy exceeds this number are rejected.
      */
     public static final int MAXIMUM_HIERARCHY_NODE_COUNT = 10000;
+    /**
+     * Maximum total number of atoms of the fragments of all nodes of a RECAP hierarchy (see
+     * {@link #buildHierarchy(IAtomContainer)}), without link atoms and including the root. The fragments need about
+     * 1 KB of memory per atom, and their total size grows with the third power of the number of cleavable bonds in a
+     * chain (e.g. about 136,000 atoms for a peptide of 40 amino acids) and exponentially with the number of cleavable
+     * bonds around a common core, so molecules whose hierarchy exceeds this number are rejected before its fragments
+     * are created.
+     */
+    public static final int MAXIMUM_HIERARCHY_ATOM_COUNT = 200000;
     /**
      * Key of the atom property of link atoms that holds the number of their RECAP bond type (Integer, 1 to 11).
      */
@@ -914,8 +936,11 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
      * clone (or its disconnected parts, e.g. counter ions, separately) is returned or, depending on the respective
      * setting, no fragment is returned.</p>
      *
-     * @throws IllegalArgumentException also if the RECAP hierarchy of the molecule has more than
-     *                                  {@link #MAXIMUM_HIERARCHY_NODE_COUNT} nodes
+     * @throws IllegalArgumentException also if the molecule has bonds with unset order and cannot be kekulized, or,
+     *                                  with the fragment output option
+     *                                  {@link FragmentOutputOption#ALL_HIERARCHY_FRAGMENTS}, if the RECAP hierarchy of
+     *                                  the molecule has more than {@link #MAXIMUM_HIERARCHY_NODE_COUNT} nodes or more
+     *                                  than {@link #MAXIMUM_HIERARCHY_ATOM_COUNT} atoms in all fragments together
      */
     @Override
     public List<IAtomContainer> fragmentMolecule(IAtomContainer aMolecule)
@@ -1009,16 +1034,20 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
      * are represented by several nodes, so their multiplicity is kept. If the molecule consists of several disconnected
      * parts, e.g. a salt, the parts without a cleavable bond are children of the root as well. The leaves of the
      * hierarchy usually are the fragments of the single-pass cleavage. The link atoms (or hydrogen atoms) and stereo
-     * elements of the fragments are created as in {@link #fragmentMolecule(IAtomContainer)}.
+     * elements of the fragments are created as in {@link #fragmentMolecule(IAtomContainer)}. To bound the memory
+     * consumption, the size of the hierarchy is checked before its fragments are created: it must not have more than
+     * {@link #MAXIMUM_HIERARCHY_NODE_COUNT} nodes, and the fragments of all nodes together must not have more than
+     * {@link #MAXIMUM_HIERARCHY_ATOM_COUNT} atoms (without link atoms).
      *
      * @param aMolecule the molecule to fragment, it is not altered
      * @return the root node of the hierarchy, its fragment is the prepared clone of the molecule (explicit hydrogen
-     *         atoms suppressed, Daylight aromaticity)
+     *         atoms suppressed, Kekulé structure assigned if bond orders were unset, Daylight aromaticity)
      * @throws NullPointerException if the given molecule is null
      * @throws IllegalArgumentException if the molecule cannot be fragmented (see
      *                                  {@link #canBeFragmented(IAtomContainer)}), if an error occurs during its
-     *                                  preparation, or if its hierarchy has more than
-     *                                  {@link #MAXIMUM_HIERARCHY_NODE_COUNT} nodes
+     *                                  preparation (e.g. bonds with unset order that cannot be kekulized), or if its
+     *                                  hierarchy has more than {@link #MAXIMUM_HIERARCHY_NODE_COUNT} nodes or more than
+     *                                  {@link #MAXIMUM_HIERARCHY_ATOM_COUNT} atoms in all fragments together
      * @throws CloneNotSupportedException if the molecule cannot be cloned
      */
     public RECAPHierarchyNode buildHierarchy(IAtomContainer aMolecule)
@@ -1041,10 +1070,15 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
     //<editor-fold desc="Package-private methods">
     /**
      * Prepares the given molecule (in place) for the matching of the RECAP rules: missing implicit hydrogen counts are
-     * set, explicit hydrogen atoms are suppressed, and ring membership and aromaticity (Daylight model) are perceived.
+     * set, a Kekulé structure is assigned if the order of a bond is unset (e.g. the aromatic bonds of a molecule
+     * parsed without kekulization or whose kekulization failed on import), explicit hydrogen atoms are suppressed, and
+     * ring membership and aromaticity (Daylight model) are perceived. The Kekulé structure is needed because the
+     * aromaticity perception clears the aromaticity flags of the input and determines the aromaticity from the bond
+     * orders, so aromatic rings with unset bond orders would otherwise be regarded as non-aromatic.
      *
      * @param aMolecule the molecule to prepare, it is altered
-     * @throws CDKException if implicit hydrogen counts are missing and cannot be determined
+     * @throws CDKException if implicit hydrogen counts are missing and cannot be determined, or if the order of a bond
+     *                      is unset and no Kekulé structure can be assigned
      */
     void prepareMolecule(IAtomContainer aMolecule) throws CDKException {
         boolean tmpIsHydrogenCountMissing = false;
@@ -1060,6 +1094,26 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
         if (tmpIsHydrogenCountMissing) {
             AtomContainerManipulator.percieveAtomTypesAndConfigureAtoms(aMolecule);
             CDKHydrogenAdder.getInstance(aMolecule.getBuilder()).addImplicitHydrogens(aMolecule);
+        }
+        boolean tmpIsBondOrderUnset = false;
+        for (IBond tmpBond : aMolecule.bonds()) {
+            if (Objects.isNull(tmpBond.getOrder()) || tmpBond.getOrder() == IBond.Order.UNSET) {
+                //the kekulization expects UNSET instead of null
+                tmpBond.setOrder(IBond.Order.UNSET);
+                tmpIsBondOrderUnset = true;
+            }
+        }
+        if (tmpIsBondOrderUnset) {
+            //assigns single and double bonds to the bonds of the aromatic atoms, throws a CDKException if not possible
+            Kekulization.kekulize(aMolecule);
+            for (IBond tmpBond : aMolecule.bonds()) {
+                //the kekulization leaves bonds unset that are not flagged as aromatic and receive no double bond
+                if (tmpBond.getOrder() == IBond.Order.UNSET) {
+                    throw new CDKException(String.format("The order of the bond between the atoms %d and %d is unset "
+                            + "and cannot be determined by kekulization.", tmpBond.getBegin().getIndex(),
+                            tmpBond.getEnd().getIndex()));
+                }
+            }
         }
         AtomContainerManipulator.suppressHydrogens(aMolecule);
         //marks ring atoms and bonds, and applies the Daylight aromaticity model after clearing existing aromaticity flags
@@ -1110,7 +1164,7 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
      * Selects the bonds to cleave from the given cleavable bonds, so that no small terminal group is cleaved off. The
      * bonds are processed in the order of their bond type (and bond index); a bond is selected unless one of the two
      * parts that result from its cleavage, together with the bonds selected before, is a small terminal group, see
-     * {@link #isSmallTerminalGroup(IAtomContainer, int, int[][], GraphUtil.EdgeToBondMap, boolean[], int)}.
+     * {@link #isSmallTerminalGroup(IAtomContainer, int, int, int[][], GraphUtil.EdgeToBondMap, boolean[], int)}.
      *
      * @param aPreparedMolecule molecule prepared with {@link #prepareMolecule(IAtomContainer)}
      * @param aRECAPBondList cleavable bonds of the molecule
@@ -1131,9 +1185,9 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
             int tmpBondIndex = tmpCandidate.bond().getIndex();
             tmpIsCleaved[tmpBondIndex] = true;
             if (RECAPFragmenter.isSmallTerminalGroup(aPreparedMolecule, tmpCandidate.bond().getBegin().getIndex(),
-                    tmpAdjacencyList, tmpEdgeToBondMap, tmpIsCleaved, tmpMaximumCarbonAtoms)
+                    tmpCandidate.bondType(), tmpAdjacencyList, tmpEdgeToBondMap, tmpIsCleaved, tmpMaximumCarbonAtoms)
                     || RECAPFragmenter.isSmallTerminalGroup(aPreparedMolecule, tmpCandidate.bond().getEnd().getIndex(),
-                    tmpAdjacencyList, tmpEdgeToBondMap, tmpIsCleaved, tmpMaximumCarbonAtoms)) {
+                    tmpCandidate.bondType(), tmpAdjacencyList, tmpEdgeToBondMap, tmpIsCleaved, tmpMaximumCarbonAtoms)) {
                 tmpIsCleaved[tmpBondIndex] = false;
             } else {
                 tmpSelectedBonds.add(tmpCandidate);
@@ -1171,27 +1225,32 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
      * marked bonds are cleaved, and returns whether it is a small terminal group that must not be cleaved off. The
      * part must be terminal, i.e. have exactly one attachment point (cleaved bond or pseudo atom of the input), and
      * <ul>
-     *     <li>if the cleavage point is a nitrogen atom: consist of the nitrogen atom with hydrogen atoms only
-     *     (amino group); nitrogen atoms with alkyl groups, e.g. dimethylamino, are cleaved off;</li>
+     *     <li>if the cleavage point is a nitrogen atom at a bond of the types 3 (amine), 7, 8 or 9: consist of the
+     *     nitrogen atom with hydrogen atoms only (amino group); nitrogen atoms with alkyl groups, e.g. dimethylamino,
+     *     isopropylamino or tert-butylamino, are cleaved off as in the publication (Figures 9 and 10);</li>
      *     <li>if the cleavage point is a carbon atom without double-bonded oxygen atom: be an acyclic hydrocarbon group
      *     with at most the given number of carbon atoms (methyl, ethyl, propyl, butyl);</li>
-     *     <li>otherwise, i.e. for oxygen atoms and carbonyl or sulfonyl groups: consist of the cleavage point (with its
-     *     double-bonded oxygen atoms) and hydrogen atoms or an acyclic hydrocarbon group with at most the given number
-     *     of carbon atoms (e.g. methoxy, ethoxy, formyl, acetyl, mesyl).</li>
+     *     <li>otherwise, i.e. for oxygen atoms, carbonyl or sulfonyl groups, and nitrogen atoms at a bond of the types
+     *     1 (amide), 4 (urea) or 11 (sulphonamide): consist of the cleavage point (with its double-bonded oxygen
+     *     atoms) and hydrogen atoms or an acyclic hydrocarbon group with at most the given number of carbon atoms in
+     *     total (e.g. methoxy, ethoxy, formyl, acetyl, mesyl, NHCH3 or N(CH2CH3)2 of an amide, as the N-methyl amide in
+     *     Figure 12 of the publication).</li>
      * </ul>
-     * Pseudo atoms of the input count as attachment points.
+     * Pseudo atoms of the input count as attachment points. Explicit hydrogen atoms, i.e. hydrogen isotopes that are
+     * not suppressed, are ignored like implicit ones.
      *
      * @param aMolecule the prepared molecule
      * @param aCleavagePointIndex index of the atom of the cleaved bond in the part
+     * @param aBondType RECAP bond type of the cleaved bond
      * @param anAdjacencyList adjacency list of the molecule
      * @param anEdgeToBondMap map of the edges of the adjacency list to the bonds
      * @param anIsCleavedArray cleaved bonds by bond index
      * @param aMaximumCarbonAtoms maximum number of carbon atoms of a small terminal group
      * @return true if the part is a small terminal group
      */
-    private static boolean isSmallTerminalGroup(IAtomContainer aMolecule, int aCleavagePointIndex, int[][] anAdjacencyList,
-                                                GraphUtil.EdgeToBondMap anEdgeToBondMap, boolean[] anIsCleavedArray,
-                                                int aMaximumCarbonAtoms) {
+    private static boolean isSmallTerminalGroup(IAtomContainer aMolecule, int aCleavagePointIndex, int aBondType,
+                                                int[][] anAdjacencyList, GraphUtil.EdgeToBondMap anEdgeToBondMap,
+                                                boolean[] anIsCleavedArray, int aMaximumCarbonAtoms) {
         IAtom tmpCleavagePoint = aMolecule.getAtom(aCleavagePointIndex);
         //the cleavage point and the oxygen atoms double-bonded to it (carbonyl, sulfonyl) form the "head" of the group
         Set<Integer> tmpHeadAtoms = new HashSet<>(4);
@@ -1204,7 +1263,11 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
                 tmpHeadAtoms.add(tmpNeighbour);
             }
         }
-        boolean tmpIsNitrogen = Objects.equals(tmpCleavagePoint.getAtomicNumber(), 7);
+        //the nitrogen atom of an amide, urea or sulphonamide bond is a head like an oxygen atom, i.e. small alkyl
+        //groups at it are kept (N-methyl amide in Figure 12), whereas at the other bond types, especially amines, only
+        //an amino group is small and alkylated amino groups are cleaved off (Figures 9 and 10)
+        boolean tmpIsAminoNitrogen = Objects.equals(tmpCleavagePoint.getAtomicNumber(), 7)
+                && aBondType != 1 && aBondType != 4 && aBondType != 11;
         boolean tmpIsAlkylCarbon = Objects.equals(tmpCleavagePoint.getAtomicNumber(), 6) && tmpHeadAtoms.size() == 1;
         //a small group has at most the head atoms and the carbon atoms of the alkyl group
         int tmpMaximumPartSize = tmpHeadAtoms.size() + aMaximumCarbonAtoms;
@@ -1222,7 +1285,8 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
             IAtom tmpAtom = aMolecule.getAtom(tmpAtomIndex);
             if (tmpAtom instanceof IPseudoAtom) {
                 tmpAttachmentPoints++;
-            } else {
+            } else if (!Objects.equals(tmpAtom.getAtomicNumber(), 1)) {
+                //explicit hydrogen atoms (isotopes that are not suppressed) are ignored like implicit ones
                 tmpPartSize++;
                 if (tmpIsAlkylCarbon || !tmpHeadAtoms.contains(tmpAtomIndex)) {
                     if (Objects.equals(tmpAtom.getAtomicNumber(), 6) && !tmpAtom.isInRing()) {
@@ -1248,7 +1312,7 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
         if (tmpAttachmentPoints != 1) {
             return false;
         }
-        if (tmpIsNitrogen) {
+        if (tmpIsAminoNitrogen) {
             return tmpPartSize == tmpHeadAtoms.size();
         }
         return tmpTailCarbonAtoms <= aMaximumCarbonAtoms;
@@ -1257,13 +1321,15 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
     /**
      * Creates the RECAP hierarchy of the given prepared molecule, see {@link #buildHierarchy(IAtomContainer)}. The
      * nodes are first determined as atom sets, with the bonds connecting an atom set to the rest of the molecule
-     * regarded as cleaved, and then their fragments are created.
+     * regarded as cleaved, and the size of the hierarchy is checked while they are added; then their fragments are
+     * created.
      *
      * @param aPreparedMolecule molecule prepared with {@link #prepareMolecule(IAtomContainer)}; it becomes the fragment
      *                          of the root and must not be altered afterwards
      * @param aRECAPBondList all cleavable bonds of the molecule
      * @return all nodes of the hierarchy in breadth-first order, the first one is the root
-     * @throws IllegalArgumentException if the hierarchy has more than {@link #MAXIMUM_HIERARCHY_NODE_COUNT} nodes
+     * @throws IllegalArgumentException if the hierarchy has more than {@link #MAXIMUM_HIERARCHY_NODE_COUNT} nodes or
+     *                                  more than {@link #MAXIMUM_HIERARCHY_ATOM_COUNT} atoms in all nodes together
      * @throws CloneNotSupportedException if the molecule cannot be cloned
      */
     private List<RECAPHierarchyNode> createHierarchy(IAtomContainer aPreparedMolecule, List<RECAPBond> aRECAPBondList)
@@ -1285,6 +1351,9 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
         BitSet tmpRootAtomSet = new BitSet(tmpAtomCount);
         tmpRootAtomSet.set(0, tmpAtomCount);
         RECAPFragmenter.addHierarchyNode(tmpRootAtomSet, tmpAtomSets, tmpNodeIndexMap, tmpChildIndexLists);
+        //total number of atoms of the nodes whose atoms have been counted, i.e. of the first tmpCountedNodeCount nodes
+        long tmpHierarchyAtomCount = 0;
+        int tmpCountedNodeCount = 0;
         ConnectedComponents tmpConnectedComponents = new ConnectedComponents(tmpAdjacencyList);
         int[] tmpComponents = tmpConnectedComponents.components();
         boolean[] tmpIsComponentCleaved = new boolean[tmpConnectedComponents.nComponents() + 1];
@@ -1305,10 +1374,11 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
                 }
                 int tmpBondIndex = tmpCandidate.bond().getIndex();
                 tmpIsCleaved[tmpBondIndex] = true;
-                if (!RECAPFragmenter.isSmallTerminalGroup(aPreparedMolecule, tmpBeginIndex, tmpAdjacencyList,
-                        tmpEdgeToBondMap, tmpIsCleaved, tmpMaximumCarbonAtoms)
-                        && !RECAPFragmenter.isSmallTerminalGroup(aPreparedMolecule, tmpEndIndex, tmpAdjacencyList,
-                        tmpEdgeToBondMap, tmpIsCleaved, tmpMaximumCarbonAtoms)) {
+                if (!RECAPFragmenter.isSmallTerminalGroup(aPreparedMolecule, tmpBeginIndex, tmpCandidate.bondType(),
+                        tmpAdjacencyList, tmpEdgeToBondMap, tmpIsCleaved, tmpMaximumCarbonAtoms)
+                        && !RECAPFragmenter.isSmallTerminalGroup(aPreparedMolecule, tmpEndIndex,
+                        tmpCandidate.bondType(), tmpAdjacencyList, tmpEdgeToBondMap, tmpIsCleaved,
+                        tmpMaximumCarbonAtoms)) {
                     tmpIsComponentCleaved[tmpComponents[tmpBeginIndex]] = true;
                     for (int tmpStartIndex : new int[] {tmpBeginIndex, tmpEndIndex}) {
                         BitSet tmpPart = RECAPFragmenter.collectPart(tmpStartIndex, tmpAtomCount, tmpAdjacencyList,
@@ -1316,11 +1386,9 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
                         tmpChildIndexLists.get(tmpNodeIndex).add(RECAPFragmenter.addHierarchyNode(tmpPart, tmpAtomSets,
                                 tmpNodeIndexMap, tmpChildIndexLists));
                     }
-                    if (tmpAtomSets.size() > RECAPFragmenter.MAXIMUM_HIERARCHY_NODE_COUNT) {
-                        throw new IllegalArgumentException(String.format(
-                                "The RECAP hierarchy of the molecule has more than %d nodes.",
-                                RECAPFragmenter.MAXIMUM_HIERARCHY_NODE_COUNT));
-                    }
+                    tmpHierarchyAtomCount = RECAPFragmenter.checkHierarchySize(tmpAtomSets, tmpCountedNodeCount,
+                            tmpHierarchyAtomCount);
+                    tmpCountedNodeCount = tmpAtomSets.size();
                 }
                 tmpIsCleaved[tmpBondIndex] = false;
             }
@@ -1341,12 +1409,17 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
                         tmpChildIndexLists));
             }
         }
+        RECAPFragmenter.checkHierarchySize(tmpAtomSets, tmpCountedNodeCount, tmpHierarchyAtomCount);
+        //the stereogenicity of the atoms of the molecule is determined once for all nodes, by atom index, since the
+        //fragment of every node is created from a new clone of the molecule
+        BitSet tmpNonStereogenicAtomIndices = aPreparedMolecule.stereoElements().iterator().hasNext()
+                ? RECAPFragmenter.findNonStereogenicAtomIndices(aPreparedMolecule) : new BitSet(0);
         List<RECAPHierarchyNode> tmpNodes = new ArrayList<>(tmpAtomSets.size());
         //placeholder for the root, whose fragment is the prepared molecule that must remain unaltered for the clones
         tmpNodes.add(null);
         for (int i = 1; i < tmpAtomSets.size(); i++) {
             tmpNodes.add(new RECAPHierarchyNode(this.createHierarchyFragment(aPreparedMolecule, tmpAtomSets.get(i),
-                    tmpBondTypes)));
+                    tmpBondTypes, tmpNonStereogenicAtomIndices)));
         }
         tmpNodes.set(0, new RECAPHierarchyNode(aPreparedMolecule));
         for (int i = 0; i < tmpNodes.size(); i++) {
@@ -1378,6 +1451,37 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
         aNodeIndexMap.put(anAtomSet, tmpNewIndex);
         aChildIndexLists.add(new ArrayList<>(2));
         return tmpNewIndex;
+    }
+    //
+    /**
+     * Adds the atoms of the hierarchy nodes that have not been counted yet to the total number of atoms of the
+     * hierarchy and checks the size of the hierarchy against the limits {@link #MAXIMUM_HIERARCHY_NODE_COUNT} and
+     * {@link #MAXIMUM_HIERARCHY_ATOM_COUNT}, which bound the memory needed for the fragments of the nodes.
+     *
+     * @param anAtomSetList atom sets of all nodes by node index
+     * @param aCountedNodeCount number of nodes whose atoms have already been counted (the first nodes of the list)
+     * @param aCountedAtomCount total number of atoms of these nodes
+     * @return total number of atoms of all nodes of the list
+     * @throws IllegalArgumentException if the hierarchy has more than {@link #MAXIMUM_HIERARCHY_NODE_COUNT} nodes or
+     *                                  more than {@link #MAXIMUM_HIERARCHY_ATOM_COUNT} atoms in all nodes together
+     */
+    private static long checkHierarchySize(List<BitSet> anAtomSetList, int aCountedNodeCount, long aCountedAtomCount)
+            throws IllegalArgumentException {
+        if (anAtomSetList.size() > RECAPFragmenter.MAXIMUM_HIERARCHY_NODE_COUNT) {
+            throw new IllegalArgumentException(String.format(
+                    "The RECAP hierarchy of the molecule has more than %d nodes.",
+                    RECAPFragmenter.MAXIMUM_HIERARCHY_NODE_COUNT));
+        }
+        long tmpAtomCount = aCountedAtomCount;
+        for (int i = aCountedNodeCount; i < anAtomSetList.size(); i++) {
+            tmpAtomCount += anAtomSetList.get(i).cardinality();
+        }
+        if (tmpAtomCount > RECAPFragmenter.MAXIMUM_HIERARCHY_ATOM_COUNT) {
+            throw new IllegalArgumentException(String.format(
+                    "The fragments of the RECAP hierarchy of the molecule have more than %d atoms in total.",
+                    RECAPFragmenter.MAXIMUM_HIERARCHY_ATOM_COUNT));
+        }
+        return tmpAtomCount;
     }
     //
     /**
@@ -1416,10 +1520,13 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
      * @param aPreparedMolecule molecule prepared with {@link #prepareMolecule(IAtomContainer)}, it is not altered
      * @param anAtomSet atom indices of the fragment
      * @param aBondTypes RECAP bond types by bond index (0 for bonds that are not cleavable)
+     * @param aNonStereogenicAtomIndices indices of the atoms that are not stereogenic in the prepared molecule (empty
+     *                                   if it has no stereo elements), or null if they could not be determined
      * @return the fragment
      * @throws CloneNotSupportedException if the molecule cannot be cloned
      */
-    private IAtomContainer createHierarchyFragment(IAtomContainer aPreparedMolecule, BitSet anAtomSet, int[] aBondTypes)
+    private IAtomContainer createHierarchyFragment(IAtomContainer aPreparedMolecule, BitSet anAtomSet, int[] aBondTypes,
+                                                   BitSet aNonStereogenicAtomIndices)
             throws CloneNotSupportedException {
         IAtomContainer tmpClone = aPreparedMolecule.clone();
         List<RECAPBond> tmpBoundaryBonds = new ArrayList<>();
@@ -1428,25 +1535,59 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
                 tmpBoundaryBonds.add(new RECAPBond(tmpBond, aBondTypes[tmpBond.getIndex()]));
             }
         }
-        IAtom tmpMarkerAtom = tmpClone.getAtom(anAtomSet.nextSetBit(0));
-        for (IAtomContainer tmpFragment : this.cleaveBonds(tmpClone, tmpBoundaryBonds)) {
-            if (tmpFragment.contains(tmpMarkerAtom)) {
-                return tmpFragment;
+        //the clone has the atom order of the prepared molecule; only the atoms of the fragment are needed
+        Set<IAtom> tmpNonStereogenicAtoms = null;
+        if (aNonStereogenicAtomIndices != null) {
+            tmpNonStereogenicAtoms = new HashSet<>();
+            for (int i = aNonStereogenicAtomIndices.nextSetBit(0); i >= 0;
+                 i = aNonStereogenicAtomIndices.nextSetBit(i + 1)) {
+                if (anAtomSet.get(i)) {
+                    tmpNonStereogenicAtoms.add(tmpClone.getAtom(i));
+                }
             }
         }
-        throw new IllegalStateException("The fragment of a RECAP hierarchy node could not be determined.");
+        IAtom tmpMarkerAtom = tmpClone.getAtom(anAtomSet.nextSetBit(0));
+        List<IAtomContainer> tmpFragments = this.cleaveBonds(tmpClone, tmpBoundaryBonds, tmpNonStereogenicAtoms,
+                tmpMarkerAtom);
+        if (tmpFragments.size() != 1) {
+            throw new IllegalStateException("The fragment of a RECAP hierarchy node could not be determined.");
+        }
+        return tmpFragments.getFirst();
     }
     //
     /**
      * Cleaves the given bonds of the prepared molecule simultaneously, saturates the open valences according to the
-     * saturation setting, transfers the stereo elements, and returns the disconnected parts as fragments.
+     * saturation setting, transfers the stereo elements, and returns the disconnected parts as fragments, see
+     * {@link #cleaveBonds(IAtomContainer, List, Set, IAtom)}.
      *
      * @param aMolecule the prepared molecule, it is altered
      * @param aRECAPBondList the bonds to cleave
      * @return list of fragments
      */
-    @SuppressWarnings("rawtypes")
     private List<IAtomContainer> cleaveBonds(IAtomContainer aMolecule, List<RECAPBond> aRECAPBondList) {
+        //the stereogenicity of the atoms is determined before the cleavage
+        Set<IAtom> tmpNonStereogenicAtomsOfMolecule = aMolecule.stereoElements().iterator().hasNext()
+                ? RECAPFragmenter.findNonStereogenicAtoms(aMolecule) : Collections.emptySet();
+        return this.cleaveBonds(aMolecule, aRECAPBondList, tmpNonStereogenicAtomsOfMolecule, null);
+    }
+    //
+    /**
+     * Cleaves the given bonds of the prepared molecule simultaneously, saturates the open valences according to the
+     * saturation setting, transfers the stereo elements, and returns the disconnected parts as fragments; stereo
+     * elements that lost their stereogenicity by the cleavage are removed from the returned fragments. This is the
+     * only implementation of the cleavage, used for the single-pass fragments and for the fragments of the hierarchy.
+     *
+     * @param aMolecule the prepared molecule, it is altered
+     * @param aRECAPBondList the bonds to cleave
+     * @param aNonStereogenicAtomSetOfMolecule atoms of the molecule that are not stereogenic before the cleavage (at
+     *                                         least those of the returned fragments; empty if the molecule has no
+     *                                         stereo elements), or null if they could not be determined
+     * @param aPartAtom if not null, only the fragment that contains this atom is returned
+     * @return list of fragments
+     */
+    @SuppressWarnings("rawtypes")
+    private List<IAtomContainer> cleaveBonds(IAtomContainer aMolecule, List<RECAPBond> aRECAPBondList,
+                                             Set<IAtom> aNonStereogenicAtomSetOfMolecule, IAtom aPartAtom) {
         boolean tmpIsHydrogenSaturation = this.saturationSetting.get().equals(SaturationOption.HYDROGEN_SATURATION);
         //the stereo elements are detached before the bonds are removed, because the CDK atom container would otherwise
         //adapt them on bond removal, e.g. by replacing a cleaved ligand of a stereocentre with an implicit hydrogen atom
@@ -1454,8 +1595,6 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
         for (IStereoElement tmpElement : aMolecule.stereoElements()) {
             tmpOriginalStereoElements.add(tmpElement);
         }
-        Set<IAtom> tmpNonStereogenicAtomsOfMolecule = tmpOriginalStereoElements.isEmpty()
-                ? Collections.emptySet() : RECAPFragmenter.findNonStereogenicAtoms(aMolecule);
         aMolecule.setStereoElements(new ArrayList<>(0));
         Map<IBond, CleavedBond> tmpCleavedBondMap = new HashMap<>(CollectionUtil.calculateInitialHashCollectionCapacity(
                 aRECAPBondList.size(), BasicDefinitions.DEFAULT_HASH_COLLECTION_LOAD_FACTOR),
@@ -1480,7 +1619,10 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
         IAtomContainerSet tmpFragmentSet = ConnectivityChecker.partitionIntoMolecules(aMolecule);
         List<IAtomContainer> tmpFragments = new ArrayList<>(tmpFragmentSet.getAtomContainerCount());
         for (IAtomContainer tmpFragment : tmpFragmentSet.atomContainers()) {
-            RECAPFragmenter.removeStereoElementsMadeNonStereogenic(tmpFragment, tmpNonStereogenicAtomsOfMolecule);
+            if (aPartAtom != null && !tmpFragment.contains(aPartAtom)) {
+                continue;
+            }
+            RECAPFragmenter.removeStereoElementsMadeNonStereogenic(tmpFragment, aNonStereogenicAtomSetOfMolecule);
             tmpFragments.add(tmpFragment);
         }
         return tmpFragments;
@@ -1750,14 +1892,35 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
     }
     //
     /**
-     * Returns the atoms of the given molecule that are not stereogenic according to the CDK class
-     * {@link Stereocenters}, which perceives stereocentres by constitutional symmetry. Mass numbers of pseudo atoms,
-     * i.e. the bond types, are ignored.
+     * Returns the atoms of the given molecule that are not stereogenic, see
+     * {@link #findNonStereogenicAtomIndices(IAtomContainer)}.
      *
      * @param aMolecule molecule
      * @return set of non-stereogenic atoms, or null if the stereocentres cannot be determined
      */
     private static Set<IAtom> findNonStereogenicAtoms(IAtomContainer aMolecule) {
+        BitSet tmpIndices = RECAPFragmenter.findNonStereogenicAtomIndices(aMolecule);
+        if (tmpIndices == null) {
+            return null;
+        }
+        Set<IAtom> tmpNonStereogenicAtoms = new HashSet<>(CollectionUtil.calculateInitialHashCollectionCapacity(
+                tmpIndices.cardinality(), BasicDefinitions.DEFAULT_HASH_COLLECTION_LOAD_FACTOR),
+                BasicDefinitions.DEFAULT_HASH_COLLECTION_LOAD_FACTOR);
+        for (int i = tmpIndices.nextSetBit(0); i >= 0; i = tmpIndices.nextSetBit(i + 1)) {
+            tmpNonStereogenicAtoms.add(aMolecule.getAtom(i));
+        }
+        return tmpNonStereogenicAtoms;
+    }
+    //
+    /**
+     * Returns the indices of the atoms of the given molecule that are not stereogenic according to the CDK class
+     * {@link Stereocenters}, which perceives stereocentres by constitutional symmetry. Mass numbers of pseudo atoms,
+     * i.e. the bond types, are ignored.
+     *
+     * @param aMolecule molecule
+     * @return indices of the non-stereogenic atoms, or null if the stereocentres cannot be determined
+     */
+    private static BitSet findNonStereogenicAtomIndices(IAtomContainer aMolecule) {
         //bond types are given as mass numbers and must be ignored for the symmetry perception
         List<IAtom> tmpLinkAtoms = new ArrayList<>();
         for (IAtom tmpAtom : aMolecule.atoms()) {
@@ -1772,13 +1935,13 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
         }
         try {
             Stereocenters tmpStereocenters = Stereocenters.of(aMolecule);
-            Set<IAtom> tmpNonStereogenicAtoms = new HashSet<>();
+            BitSet tmpNonStereogenicAtomIndices = new BitSet(aMolecule.getAtomCount());
             for (int i = 0; i < aMolecule.getAtomCount(); i++) {
                 if (!tmpStereocenters.isStereocenter(i)) {
-                    tmpNonStereogenicAtoms.add(aMolecule.getAtom(i));
+                    tmpNonStereogenicAtomIndices.set(i);
                 }
             }
-            return tmpNonStereogenicAtoms;
+            return tmpNonStereogenicAtomIndices;
         } catch (RuntimeException anException) {
             RECAPFragmenter.LOGGER.log(Level.FINE, "Stereocentres could not be determined", anException);
             return null;
@@ -1859,8 +2022,9 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
             tmpAmideNitrogen = "[#7;+0;!$([#7]-[!#6;!#1;!#0]);!$([#7]=,#*);!$([#7](C=[#7,#8,#16])C=[#7,#8,#16])]";
             tmpUreaNitrogen = tmpAmideNitrogen;
             //no acyl ureas, biurets or ureas at imide nitrogen atoms (nitrogen atom with a second acyl, imidoyl or
-            //thioacyl group), so that neither of their urea bonds is cleaved
-            tmpUreaCarbon = "[C;$(C(=O)(~[#7])~[#7]);!$(C(=O)~[#7]C=[#7,#8,#16])]";
+            //thioacyl group) and no sulphonyl ureas (nitrogen atom with a sulfonyl group), so that neither of their
+            //urea bonds is cleaved
+            tmpUreaCarbon = "[C;$(C(=O)(~[#7])~[#7]);!$(C(=O)~[#7]C=[#7,#8,#16]);!$(C(=O)~[#7][#16](=O)=O)]";
             //no N-acyl sulphonamides, sulphonyl hydrazides or disulphonimides
             tmpSulphonamideNitrogen = "[#7;+0;!$([#7]C=[#7,#8,#16]);!$([#7](S)[!#6;!#1;!#0]);!$([#7]=,#*)]";
             //no carbonates, carbamates, haloformates, or 1,2-dicarbonyl compounds

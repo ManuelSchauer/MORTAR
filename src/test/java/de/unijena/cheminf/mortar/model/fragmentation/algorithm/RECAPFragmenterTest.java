@@ -191,6 +191,168 @@ public class RECAPFragmenterTest {
     }
     //
     /**
+     * Tests molecules whose fragments are shown in Figures 8, 9 and 12 of the original publication:
+     * <ul>
+     *     <li>Figure 8: oxotremorine, a 2-connection fragment (the butynyl linker between the amine (3) and the lactam
+     *     nitrogen atom (9)), and a monobactam with a carbamate and an N-sulfonic acid, a 3-connection fragment
+     *     (amide 1, ester 2 and sulphonamide 11 at the azetidinone);</li>
+     *     <li>Figure 9: chlorprothixene (exocyclic double bond, 6), retinol (vitamin A, polyene cleaved into
+     *     two-carbon fragments), the quaternary ring nitrogen atom of a piperidinium ion (7), imipramine and verapamil
+     *     (dimethylamino and methylamino fragments, 3), nicardipine (the methyl ester is kept, the aminoethyl ester is
+     *     cleaved), adenosine (aromatic nitrogen atom, 8), cefotaxime (the acetate is kept), arbutin (glycoside, 5),
+     *     and prostaglandin F2-alpha (olefins, 6);</li>
+     *     <li>Figure 12: N-benzoyl tryptophan derivatives, whose N-methyl amide, ethyl ester and N-formyl group are not
+     *     cleaved off (small terminal groups), while the benzamide (1) is cleaved.</li>
+     * </ul>
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    public void publicationFiguresTest() throws Exception {
+        //Figure 8
+        this.assertFragments("O=C1CCCN1CC#CCN1CCCC1", "[3*]CC#CC[9*]", "[3*]N1CCCC1", "[9*]N1CCCC1=O");
+        this.assertFragments("NC(=O)OCC1C(NC(=O)c2ccccc2)C(=O)N1S(=O)(=O)O", "[1*]C(=O)c1ccccc1",
+                "[1*]NC1C(=O)N([11*])C1CO[2*]", "[11*]S(=O)(=O)O", "[2*]C(N)=O");
+        //Figure 9
+        this.assertFragments("CN(C)CCC=C1c2ccccc2Sc2ccc(Cl)cc12", "[3*]CCC=[6*]", "[3*]N(C)C",
+                "[6*]=C1c2ccccc2Sc2ccc(Cl)cc21");
+        this.assertFragments("CC1=C(C=CC(C)=CC=CC(C)=CCO)C(C)(C)CCC1", "[6*]=CC1=C(C)CCCC1(C)C", "[6*]=CC(=[6*])C",
+                "[6*]=CC(=[6*])C", "[6*]=CC=[6*]", "[6*]=CCO");
+        this.assertFragments("C[N+]1(CCCCC1)CC(O)c1ccccc1", "[7*]CC(O)c1ccccc1", "[7*][N+]1(C)CCCCC1");
+        this.assertFragments("CN(C)CCCN1c2ccccc2CCc2ccccc21", "[3*]CCC[3*]", "[3*]N(C)C",
+                "[3*]N1c2ccccc2CCc2ccccc21");
+        this.assertFragments("COc1ccc(CCN(C)CCCC(C#N)(C(C)C)c2ccc(OC)c(OC)c2)cc1OC",
+                "[3*]CCCC(C#N)(c1ccc(OC)c(OC)c1)C(C)C", "[3*]CCc1ccc(OC)c(OC)c1", "[3*]N([3*])C");
+        this.assertFragments("COC(=O)C1=C(C)NC(C)=C(C(=O)OCCN(C)Cc2ccccc2)C1c1cccc([N+](=O)[O-])c1",
+                "[2*]C(=O)C1=C(C)NC(C)=C(C(=O)OC)C1c1cccc([N+](=O)[O-])c1", "[2*]OCC[3*]", "[3*]Cc1ccccc1",
+                "[3*]N([3*])C");
+        this.assertFragments("Nc1ncnc2n(cnc12)C1OC(CO)C(O)C1O", "[8*]C1OC(CO)C(O)C1O", "[8*]n1cnc2c(N)ncnc21");
+        this.assertFragments("CC(=O)OCC1=C(N2C(SC1)C(NC(=O)C(=NOC)c1csc(N)n1)C2=O)C(=O)O",
+                "[1*]C(=O)C(=NOC)c1csc(N)n1", "[1*]NC1C(=O)N2C(C(=O)O)=C(COC(C)=O)CSC12");
+        this.assertFragments("OCC1OC(Oc2ccc(O)cc2)C(O)C(O)C1O", "[5*]C1OC(CO)C(O)C(O)C1O", "[5*]Oc1ccc(O)cc1");
+        this.assertFragments("CCCCCC(O)C=CC1C(O)CC(O)C1CC=CCCCC(=O)O", "[6*]=CC(O)CCCCC",
+                "[6*]=CCC1C(O)CC(O)C1C=[6*]", "[6*]=CCCCC(=O)O");
+        //Figure 12
+        this.assertFragments("O=C(c1ccccc1)NC(Cc1c[nH]c2ccccc12)C(=O)NC", "[1*]C(=O)c1ccccc1",
+                "[1*]NC(Cc1c[nH]c2ccccc12)C(=O)NC");
+        this.assertFragments("O=C(c1ccccc1)NC(Cc1c[nH]c2ccccc12)C(=O)OCC", "[1*]C(=O)c1ccccc1",
+                "[1*]NC(Cc1c[nH]c2ccccc12)C(=O)OCC");
+        this.assertFragments("O=C(c1ccccc1)NC(Cc1cn(C=O)c2ccccc12)C(=O)N", "[1*]C(=O)c1ccccc1",
+                "[1*]NC(Cc1cn(C=O)c2ccccc12)C(N)=O");
+    }
+    //
+    /**
+     * Tests the small terminal groups at the nitrogen atoms of amide, urea and sulphonamide bonds: alkyl groups with up
+     * to the maximum number of carbon atoms in total are kept, as the N-methyl amide in Figure 12 of the publication,
+     * whereas alkylated amino groups are cleaved off at amine bonds (Figures 9 and 10). The hierarchy applies the same
+     * rule.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    public void acylatedNitrogenSmallGroupTest() throws Exception {
+        RECAPFragmenter tmpFragmenter = new RECAPFragmenter();
+        //N-methyl amide (1), Figure 12
+        String tmpMethylAmide = "O=C(c1ccccc1)NC(Cc1c[nH]c2ccccc12)C(=O)NC";
+        this.assertFragments(tmpFragmenter, tmpMethylAmide, false, "[1*]C(=O)c1ccccc1",
+                "[1*]NC(Cc1c[nH]c2ccccc12)C(=O)NC");
+        //N,N-diethyl amide (DEET), not cleaved at all
+        this.assertFragments(tmpFragmenter, "CCN(CC)C(=O)c1cccc(C)c1", false, "CCN(CC)C(=O)c1cccc(C)c1");
+        //N-methyl sulphonamide (11) of sumatriptan, whose dimethylamino group is cleaved off (3)
+        this.assertFragments(tmpFragmenter, "CNS(=O)(=O)Cc1ccc2[nH]cc(CCN(C)C)c2c1", false,
+                "[3*]CCc1c[nH]c2ccc(CS(=O)(=O)NC)cc12", "[3*]N(C)C");
+        //N-methyl urea (4): only the bond to the pentylamino group is cleaved
+        this.assertFragments(tmpFragmenter, "CCCCCNC(=O)NC", false, "[4*]C(=O)NC", "[4*]NCCCCC");
+        //dipropylamino has six carbon atoms and is cleaved off
+        this.assertFragments(tmpFragmenter, "CCCCCC(=O)N(CCC)CCC", false, "[1*]C(=O)CCCCC", "[1*]N(CCC)CCC");
+        //methylamino at an amine bond (3) is cleaved off
+        this.assertFragments(tmpFragmenter, "CNC(C)C(O)c1ccccc1", false, "[3*]C(C)C(O)c1ccccc1", "[3*]NC");
+        //the leaves of the hierarchy are the single-pass fragments
+        this.assertLeavesAreSinglePassFragments(tmpFragmenter, RECAPFragmenterTest.parse(tmpMethylAmide));
+        Assertions.assertTrue(
+                tmpFragmenter.buildHierarchy(RECAPFragmenterTest.parse("CCN(CC)C(=O)c1cccc(C)c1")).isLeaf());
+        //the setting applies to the nitrogen atoms as well, the amino group of a primary amide is always kept
+        tmpFragmenter.setSmallGroupMaximumCarbonAtomsSetting(0);
+        this.assertFragments(tmpFragmenter, "CCN(CC)C(=O)c1cccc(C)c1", false, "[1*]C(=O)c1cccc(C)c1", "[1*]N(CC)CC");
+        this.assertFragments(tmpFragmenter, "NC(=O)c1ccccc1", false, "NC(=O)c1ccccc1");
+    }
+    //
+    /**
+     * Tests that explicit hydrogen atoms that are not suppressed (isotopes) are ignored in the check for small terminal
+     * groups, so deuterated groups are treated like their protium forms.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    public void hydrogenIsotopeTest() throws Exception {
+        RECAPFragmenter tmpFragmenter = new RECAPFragmenter();
+        //deuterated methoxy and amino groups are small terminal groups
+        this.assertFragments(tmpFragmenter, "[2H]C([2H])([2H])Oc1ccccc1", false, "[2H]C([2H])([2H])Oc1ccccc1");
+        this.assertFragments(tmpFragmenter, "[2H]N([2H])CC1CCCCC1", false, "[2H]N([2H])CC1CCCCC1");
+        //the deuterated methyl groups are kept at the amine nitrogen atom, which is cleaved off like dimethylamino
+        String tmpDeuteratedAmine = "[2H]C([2H])([2H])N(CCc1ccccc1)C([2H])([2H])[2H]";
+        this.assertFragments(tmpFragmenter, tmpDeuteratedAmine, false, "[3*]CCc1ccccc1",
+                "[3*]N(C([2H])([2H])[2H])C([2H])([2H])[2H]");
+        this.assertFragments(tmpFragmenter, "CN(CCc1ccccc1)C", false, "[3*]CCc1ccccc1", "[3*]N(C)C");
+        //the hierarchy applies the same rule
+        IAtomContainer tmpMolecule = RECAPFragmenterTest.parse(tmpDeuteratedAmine);
+        Assertions.assertEquals(2, tmpFragmenter.buildHierarchy(tmpMolecule).getAllDescendants().size());
+        this.assertLeavesAreSinglePassFragments(tmpFragmenter, tmpMolecule);
+        Assertions.assertTrue(
+                tmpFragmenter.buildHierarchy(RECAPFragmenterTest.parse("[2H]C([2H])([2H])Oc1ccccc1")).isLeaf());
+    }
+    //
+    /**
+     * Tests molecules with bonds of unset order, e.g. aromatic bonds of molecules parsed without kekulization: a Kekulé
+     * structure is assigned, so that their fragments equal those of the kekulized molecules, and molecules that cannot
+     * be kekulized are not fragmented.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    public void unsetBondOrderTest() throws Exception {
+        RECAPFragmenter tmpFragmenter = new RECAPFragmenter();
+        SmilesParser tmpParser = new SmilesParser(SilentChemObjectBuilder.getInstance());
+        tmpParser.kekulise(false);
+        for (String tmpSmiles : new String[] {"CCCCCn1ccnc1", "c1ccccc1-c1ccccc1", "CCCCCOc1ccccc1",
+                "COc1cc(N)c(Cl)cc1C(=O)N[C@@H]1CCN(CCCOc2ccc(F)cc2)C[C@@H]1OC"}) {
+            IAtomContainer tmpMolecule = tmpParser.parseSmiles(tmpSmiles);
+            Assertions.assertTrue(this.hasUnsetBondOrder(tmpMolecule), tmpSmiles);
+            List<IAtomContainer> tmpExpectedFragments = tmpFragmenter.fragmentMolecule(
+                    RECAPFragmenterTest.parse(tmpSmiles));
+            List<IAtomContainer> tmpFragments = tmpFragmenter.fragmentMolecule(tmpMolecule);
+            Assertions.assertTrue(tmpExpectedFragments.size() > 1, tmpSmiles);
+            Assertions.assertEquals(RECAPFragmenterTest.toCanonicalSmiles(tmpExpectedFragments, false),
+                    RECAPFragmenterTest.toCanonicalSmiles(tmpFragments, false), tmpSmiles);
+            Assertions.assertEquals(RECAPFragmenterTest.toStereoSmilesOfFragments(tmpExpectedFragments, false),
+                    RECAPFragmenterTest.toStereoSmilesOfFragments(tmpFragments, false), tmpSmiles);
+            this.assertLeavesAreSinglePassFragments(tmpFragmenter, tmpMolecule);
+            //the input molecule is not altered
+            Assertions.assertTrue(this.hasUnsetBondOrder(tmpMolecule), tmpSmiles);
+        }
+        this.assertFragments(tmpFragmenter, "CCCCCn1ccnc1", false, "[8*]CCCCC", "[8*]n1ccnc1");
+        //bonds without order (null) are treated like bonds with unset order
+        IAtomContainer tmpMolecule = tmpParser.parseSmiles("CCCCCn1ccnc1");
+        for (IBond tmpBond : tmpMolecule.bonds()) {
+            if (tmpBond.getOrder() == IBond.Order.UNSET) {
+                tmpBond.setOrder(null);
+            }
+        }
+        Assertions.assertEquals(RECAPFragmenterTest.canonical(List.of("[8*]CCCCC", "[8*]n1ccnc1"), false),
+                RECAPFragmenterTest.toCanonicalSmiles(tmpFragmenter.fragmentMolecule(tmpMolecule), false));
+        //no Kekulé structure can be assigned
+        IAtomContainer tmpNonKekulizable = tmpParser.parseSmiles("c1cccc1");
+        Assertions.assertThrows(IllegalArgumentException.class,
+                () -> tmpFragmenter.fragmentMolecule(tmpNonKekulizable));
+        Assertions.assertThrows(IllegalArgumentException.class,
+                () -> tmpFragmenter.buildHierarchy(tmpNonKekulizable));
+        //an unset order of a bond that is not aromatic cannot be determined
+        IAtomContainer tmpUnsetEther = RECAPFragmenterTest.parse("CCCCCOCCCCC");
+        tmpUnsetEther.getBond(0).setOrder(IBond.Order.UNSET);
+        Assertions.assertThrows(IllegalArgumentException.class, () -> tmpFragmenter.fragmentMolecule(tmpUnsetEther));
+    }
+    //
+    /**
      * Tests that ring bonds and the bonds of small terminal groups are not cleaved, and that no bond outside the
      * eleven types is cleaved.
      *
@@ -380,6 +542,10 @@ public class RECAPFragmenterTest {
                 {"O=C(NC(=O)NCc1ccccc1)c1ccccc1", "[1*]C(=O)c1ccccc1.[1*]N[4*].[4*]C([4*])=O.[4*]NCc1ccccc1"}, //acyl urea
                 {"O=S(=O)(NCc1ccccc1)NCc1ccccc1", "[11*]NCc1ccccc1.[11*]NCc1ccccc1.[11*]S([11*])(=O)=O"}, //sulphamide
                 {"O=C1N(CCc2ccccc2)CCN1C", "[9*]CCc1ccccc1.[9*]N1C(=O)N(C)CC1"}, //cyclic urea (9)
+                //sulphonyl ureas (4, 11): acetohexamide, and tolbutamide, whose butylamino group is a small group
+                {"CC(=O)c1ccc(cc1)S(=O)(=O)NC(=O)NC1CCCCC1",
+                        "[11*]S(=O)(=O)c1ccc(C(C)=O)cc1.[4*]C([4*])=O.[4*]NC1CCCCC1.[4*]N[11*]"},
+                {"CCCCNC(=O)NS(=O)(=O)c1ccc(C)cc1", "[11*]S(=O)(=O)c1ccc(C)cc1.[4*]C(=O)NCCCC.[4*]N[11*]"},
         };
         for (String[] tmpCase : tmpCases) {
             this.assertFragments(tmpCase[0], tmpCase[1].split("\\."));
@@ -483,6 +649,39 @@ public class RECAPFragmenterTest {
     }
     //
     /**
+     * Tests the limit of the total number of atoms of a RECAP hierarchy: a molecule with 13 benzamide groups at a
+     * common core has 2^13 + 13 = 8205 nodes, fewer than the maximum number of nodes, but more than
+     * {@value RECAPFragmenter#MAXIMUM_HIERARCHY_ATOM_COUNT} atoms in all fragments together (about 655,000), so it is
+     * rejected with and without stereochemistry, while its single-pass fragments are returned. The hierarchy of a
+     * molecule with ten benzamide groups and ten stereocentres (1034 nodes) is created, and its leaves are the
+     * single-pass fragments, including their stereochemistry.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    public void hierarchyAtomCountTest() throws Exception {
+        RECAPFragmenter tmpFragmenter = new RECAPFragmenter();
+        for (String tmpStar : new String[] {"C" + "[C@H](NC(=O)c1ccccc1)".repeat(13) + "C",
+                "C" + "C(NC(=O)c1ccccc1)".repeat(13) + "C"}) {
+            tmpFragmenter.setFragmentOutputSetting(RECAPFragmenter.FragmentOutputOption.TERMINAL_FRAGMENTS);
+            Assertions.assertThrows(IllegalArgumentException.class,
+                    () -> tmpFragmenter.buildHierarchy(RECAPFragmenterTest.parse(tmpStar)), tmpStar);
+            Assertions.assertEquals(14, tmpFragmenter.fragmentMolecule(RECAPFragmenterTest.parse(tmpStar)).size());
+            tmpFragmenter.setFragmentOutputSetting(RECAPFragmenter.FragmentOutputOption.ALL_HIERARCHY_FRAGMENTS);
+            Assertions.assertThrows(IllegalArgumentException.class,
+                    () -> tmpFragmenter.fragmentMolecule(RECAPFragmenterTest.parse(tmpStar)), tmpStar);
+        }
+        tmpFragmenter.setFragmentOutputSetting(RECAPFragmenter.FragmentOutputOption.TERMINAL_FRAGMENTS);
+        IAtomContainer tmpStar = RECAPFragmenterTest.parse("C" + "[C@H](NC(=O)c1ccccc1)".repeat(10) + "C");
+        RECAPFragmenter.RECAPHierarchyNode tmpRoot = tmpFragmenter.buildHierarchy(tmpStar);
+        Assertions.assertEquals(1034, 1 + tmpRoot.getAllDescendants().size());
+        Assertions.assertEquals(
+                RECAPFragmenterTest.toStereoSmilesOfFragments(tmpFragmenter.fragmentMolecule(tmpStar), false),
+                RECAPFragmenterTest.toStereoSmilesOfFragments(
+                        RECAPFragmenterTest.fragmentsOf(tmpRoot.getLeaves()), false));
+    }
+    //
+    /**
      * Fragments the given molecule with a fragmenter with default settings and compares the fragments to the given
      * expected fragments, without stereochemistry.
      *
@@ -513,6 +712,36 @@ public class RECAPFragmenterTest {
             Assertions.assertEquals(RECAPFragmenterTest.toStereoSmiles(List.of(anExpectedFragments), false),
                     RECAPFragmenterTest.toStereoSmilesOfFragments(tmpFragments, false), aSmiles);
         }
+    }
+    //
+    /**
+     * Asserts that the leaves of the RECAP hierarchy of the given molecule are its single-pass fragments, compared with
+     * bond types and without stereochemistry.
+     *
+     * @param aFragmenter fragmenter
+     * @param aMolecule molecule
+     * @throws Exception if anything goes wrong
+     */
+    private void assertLeavesAreSinglePassFragments(RECAPFragmenter aFragmenter, IAtomContainer aMolecule)
+            throws Exception {
+        Assertions.assertEquals(RECAPFragmenterTest.toCanonicalSmiles(aFragmenter.fragmentMolecule(aMolecule), false),
+                RECAPFragmenterTest.toCanonicalSmiles(RECAPFragmenterTest.fragmentsOf(
+                        aFragmenter.buildHierarchy(aMolecule).getLeaves()), false));
+    }
+    //
+    /**
+     * Returns whether the order of a bond of the given molecule is unset.
+     *
+     * @param aMolecule molecule
+     * @return true if a bond has the order UNSET or no order
+     */
+    private boolean hasUnsetBondOrder(IAtomContainer aMolecule) {
+        for (IBond tmpBond : aMolecule.bonds()) {
+            if (tmpBond.getOrder() == null || tmpBond.getOrder() == IBond.Order.UNSET) {
+                return true;
+            }
+        }
+        return false;
     }
     //
     /**

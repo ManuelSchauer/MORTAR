@@ -128,13 +128,13 @@ CYCLIC_TERTIARY_AMINES_ALIPHATIC	C1(=O)N(CCCCCCCCCCC)CCCCCC1	3	no match	not clea
 CYCLIC_TERTIARY_AMINES_ALIPHATIC	C1CCOC(=O)N1CCCCC	3	no match	not cleaved	not cleaved	agrees
 CYCLIC_TERTIARY_AMINES_ALIPHATIC	C1CCN(CCCCC)C(=NCCCCC)N1CCCCC	3	no match	not cleaved	not cleaved	agrees
 CYCLIC_TERTIARY_AMINES_ALIPHATIC	c1cccn1CCCCCCCC	3	no match	not cleaved	not cleaved	agrees
-UREA	CN(C)C(=O)N(C)C	4	match	cleaved	cleaved	agrees
+UREA	CN(C)C(=O)N(C)C	4	match	not cleaved	not cleaved	rule matches, not cleaved because of the small-group rule (alkyl groups up to four carbon atoms at amide, urea and sulphonamide nitrogen atoms are small, publication, Figure 12)
 UREA	*N(*)C(=O)N(*)*	4	no match	cleaved	cleaved	pseudo atoms of the input are attachment points
 UREA	CC(=O)N(C)C	4	no match	not cleaved	not cleaved	agrees
 UREA	C1N(C1)C(=O)NC2CCCCCC2	4	match	cleaved	cleaved	agrees
-UREA	CNC(=O)NC	4	match	cleaved	cleaved	agrees
+UREA	CNC(=O)NC	4	match	not cleaved	not cleaved	rule matches, not cleaved because of the small-group rule (alkyl groups up to four carbon atoms at amide, urea and sulphonamide nitrogen atoms are small, publication, Figure 12)
 UREA	NC(=O)N	4	no match	not cleaved	not cleaved	agrees; terminal group kept by the small-group rule
-UREA	CN(C)C(=O)N(C)C	4	match	cleaved	cleaved	agrees
+UREA	CN(C)C(=O)N(C)C	4	match	not cleaved	not cleaved	rule matches, not cleaved because of the small-group rule (alkyl groups up to four carbon atoms at amide, urea and sulphonamide nitrogen atoms are small, publication, Figure 12)
 UREA	CCCCNC(=O)n(cn1)cc1	4	match	cleaved	cleaved	agrees
 UREA	n1(cncc1)C(=O)n(cn1)cc1	4	match	cleaved	cleaved	agrees
 UREA	CCCCNC(=O)NC(=O)NCCC	4	no match	cleaved	not cleaved	extended functional group, not cleaved with the strict setting

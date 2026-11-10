@@ -50,7 +50,7 @@ SULFONYL_SULFUR = '[S;X4;$(S(=O)=O)]'
 # strict functional group rules (exclusions of extended functional groups, see RECAPFragmenter)
 STRICT_AMIDE_CARBON = '[C;$(C=O);!$(C(~[#7])~[#7]);!$(C(=O)([#7])[!#6;!#1;!#0]);!$(C(=O)C=[#7,#8,#16])]'
 STRICT_AMIDE_NITROGEN = '[#7;+0;!$([#7]-[!#6;!#1;!#0]);!$([#7]=,#*);!$([#7](C=[#7,#8,#16])C=[#7,#8,#16])]'
-STRICT_UREA_CARBON = '[C;$(C(=O)(~[#7])~[#7]);!$(C(=O)~[#7]C=[#7,#8,#16])]'
+STRICT_UREA_CARBON = '[C;$(C(=O)(~[#7])~[#7]);!$(C(=O)~[#7]C=[#7,#8,#16]);!$(C(=O)~[#7][#16](=O)=O)]'
 STRICT_SULPHONAMIDE_NITROGEN = '[#7;+0;!$([#7]C=[#7,#8,#16]);!$([#7](S)[!#6;!#1;!#0]);!$([#7]=,#*)]'
 STRICT_ESTER_CARBON = '[C;$(C=O);!$(C(=O)([#8])[!#6;!#1;!#0]);!$(C(=O)C=[#7,#8,#16])]'
 STRICT_ESTER_OXYGEN = '[O;D2;$(O([#6])[#6]);!$(O(C=[#7,#8,#16])C=[#7,#8,#16])]'
@@ -111,18 +111,19 @@ def find_recap_bonds(mol, strict=False):
     return found
 
 
-def is_small_terminal_group(mol, point, cleaved, max_carbons):
+def is_small_terminal_group(mol, point, bond_type, cleaved, max_carbons):
     """True if the part containing the cleavage point is a small terminal group: one attachment point, and an amino
-    group (NH2) for nitrogen, an acyclic hydrocarbon group with at most max_carbons carbon atoms for an alkyl carbon
-    atom, or otherwise (oxygen, carbonyl, sulfonyl) the cleavage point with its double-bonded oxygen atoms and hydrogen
-    or such a hydrocarbon group"""
+    group (NH2) for a nitrogen atom at a bond of the types 3, 7, 8 or 9, an acyclic hydrocarbon group with at most
+    max_carbons carbon atoms for an alkyl carbon atom, or otherwise (oxygen, carbonyl, sulfonyl, nitrogen at an amide,
+    urea or sulphonamide bond) the cleavage point with its double-bonded oxygen atoms and hydrogen or such a hydrocarbon
+    group; explicit hydrogen atoms (isotopes) are ignored"""
     atom = mol.GetAtomWithIdx(point)
     head = {point}
     for bond in atom.GetBonds():
         other = bond.GetOtherAtom(atom)
         if bond.GetIdx() not in cleaved and bond.GetBondType() == Chem.BondType.DOUBLE and other.GetAtomicNum() == 8:
             head.add(other.GetIdx())
-    is_nitrogen = atom.GetAtomicNum() == 7
+    is_amino_nitrogen = atom.GetAtomicNum() == 7 and bond_type not in (1, 4, 11)
     is_alkyl_carbon = atom.GetAtomicNum() == 6 and len(head) == 1
     seen = {point}
     queue = deque([point])
@@ -132,7 +133,7 @@ def is_small_terminal_group(mol, point, cleaved, max_carbons):
         current = mol.GetAtomWithIdx(queue.popleft())
         if current.GetAtomicNum() == 0:
             attachments += 1
-        else:
+        elif current.GetAtomicNum() != 1:
             part.append(current)
         for bond in current.GetBonds():
             other = bond.GetOtherAtomIdx(current.GetIdx())
@@ -143,7 +144,7 @@ def is_small_terminal_group(mol, point, cleaved, max_carbons):
                 queue.append(other)
     if attachments != 1:
         return False
-    if is_nitrogen:
+    if is_amino_nitrogen:
         return len(part) == len(head)
     tail = [a for a in part if is_alkyl_carbon or a.GetIdx() not in head]
     return all(a.GetAtomicNum() == 6 and not a.IsInRing() for a in tail) and len(tail) <= max_carbons
@@ -154,8 +155,8 @@ def select_bonds(mol, bonds, max_carbons):
     for idx in sorted(bonds, key=lambda i: (bonds[i], i)):
         cleaved.add(idx)
         bond = mol.GetBondWithIdx(idx)
-        if is_small_terminal_group(mol, bond.GetBeginAtomIdx(), cleaved, max_carbons) \
-                or is_small_terminal_group(mol, bond.GetEndAtomIdx(), cleaved, max_carbons):
+        if is_small_terminal_group(mol, bond.GetBeginAtomIdx(), bonds[idx], cleaved, max_carbons) \
+                or is_small_terminal_group(mol, bond.GetEndAtomIdx(), bonds[idx], cleaved, max_carbons):
             cleaved.discard(idx)
     return {idx: bonds[idx] for idx in cleaved}
 

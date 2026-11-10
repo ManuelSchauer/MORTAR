@@ -32,6 +32,8 @@ import org.openscience.cdk.exception.CDKException;
 import org.openscience.cdk.interfaces.IAtom;
 import org.openscience.cdk.interfaces.IAtomContainer;
 import org.openscience.cdk.interfaces.IPseudoAtom;
+import org.openscience.cdk.smiles.SmiFlavor;
+import org.openscience.cdk.smiles.SmilesGenerator;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -53,7 +55,8 @@ import java.util.Objects;
  * small terminal fragments, and the simultaneous cleavage. The fragments are compared once with bond types and without
  * stereochemistry, and once with stereochemistry as MORTAR identifies fragments, i.e. with all link atoms written as
  * '*'; for the latter, stereo elements of atoms that are not stereogenic according to the CDK are removed on both
- * sides, because the RDKit keeps them.
+ * sides, because the RDKit keeps them. In addition, the data set is used to check that the leaves of the RECAP
+ * hierarchy are the single-pass fragments and that the fragments do not depend on the atom order of the input.
  *
  * <p>The reference fragments of the BIOFACQUIM data set (natural products from Mexico, CC BY 4.0, see
  * Tutorial/BIOFACQUIM-description-licence.txt) are part of the test resources. A further reference file, e.g. for a
@@ -180,6 +183,65 @@ public class RECAPFragmenterReferenceTest {
         System.out.printf("%d molecules, %d hierarchy nodes, at most %d per molecule%n", tmpMolecules, tmpNodes,
                 tmpMaximumNodes);
         Assertions.assertTrue(tmpMolecules > 550);
+        Assertions.assertEquals("", tmpMismatches.toString());
+    }
+    //
+    /**
+     * Checks for all molecules of the BIOFACQUIM data set that the fragments do not depend on the order of the atoms
+     * and bonds of the input, with default and with strict functional group rules: every molecule is fragmented once as
+     * parsed from the input SMILES and once as parsed from its unique SMILES created by the CDK, whose atom order
+     * differs, and the fragments are compared with bond types and without stereochemistry.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    public void biofacquimAtomOrderTest() throws Exception {
+        RECAPFragmenter tmpFragmenter = new RECAPFragmenter();
+        RECAPFragmenter tmpStrictFragmenter = new RECAPFragmenter();
+        tmpStrictFragmenter.setStrictFunctionalGroupsSetting(true);
+        int tmpMolecules = 0;
+        int tmpReorderedMolecules = 0;
+        StringBuilder tmpMismatches = new StringBuilder();
+        try (InputStream tmpStream = RECAPFragmenterReferenceTest.class.getResourceAsStream(
+                RECAPFragmenterReferenceTest.BIOFACQUIM_REFERENCE_FILE)) {
+            Objects.requireNonNull(tmpStream, "Reference file not found.");
+            BufferedReader tmpReader = new BufferedReader(new InputStreamReader(tmpStream, StandardCharsets.UTF_8));
+            String tmpLine;
+            while ((tmpLine = tmpReader.readLine()) != null) {
+                if (tmpLine.isBlank() || tmpLine.startsWith("#")) {
+                    continue;
+                }
+                String[] tmpColumns = tmpLine.split("\t", -1);
+                tmpMolecules++;
+                IAtomContainer tmpMolecule = RECAPFragmenterTest.parse(tmpColumns[1]);
+                //the output order of the atoms, i.e. their indices in the reordered molecule
+                int[] tmpOrder = new int[tmpMolecule.getAtomCount()];
+                String tmpReorderedSmiles = SmilesGenerator.create(tmpMolecule, SmiFlavor.Unique | SmiFlavor.Stereo,
+                        tmpOrder);
+                IAtomContainer tmpReorderedMolecule = RECAPFragmenterTest.parse(tmpReorderedSmiles);
+                for (int i = 0; i < tmpOrder.length; i++) {
+                    if (tmpOrder[i] != i) {
+                        tmpReorderedMolecules++;
+                        break;
+                    }
+                }
+                for (RECAPFragmenter tmpCurrent : new RECAPFragmenter[] {tmpFragmenter, tmpStrictFragmenter}) {
+                    List<String> tmpFragments = RECAPFragmenterTest.toCanonicalSmiles(
+                            tmpCurrent.fragmentMolecule(tmpMolecule), false);
+                    List<String> tmpReorderedFragments = RECAPFragmenterTest.toCanonicalSmiles(
+                            tmpCurrent.fragmentMolecule(tmpReorderedMolecule), false);
+                    if (!tmpFragments.equals(tmpReorderedFragments)) {
+                        tmpMismatches.append(String.format(
+                                "%s %s (strict %s)%n  input order: %s%n  reordered %s: %s%n", tmpColumns[0],
+                                tmpColumns[1], tmpCurrent.getStrictFunctionalGroupsSetting(), tmpFragments,
+                                tmpReorderedSmiles, tmpReorderedFragments));
+                    }
+                }
+            }
+        }
+        Assertions.assertTrue(tmpMolecules > 550);
+        //the canonical atom order of the CDK differs from the atom order of the input SMILES, written by the RDKit
+        Assertions.assertTrue(tmpReorderedMolecules > tmpMolecules / 2);
         Assertions.assertEquals("", tmpMismatches.toString());
     }
     //
