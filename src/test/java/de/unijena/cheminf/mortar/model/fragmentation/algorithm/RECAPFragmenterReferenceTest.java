@@ -68,9 +68,17 @@ public class RECAPFragmenterReferenceTest {
      */
     private static final String BIOFACQUIM_REFERENCE_FILE = "RECAP_Reference_Fragments_BIOFACQUIM.tsv";
     /**
+     * Name of the reference file of the BIOFACQUIM data set with strict functional group rules in the test resources.
+     */
+    private static final String BIOFACQUIM_STRICT_REFERENCE_FILE = "RECAP_Reference_Fragments_BIOFACQUIM_strict.tsv";
+    /**
      * Environment variable with the path of an additional reference file.
      */
     private static final String REFERENCE_FILE_ENVIRONMENT_VARIABLE = "MORTAR_RECAP_REFERENCE_FILE";
+    /**
+     * Environment variable with the path of an additional reference file with strict functional group rules.
+     */
+    private static final String STRICT_REFERENCE_FILE_ENVIRONMENT_VARIABLE = "MORTAR_RECAP_STRICT_REFERENCE_FILE";
     /**
      * Maximum number of reported mismatches.
      */
@@ -105,11 +113,92 @@ public class RECAPFragmenterReferenceTest {
      */
     @Test
     public void biofacquimReferenceTest() throws Exception {
-        ComparisonResult tmpResult;
+        this.assertBiofacquimReference(RECAPFragmenterReferenceTest.BIOFACQUIM_REFERENCE_FILE, false);
+    }
+    //
+    /**
+     * Compares the fragments of all molecules of the BIOFACQUIM data set with strict functional group rules with the
+     * reference fragments.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    public void biofacquimStrictReferenceTest() throws Exception {
+        this.assertBiofacquimReference(RECAPFragmenterReferenceTest.BIOFACQUIM_STRICT_REFERENCE_FILE, true);
+    }
+    //
+    /**
+     * Checks for all molecules of the BIOFACQUIM data set that the leaves of the RECAP hierarchy are the fragments of
+     * the single-pass cleavage (with stereochemistry), and that all hierarchy fragments are returned with the
+     * respective output option.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    public void biofacquimHierarchyTest() throws Exception {
+        RECAPFragmenter tmpFragmenter = new RECAPFragmenter();
+        RECAPFragmenter tmpHierarchyFragmenter = new RECAPFragmenter();
+        tmpHierarchyFragmenter.setFragmentOutputSetting(RECAPFragmenter.FragmentOutputOption.ALL_HIERARCHY_FRAGMENTS);
+        int tmpMolecules = 0;
+        int tmpNodes = 0;
+        int tmpMaximumNodes = 0;
+        StringBuilder tmpMismatches = new StringBuilder();
         try (InputStream tmpStream = RECAPFragmenterReferenceTest.class.getResourceAsStream(
                 RECAPFragmenterReferenceTest.BIOFACQUIM_REFERENCE_FILE)) {
             Objects.requireNonNull(tmpStream, "Reference file not found.");
-            tmpResult = this.compare(new BufferedReader(new InputStreamReader(tmpStream, StandardCharsets.UTF_8)));
+            BufferedReader tmpReader = new BufferedReader(new InputStreamReader(tmpStream, StandardCharsets.UTF_8));
+            String tmpLine;
+            while ((tmpLine = tmpReader.readLine()) != null) {
+                if (tmpLine.isBlank() || tmpLine.startsWith("#")) {
+                    continue;
+                }
+                String[] tmpColumns = tmpLine.split("\t", -1);
+                tmpMolecules++;
+                IAtomContainer tmpMolecule = RECAPFragmenterTest.parse(tmpColumns[1]);
+                List<IAtomContainer> tmpFragments = tmpFragmenter.fragmentMolecule(tmpMolecule);
+                RECAPFragmenter.RECAPHierarchyNode tmpRoot = tmpFragmenter.buildHierarchy(tmpMolecule);
+                List<RECAPFragmenter.RECAPHierarchyNode> tmpDescendants = tmpRoot.getAllDescendants();
+                tmpNodes += 1 + tmpDescendants.size();
+                tmpMaximumNodes = Math.max(tmpMaximumNodes, 1 + tmpDescendants.size());
+                if (tmpRoot.isLeaf()) {
+                    //no cleavable bond, the single pass returns the molecule
+                    Assertions.assertEquals(1, tmpFragments.size(), tmpColumns[1]);
+                    continue;
+                }
+                List<String> tmpExpected = RECAPFragmenterTest.toStereoSmilesOfFragments(tmpFragments, true);
+                List<String> tmpLeaves = RECAPFragmenterTest.toStereoSmilesOfFragments(
+                        RECAPFragmenterTest.fragmentsOf(tmpRoot.getLeaves()), true);
+                if (!tmpExpected.equals(tmpLeaves)) {
+                    tmpMismatches.append(String.format("%s %s%n  single pass: %s%n  leaves:      %s%n", tmpColumns[0],
+                            tmpColumns[1], tmpExpected, tmpLeaves));
+                }
+                Assertions.assertEquals(RECAPFragmenterTest.toCanonicalSmiles(RECAPFragmenterTest.fragmentsOf(tmpDescendants), false),
+                        RECAPFragmenterTest.toCanonicalSmiles(tmpHierarchyFragmenter.fragmentMolecule(tmpMolecule), false),
+                        tmpColumns[1]);
+            }
+        }
+        System.out.printf("%d molecules, %d hierarchy nodes, at most %d per molecule%n", tmpMolecules, tmpNodes,
+                tmpMaximumNodes);
+        Assertions.assertTrue(tmpMolecules > 550);
+        Assertions.assertEquals("", tmpMismatches.toString());
+    }
+    //
+    /**
+     * Compares the fragments of all molecules of the BIOFACQUIM data set with the given reference file, which must match
+     * exactly.
+     *
+     * @param aFileName name of the reference file in the test resources
+     * @param isStrict whether the strict functional group rules are applied
+     * @throws Exception if anything goes wrong
+     */
+    private void assertBiofacquimReference(String aFileName, boolean isStrict) throws Exception {
+        RECAPFragmenter tmpFragmenter = new RECAPFragmenter();
+        tmpFragmenter.setStrictFunctionalGroupsSetting(isStrict);
+        ComparisonResult tmpResult;
+        try (InputStream tmpStream = RECAPFragmenterReferenceTest.class.getResourceAsStream(aFileName)) {
+            Objects.requireNonNull(tmpStream, "Reference file not found.");
+            tmpResult = this.compare(new BufferedReader(new InputStreamReader(tmpStream, StandardCharsets.UTF_8)),
+                    tmpFragmenter);
         }
         System.out.println(tmpResult);
         Assertions.assertTrue(tmpResult.molecules() > 550);
@@ -132,11 +221,37 @@ public class RECAPFragmenterReferenceTest {
      */
     @Test
     public void additionalReferenceTest() throws Exception {
-        String tmpPath = System.getenv(RECAPFragmenterReferenceTest.REFERENCE_FILE_ENVIRONMENT_VARIABLE);
+        this.assertAdditionalReference(RECAPFragmenterReferenceTest.REFERENCE_FILE_ENVIRONMENT_VARIABLE, false);
+    }
+    //
+    /**
+     * Compares the fragments with strict functional group rules with the reference file given by the environment
+     * variable {@value #STRICT_REFERENCE_FILE_ENVIRONMENT_VARIABLE} (generated with the option --strict); skipped if it
+     * is not set. The same tolerances as in {@link #additionalReferenceTest()} apply.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    public void additionalStrictReferenceTest() throws Exception {
+        this.assertAdditionalReference(RECAPFragmenterReferenceTest.STRICT_REFERENCE_FILE_ENVIRONMENT_VARIABLE, true);
+    }
+    //
+    /**
+     * Compares the fragments with the reference file given by the given environment variable, with the tolerances of
+     * {@link #additionalReferenceTest()}; skipped if the variable is not set.
+     *
+     * @param anEnvironmentVariable name of the environment variable with the path of the reference file
+     * @param isStrict whether the strict functional group rules are applied
+     * @throws Exception if anything goes wrong
+     */
+    private void assertAdditionalReference(String anEnvironmentVariable, boolean isStrict) throws Exception {
+        String tmpPath = System.getenv(anEnvironmentVariable);
         Assumptions.assumeTrue(tmpPath != null && !tmpPath.isBlank(), "No additional reference file given.");
+        RECAPFragmenter tmpFragmenter = new RECAPFragmenter();
+        tmpFragmenter.setStrictFunctionalGroupsSetting(isStrict);
         ComparisonResult tmpResult;
         try (BufferedReader tmpReader = Files.newBufferedReader(Path.of(tmpPath), StandardCharsets.UTF_8)) {
-            tmpResult = this.compare(tmpReader);
+            tmpResult = this.compare(tmpReader, tmpFragmenter);
         }
         System.out.println(tmpResult);
         Assertions.assertTrue(tmpResult.mismatches() <= tmpResult.molecules() / 1000, tmpResult.report());
@@ -148,11 +263,12 @@ public class RECAPFragmenterReferenceTest {
      *
      * @param aReader reader of the reference file (tab-separated: name, input SMILES, fragments separated by '.',
      *                cleaved bonds)
+     * @param aFragmenter fragmenter with the settings of the reference file
      * @return comparison result
      * @throws IOException if the file cannot be read
      */
-    private ComparisonResult compare(BufferedReader aReader) throws IOException {
-        RECAPFragmenter tmpFragmenter = new RECAPFragmenter();
+    private ComparisonResult compare(BufferedReader aReader, RECAPFragmenter aFragmenter) throws IOException {
+        RECAPFragmenter tmpFragmenter = aFragmenter;
         int tmpMolecules = 0;
         int tmpSkipped = 0;
         int tmpMismatches = 0;

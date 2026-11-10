@@ -62,10 +62,13 @@ import javax.vecmath.Point3d;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -82,9 +85,10 @@ import java.util.logging.Logger;
  * <ol>
  *     <li>amide: carbonyl carbon - nitrogen (no ureas)</li>
  *     <li>ester: carbonyl carbon - ester oxygen</li>
- *     <li>amine: sp3 carbon - amine nitrogen (not acylated, sulfonylated, or bonded to another heteroatom)</li>
+ *     <li>amine: sp3 carbon - amine nitrogen (not acylated, sulfonylated, bonded to an imine or nitrile carbon atom, or
+ *     bonded to another heteroatom)</li>
  *     <li>urea: nitrogen - urea carbonyl carbon (both bonds)</li>
- *     <li>ether: sp3 carbon - ether oxygen</li>
+ *     <li>ether: sp3 carbon - ether oxygen (not of esters, carbamates or cyanates)</li>
  *     <li>olefin: carbon = carbon (the double bond is cleaved)</li>
  *     <li>quaternary nitrogen: quaternary ammonium nitrogen - carbon</li>
  *     <li>aromatic nitrogen - aliphatic carbon</li>
@@ -143,12 +147,34 @@ import java.util.logging.Logger;
  * Pseudo atoms of the input, e.g. attachment points of a preceding fragmentation in a pipeline, count as attachment
  * points in the check for small terminal groups.
  *
+ * <p><b>Strict functional groups (setting, default off).</b> The rules of the publication also cleave bonds that are
+ * part of larger functional groups. With the strict setting, the following bonds are not cleaved in addition: amides
+ * and esters of carbamates, carbonates, haloformates and 1,2-dicarbonyl compounds, anhydrides, imides, acyl ureas and
+ * ureas at imide nitrogen atoms, hydrazides, hydroxamic acids, N-acyl sulphonamides, sulphamides and sulphamates, acyl
+ * ammonium ions, bonds of lactam nitrogen atoms in cyclic ureas, carbamates, imides, amidines and hydrazides, bonds of
+ * aromatic and lactam nitrogen atoms to carbonyl, imidoyl and thiocarbonyl carbon atoms, olefins with a nitrogen,
+ * oxygen or sulfur substituent (e.g. enol ethers, enamines), and carbon-carbon double bonds that are conjugated with
+ * another carbon-carbon double or triple bond (polyenes, which would otherwise be cut into two-carbon fragments).
+ * Double bonds conjugated with a carbonyl group or an aromatic ring are still cleaved, since they are formed by
+ * olefinations like the Horner-Wadsworth-Emmons or Wittig reaction. The exclusions follow the test cases of the RECAP
+ * re-implementation for the CDK by Jonas Schaub (see the test resource RECAP_Rule_Cases.tsv).
+ *
+ * <p><b>RECAP hierarchy (fragment output setting).</b> As an extension of the publication, all fragments of the RECAP
+ * hierarchy can be returned instead of the single-pass fragments, see {@link #buildHierarchy(IAtomContainer)}: the
+ * children of a fragment are the two fragments that result from the cleavage of one more of its RECAP bonds, unless a
+ * small terminal group is cut off. Every set of atoms is represented by one node only, so the hierarchy is a directed
+ * acyclic graph whose leaves usually are the single-pass fragments; fragments that occur several times in the molecule
+ * are kept as separate nodes. Since the number of nodes grows exponentially with the number of RECAP bonds around a
+ * common core, molecules with more than {@value #MAXIMUM_HIERARCHY_NODE_COUNT} nodes are rejected.
+ *
  * <p><b>Differences to the RECAP implementation of the RDKit.</b> The RDKit implementation removes the oxygen atom of
  * cleaved ethers, the nitrogen atom of cleaved amines and the carbonyl group of cleaved ureas, cleaves aryl ethers
  * and aryl amines, cleaves the hydroxy group off carboxylic acids, has no rule for quaternary nitrogen atoms, and only
  * forbids fragments that consist of one to three carbon atoms (so e.g. methoxy, acetyl and butyl groups are cleaved
  * off). Its function RecapDecompose applies the rules hierarchically and returns all unique leaf fragments, which can
- * overlap, whereas the publication cleaves all bonds in a single pass; the multiplicity of fragments is lost.
+ * overlap, whereas the publication cleaves all bonds in a single pass; the multiplicity of fragments is lost. Its
+ * hierarchy merges fragments by their SMILES code, whereas the hierarchy of this class merges fragments by their atoms,
+ * so that fragments occurring several times are kept.
  *
  * <p><b>Note on bond types in MORTAR.</b> MORTAR identifies fragments by their unique SMILES code without isotope
  * information, so link atoms are written as '*' and fragments that differ only in their bond types are counted as
@@ -218,6 +244,170 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
     }
     //</editor-fold>
     //
+    //<editor-fold desc="Enum FragmentOutputOption">
+    /**
+     * Enumeration of the fragments that are returned for a molecule.
+     */
+    public enum FragmentOutputOption implements IDisplayEnum {
+        /**
+         * The fragments of the single-pass cleavage of all selected bonds, as in the original publication; every heavy
+         * atom of the molecule is contained in exactly one fragment.
+         */
+        TERMINAL_FRAGMENTS(Message.get("RECAPFragmenter.FragmentOutputOption.terminalFragments.displayName"),
+                Message.get("RECAPFragmenter.FragmentOutputOption.terminalFragments.tooltip")),
+        /**
+         * All fragments of the RECAP hierarchy (see {@link RECAPFragmenter#buildHierarchy(IAtomContainer)}), i.e. the
+         * terminal fragments and all intermediate fragments that result from the cleavage of only a part of the bonds;
+         * these fragments overlap.
+         */
+        ALL_HIERARCHY_FRAGMENTS(Message.get("RECAPFragmenter.FragmentOutputOption.allHierarchyFragments.displayName"),
+                Message.get("RECAPFragmenter.FragmentOutputOption.allHierarchyFragments.tooltip"));
+        /**
+         * Language-specific name for display in GUI.
+         */
+        private final String displayName;
+        /**
+         * Language-specific tooltip text for display in GUI.
+         */
+        private final String tooltip;
+        /**
+         * Constructor setting the display name and tooltip.
+         *
+         * @param aDisplayName display name
+         * @param aTooltip tooltip text
+         */
+        private FragmentOutputOption(String aDisplayName, String aTooltip) {
+            this.displayName = aDisplayName;
+            this.tooltip = aTooltip;
+        }
+        //
+        @Override
+        public String getDisplayName() {
+            return this.displayName;
+        }
+        //
+        @Override
+        public String getTooltipText() {
+            return this.tooltip;
+        }
+    }
+    //</editor-fold>
+    //
+    //<editor-fold desc="Public static nested class RECAPHierarchyNode">
+    /**
+     * A node of the RECAP hierarchy of a molecule, see {@link RECAPFragmenter#buildHierarchy(IAtomContainer)}: a
+     * fragment with references to the fragments it results from by the cleavage of one RECAP bond (parents) and to the
+     * fragments that result from it by the cleavage of one more RECAP bond (children). Every set of atoms of the
+     * molecule is represented by one node only, so a node can have several parents.
+     */
+    public static final class RECAPHierarchyNode {
+        /**
+         * The fragment of this node.
+         */
+        private final IAtomContainer fragment;
+        /**
+         * The nodes whose fragments yield this fragment by the cleavage of one RECAP bond.
+         */
+        private final List<RECAPHierarchyNode> parents;
+        /**
+         * The nodes whose fragments result from this fragment by the cleavage of one more RECAP bond, in pairs.
+         */
+        private final List<RECAPHierarchyNode> children;
+        /**
+         * Constructor.
+         *
+         * @param aFragment the fragment of the node
+         */
+        private RECAPHierarchyNode(IAtomContainer aFragment) {
+            this.fragment = aFragment;
+            this.parents = new ArrayList<>(1);
+            this.children = new ArrayList<>(2);
+        }
+        //
+        /**
+         * Returns the fragment of this node; for the root, it is the prepared molecule.
+         *
+         * @return the fragment
+         */
+        public IAtomContainer getFragment() {
+            return this.fragment;
+        }
+        //
+        /**
+         * Returns the parent nodes, i.e. the nodes whose fragments yield this fragment by the cleavage of one RECAP
+         * bond.
+         *
+         * @return unmodifiable list of the parent nodes, empty for the root
+         */
+        public List<RECAPHierarchyNode> getParents() {
+            return Collections.unmodifiableList(this.parents);
+        }
+        //
+        /**
+         * Returns the child nodes, i.e. the nodes whose fragments result from this fragment by the cleavage of one more
+         * RECAP bond. The two fragments of each cleaved bond are adjacent in the list; for the root of a molecule with
+         * several disconnected parts, the parts without a cleavable bond follow at the end.
+         *
+         * @return unmodifiable list of the child nodes, empty for leaves
+         */
+        public List<RECAPHierarchyNode> getChildren() {
+            return Collections.unmodifiableList(this.children);
+        }
+        //
+        /**
+         * Returns whether this node is the root of the hierarchy, i.e. has no parents.
+         *
+         * @return true for the root
+         */
+        public boolean isRoot() {
+            return this.parents.isEmpty();
+        }
+        //
+        /**
+         * Returns whether this node is a leaf of the hierarchy, i.e. its fragment cannot be cleaved further.
+         *
+         * @return true for leaves
+         */
+        public boolean isLeaf() {
+            return this.children.isEmpty();
+        }
+        //
+        /**
+         * Returns all nodes below this node, each node once, in breadth-first order.
+         *
+         * @return list of all descendant nodes
+         */
+        public List<RECAPHierarchyNode> getAllDescendants() {
+            Set<RECAPHierarchyNode> tmpVisitedNodes = Collections.newSetFromMap(new IdentityHashMap<>());
+            List<RECAPHierarchyNode> tmpDescendants = new ArrayList<>();
+            Deque<RECAPHierarchyNode> tmpQueue = new ArrayDeque<>(this.children);
+            while (!tmpQueue.isEmpty()) {
+                RECAPHierarchyNode tmpNode = tmpQueue.poll();
+                if (tmpVisitedNodes.add(tmpNode)) {
+                    tmpDescendants.add(tmpNode);
+                    tmpQueue.addAll(tmpNode.children);
+                }
+            }
+            return tmpDescendants;
+        }
+        //
+        /**
+         * Returns all leaves below this node, each leaf once, in breadth-first order.
+         *
+         * @return list of the descendant leaves, empty if this node is a leaf itself
+         */
+        public List<RECAPHierarchyNode> getLeaves() {
+            List<RECAPHierarchyNode> tmpLeaves = new ArrayList<>();
+            for (RECAPHierarchyNode tmpNode : this.getAllDescendants()) {
+                if (tmpNode.isLeaf()) {
+                    tmpLeaves.add(tmpNode);
+                }
+            }
+            return tmpLeaves;
+        }
+    }
+    //</editor-fold>
+    //
     //<editor-fold desc="Public static final constants">
     /**
      * Name of the algorithm.
@@ -237,6 +427,21 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
      */
     public static final int SMALL_GROUP_MAXIMUM_CARBON_ATOMS_DEFAULT = 4;
     /**
+     * Default setting for the strict functional group rules: off, i.e. the rules of the original publication are applied.
+     */
+    public static final boolean STRICT_FUNCTIONAL_GROUPS_OPTION_DEFAULT = false;
+    /**
+     * Default option for the returned fragments: the terminal fragments of the single-pass cleavage, as in the original
+     * publication.
+     */
+    public static final FragmentOutputOption FRAGMENT_OUTPUT_OPTION_DEFAULT = FragmentOutputOption.TERMINAL_FRAGMENTS;
+    /**
+     * Maximum number of nodes of a RECAP hierarchy (see {@link #buildHierarchy(IAtomContainer)}). The number of nodes
+     * grows exponentially with the number of cleavable bonds around a common core (2^k + k nodes, including the root,
+     * for k substituents), so molecules whose hierarchy exceeds this number are rejected.
+     */
+    public static final int MAXIMUM_HIERARCHY_NODE_COUNT = 10000;
+    /**
      * Key of the atom property of link atoms that holds the number of their RECAP bond type (Integer, 1 to 11).
      */
     public static final String BOND_TYPE_PROPERTY_KEY = "RECAPFragmenter.BondType";
@@ -250,7 +455,17 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
     /**
      * All RECAP bond rules in the order of their bond type numbers.
      */
-    private static final List<BondRule> RULES = RECAPFragmenter.createRules();
+    private static final List<BondRule> RULES = RECAPFragmenter.createRules(false);
+    /**
+     * All RECAP bond rules with the strict functional group exclusions, in the order of their bond type numbers.
+     */
+    private static final List<BondRule> STRICT_RULES = RECAPFragmenter.createRules(true);
+    /**
+     * Order in which cleavable bonds are processed: by bond type number, then by bond index.
+     */
+    private static final Comparator<RECAPBond> BOND_PROCESSING_ORDER = Comparator
+            .comparingInt(RECAPBond::bondType)
+            .thenComparingInt(aRECAPBond -> aRECAPBond.bond().getIndex());
     //</editor-fold>
     //
     //<editor-fold desc="Private records">
@@ -327,16 +542,19 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
      */
     private final CompiledRule[] compiledRules;
     /**
-     * Setting for the saturation of open valences.
+     * The rules with the strict functional group exclusions, with references to the compiled environment patterns.
      */
+    private final CompiledRule[] compiledStrictRules;
+    //the settings are documented at their property methods (a Javadoc comment here would duplicate it for javadoc)
+    //setting for the saturation of open valences
     private final SimpleIDisplayEnumConstantProperty saturationSetting;
-    /**
-     * Setting for returning molecules without cleavable bonds as one unchanged fragment.
-     */
+    //setting for the strict functional group rules
+    private final SimpleBooleanProperty strictFunctionalGroupsSetting;
+    //setting for the returned fragments (terminal fragments or all fragments of the hierarchy)
+    private final SimpleIDisplayEnumConstantProperty fragmentOutputSetting;
+    //setting for returning molecules without cleavable bonds as one unchanged fragment
     private final SimpleBooleanProperty returnUnfragmentedMoleculesSetting;
-    /**
-     * Setting for the maximum number of carbon atoms of small terminal groups that are not cleaved off.
-     */
+    //setting for the maximum number of carbon atoms of small terminal groups that are not cleaved off
     private final SimpleIntegerProperty smallGroupMaximumCarbonAtomsSetting;
     /**
      * All settings of this fragmenter, encapsulated in JavaFX properties for binding in GUI.
@@ -359,14 +577,10 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
      * different threads.
      */
     public RECAPFragmenter() {
+        //both rule sets share the compiled environment patterns
         Map<String, Integer> tmpEnvironmentIndexMap = new LinkedHashMap<>();
-        this.compiledRules = new CompiledRule[RECAPFragmenter.RULES.size()];
-        for (int i = 0; i < RECAPFragmenter.RULES.size(); i++) {
-            BondRule tmpRule = RECAPFragmenter.RULES.get(i);
-            int tmpLeftIndex = tmpEnvironmentIndexMap.computeIfAbsent(tmpRule.leftEnvironment(), aKey -> tmpEnvironmentIndexMap.size());
-            int tmpRightIndex = tmpEnvironmentIndexMap.computeIfAbsent(tmpRule.rightEnvironment(), aKey -> tmpEnvironmentIndexMap.size());
-            this.compiledRules[i] = new CompiledRule(tmpRule, tmpLeftIndex, tmpRightIndex);
-        }
+        this.compiledRules = RECAPFragmenter.compileRules(RECAPFragmenter.RULES, tmpEnvironmentIndexMap);
+        this.compiledStrictRules = RECAPFragmenter.compileRules(RECAPFragmenter.STRICT_RULES, tmpEnvironmentIndexMap);
         IChemObjectBuilder tmpBuilder = SilentChemObjectBuilder.getInstance();
         this.environmentPatterns = new DfPattern[tmpEnvironmentIndexMap.size()];
         for (Map.Entry<String, Integer> tmpEntry : tmpEnvironmentIndexMap.entrySet()) {
@@ -377,7 +591,7 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
             }
             this.environmentPatterns[tmpEntry.getValue()] = DfPattern.findSubstructure(tmpQuery);
         }
-        int tmpNumberOfSettings = 3;
+        int tmpNumberOfSettings = 5;
         int tmpInitialCapacityForSettingNameMaps = CollectionUtil.calculateInitialHashCollectionCapacity(
                 tmpNumberOfSettings,
                 BasicDefinitions.DEFAULT_HASH_COLLECTION_LOAD_FACTOR);
@@ -440,9 +654,42 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
                 Message.get("RECAPFragmenter.returnUnfragmentedMoleculesSetting.tooltip"));
         this.settingNameDisplayNameMap.put(this.returnUnfragmentedMoleculesSetting.getName(),
                 Message.get("RECAPFragmenter.returnUnfragmentedMoleculesSetting.displayName"));
+        this.strictFunctionalGroupsSetting = new SimpleBooleanProperty(this,
+                "Strict functional groups setting",
+                RECAPFragmenter.STRICT_FUNCTIONAL_GROUPS_OPTION_DEFAULT);
+        this.settingNameTooltipTextMap.put(this.strictFunctionalGroupsSetting.getName(),
+                Message.get("RECAPFragmenter.strictFunctionalGroupsSetting.tooltip"));
+        this.settingNameDisplayNameMap.put(this.strictFunctionalGroupsSetting.getName(),
+                Message.get("RECAPFragmenter.strictFunctionalGroupsSetting.displayName"));
+        this.fragmentOutputSetting = new SimpleIDisplayEnumConstantProperty(this,
+                "Fragment output setting",
+                RECAPFragmenter.FRAGMENT_OUTPUT_OPTION_DEFAULT,
+                RECAPFragmenter.FragmentOutputOption.class) {
+            @Override
+            public void set(IDisplayEnum newValue) throws NullPointerException, IllegalArgumentException {
+                try {
+                    //call to super.set() for parameter checks
+                    super.set(newValue);
+                } catch (NullPointerException | IllegalArgumentException anException) {
+                    RECAPFragmenter.LOGGER.log(Level.WARNING, anException.toString(), anException);
+                    GuiUtil.guiExceptionAlert(Message.get("Fragmenter.IllegalSettingValue.Title"),
+                            Message.get("Fragmenter.IllegalSettingValue.Header"),
+                            anException.toString(),
+                            anException);
+                    //re-throws the exception to properly reset the binding
+                    throw anException;
+                }
+            }
+        };
+        this.settingNameTooltipTextMap.put(this.fragmentOutputSetting.getName(),
+                Message.get("RECAPFragmenter.fragmentOutputSetting.tooltip"));
+        this.settingNameDisplayNameMap.put(this.fragmentOutputSetting.getName(),
+                Message.get("RECAPFragmenter.fragmentOutputSetting.displayName"));
         this.settings = new ArrayList<>(tmpNumberOfSettings);
         this.settings.add(this.saturationSetting);
         this.settings.add(this.smallGroupMaximumCarbonAtomsSetting);
+        this.settings.add(this.strictFunctionalGroupsSetting);
+        this.settings.add(this.fragmentOutputSetting);
         this.settings.add(this.returnUnfragmentedMoleculesSetting);
     }
     //</editor-fold>
@@ -504,6 +751,42 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
     }
     //
     /**
+     * Returns whether the strict functional group rules are applied (see class documentation).
+     *
+     * @return true if the strict functional group rules are applied
+     */
+    public boolean getStrictFunctionalGroupsSetting() {
+        return this.strictFunctionalGroupsSetting.get();
+    }
+    //
+    /**
+     * Returns the property object of the setting for the strict functional group rules.
+     *
+     * @return property object of the setting
+     */
+    public SimpleBooleanProperty strictFunctionalGroupsSettingProperty() {
+        return this.strictFunctionalGroupsSetting;
+    }
+    //
+    /**
+     * Returns the currently set option for the returned fragments.
+     *
+     * @return fragment output option
+     */
+    public FragmentOutputOption getFragmentOutputSetting() {
+        return (FragmentOutputOption) this.fragmentOutputSetting.get();
+    }
+    //
+    /**
+     * Returns the property object of the setting for the returned fragments.
+     *
+     * @return property object of the setting
+     */
+    public SimpleIDisplayEnumConstantProperty fragmentOutputSettingProperty() {
+        return this.fragmentOutputSetting;
+    }
+    //
+    /**
      * Returns the names of all RECAP bond types in the order of their numbers (index 0 is bond type 1).
      *
      * @return unmodifiable list of bond type names
@@ -552,6 +835,27 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
     public void setReturnUnfragmentedMoleculesSetting(boolean aBoolean) {
         this.returnUnfragmentedMoleculesSetting.set(aBoolean);
     }
+    //
+    /**
+     * Sets whether the strict functional group rules are applied (see class documentation). If false (default), the
+     * rules of the original publication are applied.
+     *
+     * @param aBoolean true if the strict functional group rules should be applied
+     */
+    public void setStrictFunctionalGroupsSetting(boolean aBoolean) {
+        this.strictFunctionalGroupsSetting.set(aBoolean);
+    }
+    //
+    /**
+     * Sets the option for the returned fragments.
+     *
+     * @param anOption fragment output option
+     * @throws NullPointerException if the given option is null
+     */
+    public void setFragmentOutputSetting(FragmentOutputOption anOption) throws NullPointerException {
+        Objects.requireNonNull(anOption, "Given fragment output option is null.");
+        this.fragmentOutputSetting.set(anOption);
+    }
     //</editor-fold>
     //
     //<editor-fold desc="IMoleculeFragmenter methods">
@@ -586,6 +890,8 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
         tmpCopy.setSaturationSetting(this.getSaturationSetting());
         tmpCopy.setSmallGroupMaximumCarbonAtomsSetting(this.getSmallGroupMaximumCarbonAtomsSetting());
         tmpCopy.setReturnUnfragmentedMoleculesSetting(this.getReturnUnfragmentedMoleculesSetting());
+        tmpCopy.setStrictFunctionalGroupsSetting(this.getStrictFunctionalGroupsSetting());
+        tmpCopy.setFragmentOutputSetting(this.getFragmentOutputSetting());
         return tmpCopy;
     }
     //
@@ -594,15 +900,22 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
         this.saturationSetting.set(RECAPFragmenter.SATURATION_OPTION_DEFAULT);
         this.smallGroupMaximumCarbonAtomsSetting.set(RECAPFragmenter.SMALL_GROUP_MAXIMUM_CARBON_ATOMS_DEFAULT);
         this.returnUnfragmentedMoleculesSetting.set(RECAPFragmenter.RETURN_UNFRAGMENTED_MOLECULES_OPTION_DEFAULT);
+        this.strictFunctionalGroupsSetting.set(RECAPFragmenter.STRICT_FUNCTIONAL_GROUPS_OPTION_DEFAULT);
+        this.fragmentOutputSetting.set(RECAPFragmenter.FRAGMENT_OUTPUT_OPTION_DEFAULT);
     }
     //
     /**
      * {@inheritDoc}
      *
      * <p>The fragments are the disconnected parts of a clone of the given molecule, in which all selected RECAP bonds
-     * have been cleaved and the open valences saturated according to the saturation setting. If no bond is cleaved,
-     * the clone (or its disconnected parts, e.g. counter ions, separately) is returned or, depending on the respective
+     * have been cleaved and the open valences saturated according to the saturation setting. With the fragment output
+     * option {@link FragmentOutputOption#ALL_HIERARCHY_FRAGMENTS}, all fragments of the RECAP hierarchy except its root
+     * (the molecule) are returned instead, see {@link #buildHierarchy(IAtomContainer)}. If no bond is cleaved, the
+     * clone (or its disconnected parts, e.g. counter ions, separately) is returned or, depending on the respective
      * setting, no fragment is returned.</p>
+     *
+     * @throws IllegalArgumentException also if the RECAP hierarchy of the molecule has more than
+     *                                  {@link #MAXIMUM_HIERARCHY_NODE_COUNT} nodes
      */
     @Override
     public List<IAtomContainer> fragmentMolecule(IAtomContainer aMolecule)
@@ -616,8 +929,20 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
         IAtomContainer tmpMolecule = aMolecule.clone();
         try {
             this.prepareMolecule(tmpMolecule);
-            List<RECAPBond> tmpBondsToCleave = this.selectBondsToCleave(tmpMolecule, this.findRECAPBonds(tmpMolecule));
+            List<RECAPBond> tmpRECAPBonds = this.findRECAPBonds(tmpMolecule);
+            List<RECAPBond> tmpBondsToCleave = this.selectBondsToCleave(tmpMolecule, tmpRECAPBonds);
+            //if the single pass cleaves no bond, no bond can be cleaved in the hierarchy either, since the cleavage of
+            //each bond alone cuts off a small terminal group
             if (!tmpBondsToCleave.isEmpty()) {
+                if (this.fragmentOutputSetting.get().equals(FragmentOutputOption.ALL_HIERARCHY_FRAGMENTS)) {
+                    List<RECAPHierarchyNode> tmpNodes = this.createHierarchy(tmpMolecule, tmpRECAPBonds);
+                    List<IAtomContainer> tmpFragments = new ArrayList<>(tmpNodes.size() - 1);
+                    //the root, i.e. the molecule itself, is not a fragment
+                    for (int i = 1; i < tmpNodes.size(); i++) {
+                        tmpFragments.add(tmpNodes.get(i).getFragment());
+                    }
+                    return tmpFragments;
+                }
                 return this.cleaveBonds(tmpMolecule, tmpBondsToCleave);
             }
             if (!this.returnUnfragmentedMoleculesSetting.get()) {
@@ -671,6 +996,48 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
     }
     //</editor-fold>
     //
+    //<editor-fold desc="Public methods">
+    /**
+     * Builds the RECAP hierarchy of the given molecule with the current settings (an extension of the original
+     * publication, which cleaves all bonds in a single pass, comparable to the function RecapDecompose of the RDKit).
+     * The root of the hierarchy is the molecule; the children of a node are the two fragments that result from the
+     * cleavage of one more RECAP bond of its fragment, unless this cleavage cuts off a small terminal group (with
+     * respect to the bonds already cleaved for this fragment). Every fragment, i.e. every set of atoms of the molecule,
+     * is represented by exactly one node, which has a parent for every bond whose cleavage yields it, so the hierarchy
+     * is a directed acyclic graph whose size grows polynomially with the number of RECAP bonds for chains, but
+     * exponentially for many substituents around a common core. Fragments that occur several times in the molecule
+     * are represented by several nodes, so their multiplicity is kept. If the molecule consists of several disconnected
+     * parts, e.g. a salt, the parts without a cleavable bond are children of the root as well. The leaves of the
+     * hierarchy usually are the fragments of the single-pass cleavage. The link atoms (or hydrogen atoms) and stereo
+     * elements of the fragments are created as in {@link #fragmentMolecule(IAtomContainer)}.
+     *
+     * @param aMolecule the molecule to fragment, it is not altered
+     * @return the root node of the hierarchy, its fragment is the prepared clone of the molecule (explicit hydrogen
+     *         atoms suppressed, Daylight aromaticity)
+     * @throws NullPointerException if the given molecule is null
+     * @throws IllegalArgumentException if the molecule cannot be fragmented (see
+     *                                  {@link #canBeFragmented(IAtomContainer)}), if an error occurs during its
+     *                                  preparation, or if its hierarchy has more than
+     *                                  {@link #MAXIMUM_HIERARCHY_NODE_COUNT} nodes
+     * @throws CloneNotSupportedException if the molecule cannot be cloned
+     */
+    public RECAPHierarchyNode buildHierarchy(IAtomContainer aMolecule)
+            throws NullPointerException, IllegalArgumentException, CloneNotSupportedException {
+        Objects.requireNonNull(aMolecule, "Given molecule is null.");
+        if (!this.canBeFragmented(aMolecule)) {
+            throw new IllegalArgumentException("Given molecule cannot be fragmented but should be filtered or preprocessed first.");
+        }
+        IAtomContainer tmpMolecule = aMolecule.clone();
+        try {
+            this.prepareMolecule(tmpMolecule);
+        } catch (CDKException anException) {
+            throw new IllegalArgumentException(String.format("The molecule could not be prepared: %s", anException),
+                    anException);
+        }
+        return this.createHierarchy(tmpMolecule, this.findRECAPBonds(tmpMolecule)).get(0);
+    }
+    //</editor-fold>
+    //
     //<editor-fold desc="Package-private methods">
     /**
      * Prepares the given molecule (in place) for the matching of the RECAP rules: missing implicit hydrogen counts are
@@ -700,13 +1067,15 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
     }
     //
     /**
-     * Identifies all bonds of the given prepared molecule that match a RECAP rule. If a bond matches several rules,
-     * the rule with the lowest bond type number is assigned.
+     * Identifies all bonds of the given prepared molecule that match a RECAP rule (with the strict functional group
+     * exclusions if the respective setting is true). If a bond matches several rules, the rule with the lowest bond
+     * type number is assigned.
      *
      * @param aPreparedMolecule molecule prepared with {@link #prepareMolecule(IAtomContainer)}
      * @return the cleavable bonds with their bond types, in the order of the bonds in the molecule
      */
     List<RECAPBond> findRECAPBonds(IAtomContainer aPreparedMolecule) {
+        CompiledRule[] tmpRules = this.strictFunctionalGroupsSetting.get() ? this.compiledStrictRules : this.compiledRules;
         //lazily filled results of the environment patterns per atom index, 0: unknown, 1: match, 2: no match
         byte[][] tmpEnvironmentMatches = new byte[this.environmentPatterns.length][];
         int tmpAtomCount = aPreparedMolecule.getAtomCount();
@@ -719,7 +1088,7 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
             }
             IAtom tmpBegin = tmpBond.getBegin();
             IAtom tmpEnd = tmpBond.getEnd();
-            for (CompiledRule tmpCompiledRule : this.compiledRules) {
+            for (CompiledRule tmpCompiledRule : tmpRules) {
                 if (tmpCompiledRule.rule().order() != tmpOrder) {
                     continue;
                 }
@@ -752,9 +1121,7 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
             return aRECAPBondList;
         }
         List<RECAPBond> tmpCandidates = new ArrayList<>(aRECAPBondList);
-        tmpCandidates.sort((aFirst, aSecond) -> aFirst.bondType() != aSecond.bondType()
-                ? Integer.compare(aFirst.bondType(), aSecond.bondType())
-                : Integer.compare(aFirst.bond().getIndex(), aSecond.bond().getIndex()));
+        tmpCandidates.sort(RECAPFragmenter.BOND_PROCESSING_ORDER);
         GraphUtil.EdgeToBondMap tmpEdgeToBondMap = GraphUtil.EdgeToBondMap.withSpaceFor(aPreparedMolecule);
         int[][] tmpAdjacencyList = GraphUtil.toAdjList(aPreparedMolecule, tmpEdgeToBondMap);
         boolean[] tmpIsCleaved = new boolean[aPreparedMolecule.getBondCount()];
@@ -885,6 +1252,189 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
             return tmpPartSize == tmpHeadAtoms.size();
         }
         return tmpTailCarbonAtoms <= aMaximumCarbonAtoms;
+    }
+    //
+    /**
+     * Creates the RECAP hierarchy of the given prepared molecule, see {@link #buildHierarchy(IAtomContainer)}. The
+     * nodes are first determined as atom sets, with the bonds connecting an atom set to the rest of the molecule
+     * regarded as cleaved, and then their fragments are created.
+     *
+     * @param aPreparedMolecule molecule prepared with {@link #prepareMolecule(IAtomContainer)}; it becomes the fragment
+     *                          of the root and must not be altered afterwards
+     * @param aRECAPBondList all cleavable bonds of the molecule
+     * @return all nodes of the hierarchy in breadth-first order, the first one is the root
+     * @throws IllegalArgumentException if the hierarchy has more than {@link #MAXIMUM_HIERARCHY_NODE_COUNT} nodes
+     * @throws CloneNotSupportedException if the molecule cannot be cloned
+     */
+    private List<RECAPHierarchyNode> createHierarchy(IAtomContainer aPreparedMolecule, List<RECAPBond> aRECAPBondList)
+            throws IllegalArgumentException, CloneNotSupportedException {
+        int tmpAtomCount = aPreparedMolecule.getAtomCount();
+        int tmpBondCount = aPreparedMolecule.getBondCount();
+        List<RECAPBond> tmpCandidates = new ArrayList<>(aRECAPBondList);
+        tmpCandidates.sort(RECAPFragmenter.BOND_PROCESSING_ORDER);
+        int[] tmpBondTypes = new int[tmpBondCount];
+        for (RECAPBond tmpCandidate : tmpCandidates) {
+            tmpBondTypes[tmpCandidate.bond().getIndex()] = tmpCandidate.bondType();
+        }
+        GraphUtil.EdgeToBondMap tmpEdgeToBondMap = GraphUtil.EdgeToBondMap.withSpaceFor(aPreparedMolecule);
+        int[][] tmpAdjacencyList = GraphUtil.toAdjList(aPreparedMolecule, tmpEdgeToBondMap);
+        int tmpMaximumCarbonAtoms = this.smallGroupMaximumCarbonAtomsSetting.get();
+        List<BitSet> tmpAtomSets = new ArrayList<>();
+        Map<BitSet, Integer> tmpNodeIndexMap = new HashMap<>();
+        List<List<Integer>> tmpChildIndexLists = new ArrayList<>();
+        BitSet tmpRootAtomSet = new BitSet(tmpAtomCount);
+        tmpRootAtomSet.set(0, tmpAtomCount);
+        RECAPFragmenter.addHierarchyNode(tmpRootAtomSet, tmpAtomSets, tmpNodeIndexMap, tmpChildIndexLists);
+        ConnectedComponents tmpConnectedComponents = new ConnectedComponents(tmpAdjacencyList);
+        int[] tmpComponents = tmpConnectedComponents.components();
+        boolean[] tmpIsComponentCleaved = new boolean[tmpConnectedComponents.nComponents() + 1];
+        //breadth-first: the list of atom sets grows while it is processed
+        for (int tmpNodeIndex = 0; tmpNodeIndex < tmpAtomSets.size(); tmpNodeIndex++) {
+            BitSet tmpAtomSet = tmpAtomSets.get(tmpNodeIndex);
+            //the bonds that connect the fragment to the rest of the molecule have been cleaved
+            boolean[] tmpIsCleaved = new boolean[tmpBondCount];
+            for (IBond tmpBond : aPreparedMolecule.bonds()) {
+                tmpIsCleaved[tmpBond.getIndex()] = tmpAtomSet.get(tmpBond.getBegin().getIndex())
+                        != tmpAtomSet.get(tmpBond.getEnd().getIndex());
+            }
+            for (RECAPBond tmpCandidate : tmpCandidates) {
+                int tmpBeginIndex = tmpCandidate.bond().getBegin().getIndex();
+                int tmpEndIndex = tmpCandidate.bond().getEnd().getIndex();
+                if (!tmpAtomSet.get(tmpBeginIndex) || !tmpAtomSet.get(tmpEndIndex)) {
+                    continue;
+                }
+                int tmpBondIndex = tmpCandidate.bond().getIndex();
+                tmpIsCleaved[tmpBondIndex] = true;
+                if (!RECAPFragmenter.isSmallTerminalGroup(aPreparedMolecule, tmpBeginIndex, tmpAdjacencyList,
+                        tmpEdgeToBondMap, tmpIsCleaved, tmpMaximumCarbonAtoms)
+                        && !RECAPFragmenter.isSmallTerminalGroup(aPreparedMolecule, tmpEndIndex, tmpAdjacencyList,
+                        tmpEdgeToBondMap, tmpIsCleaved, tmpMaximumCarbonAtoms)) {
+                    tmpIsComponentCleaved[tmpComponents[tmpBeginIndex]] = true;
+                    for (int tmpStartIndex : new int[] {tmpBeginIndex, tmpEndIndex}) {
+                        BitSet tmpPart = RECAPFragmenter.collectPart(tmpStartIndex, tmpAtomCount, tmpAdjacencyList,
+                                tmpEdgeToBondMap, tmpIsCleaved);
+                        tmpChildIndexLists.get(tmpNodeIndex).add(RECAPFragmenter.addHierarchyNode(tmpPart, tmpAtomSets,
+                                tmpNodeIndexMap, tmpChildIndexLists));
+                    }
+                    if (tmpAtomSets.size() > RECAPFragmenter.MAXIMUM_HIERARCHY_NODE_COUNT) {
+                        throw new IllegalArgumentException(String.format(
+                                "The RECAP hierarchy of the molecule has more than %d nodes.",
+                                RECAPFragmenter.MAXIMUM_HIERARCHY_NODE_COUNT));
+                    }
+                }
+                tmpIsCleaved[tmpBondIndex] = false;
+            }
+        }
+        //disconnected parts without a cleavable bond, e.g. counter ions, are children of the root (and leaves)
+        if (tmpConnectedComponents.nComponents() > 1) {
+            for (int tmpComponent = 1; tmpComponent <= tmpConnectedComponents.nComponents(); tmpComponent++) {
+                if (tmpIsComponentCleaved[tmpComponent]) {
+                    continue;
+                }
+                BitSet tmpPart = new BitSet(tmpAtomCount);
+                for (int i = 0; i < tmpAtomCount; i++) {
+                    if (tmpComponents[i] == tmpComponent) {
+                        tmpPart.set(i);
+                    }
+                }
+                tmpChildIndexLists.get(0).add(RECAPFragmenter.addHierarchyNode(tmpPart, tmpAtomSets, tmpNodeIndexMap,
+                        tmpChildIndexLists));
+            }
+        }
+        List<RECAPHierarchyNode> tmpNodes = new ArrayList<>(tmpAtomSets.size());
+        //placeholder for the root, whose fragment is the prepared molecule that must remain unaltered for the clones
+        tmpNodes.add(null);
+        for (int i = 1; i < tmpAtomSets.size(); i++) {
+            tmpNodes.add(new RECAPHierarchyNode(this.createHierarchyFragment(aPreparedMolecule, tmpAtomSets.get(i),
+                    tmpBondTypes)));
+        }
+        tmpNodes.set(0, new RECAPHierarchyNode(aPreparedMolecule));
+        for (int i = 0; i < tmpNodes.size(); i++) {
+            for (int tmpChildIndex : tmpChildIndexLists.get(i)) {
+                tmpNodes.get(i).children.add(tmpNodes.get(tmpChildIndex));
+                tmpNodes.get(tmpChildIndex).parents.add(tmpNodes.get(i));
+            }
+        }
+        return tmpNodes;
+    }
+    //
+    /**
+     * Returns the index of the hierarchy node with the given atom set, adding a new node if there is none.
+     *
+     * @param anAtomSet atom set of the node
+     * @param anAtomSetList atom sets of all nodes by node index
+     * @param aNodeIndexMap map of the atom sets to the node indices
+     * @param aChildIndexLists child node indices of all nodes by node index
+     * @return index of the node
+     */
+    private static int addHierarchyNode(BitSet anAtomSet, List<BitSet> anAtomSetList, Map<BitSet, Integer> aNodeIndexMap,
+                                        List<List<Integer>> aChildIndexLists) {
+        Integer tmpIndex = aNodeIndexMap.get(anAtomSet);
+        if (tmpIndex != null) {
+            return tmpIndex;
+        }
+        int tmpNewIndex = anAtomSetList.size();
+        anAtomSetList.add(anAtomSet);
+        aNodeIndexMap.put(anAtomSet, tmpNewIndex);
+        aChildIndexLists.add(new ArrayList<>(2));
+        return tmpNewIndex;
+    }
+    //
+    /**
+     * Returns the atoms that are connected to the given start atom without crossing a cleaved bond.
+     *
+     * @param aStartIndex index of the start atom
+     * @param anAtomCount number of atoms of the molecule
+     * @param anAdjacencyList adjacency list of the molecule
+     * @param anEdgeToBondMap map of the edges of the adjacency list to the bonds
+     * @param anIsCleavedArray cleaved bonds by bond index
+     * @return the atom indices of the part
+     */
+    private static BitSet collectPart(int aStartIndex, int anAtomCount, int[][] anAdjacencyList,
+                                      GraphUtil.EdgeToBondMap anEdgeToBondMap, boolean[] anIsCleavedArray) {
+        BitSet tmpPart = new BitSet(anAtomCount);
+        Deque<Integer> tmpQueue = new ArrayDeque<>();
+        tmpQueue.add(aStartIndex);
+        tmpPart.set(aStartIndex);
+        while (!tmpQueue.isEmpty()) {
+            int tmpAtomIndex = tmpQueue.poll();
+            for (int tmpNeighbour : anAdjacencyList[tmpAtomIndex]) {
+                if (!tmpPart.get(tmpNeighbour)
+                        && !anIsCleavedArray[anEdgeToBondMap.get(tmpAtomIndex, tmpNeighbour).getIndex()]) {
+                    tmpPart.set(tmpNeighbour);
+                    tmpQueue.add(tmpNeighbour);
+                }
+            }
+        }
+        return tmpPart;
+    }
+    //
+    /**
+     * Creates the fragment of a hierarchy node: a clone of the prepared molecule is cleaved at all bonds that connect
+     * the given atom set to the rest of the molecule, and the part with the atom set is returned.
+     *
+     * @param aPreparedMolecule molecule prepared with {@link #prepareMolecule(IAtomContainer)}, it is not altered
+     * @param anAtomSet atom indices of the fragment
+     * @param aBondTypes RECAP bond types by bond index (0 for bonds that are not cleavable)
+     * @return the fragment
+     * @throws CloneNotSupportedException if the molecule cannot be cloned
+     */
+    private IAtomContainer createHierarchyFragment(IAtomContainer aPreparedMolecule, BitSet anAtomSet, int[] aBondTypes)
+            throws CloneNotSupportedException {
+        IAtomContainer tmpClone = aPreparedMolecule.clone();
+        List<RECAPBond> tmpBoundaryBonds = new ArrayList<>();
+        for (IBond tmpBond : tmpClone.bonds()) {
+            if (anAtomSet.get(tmpBond.getBegin().getIndex()) != anAtomSet.get(tmpBond.getEnd().getIndex())) {
+                tmpBoundaryBonds.add(new RECAPBond(tmpBond, aBondTypes[tmpBond.getIndex()]));
+            }
+        }
+        IAtom tmpMarkerAtom = tmpClone.getAtom(anAtomSet.nextSetBit(0));
+        for (IAtomContainer tmpFragment : this.cleaveBonds(tmpClone, tmpBoundaryBonds)) {
+            if (tmpFragment.contains(tmpMarkerAtom)) {
+                return tmpFragment;
+            }
+        }
+        throw new IllegalStateException("The fragment of a RECAP hierarchy node could not be determined.");
     }
     //
     /**
@@ -1240,51 +1790,109 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
     }
     //
     /**
-     * Creates the eleven RECAP bond rules in the order of their numbers.
+     * Compiles the given rules: the atom environments are added to the given map of environment SMARTS to pattern
+     * indices (if not contained yet), and the rules reference their environments by these indices.
      *
+     * @param aRuleList rules to compile
+     * @param anEnvironmentIndexMap map of environment SMARTS to pattern indices, extended by this method
+     * @return the compiled rules in the order of the given list
+     */
+    private static CompiledRule[] compileRules(List<BondRule> aRuleList, Map<String, Integer> anEnvironmentIndexMap) {
+        CompiledRule[] tmpCompiledRules = new CompiledRule[aRuleList.size()];
+        for (int i = 0; i < aRuleList.size(); i++) {
+            BondRule tmpRule = aRuleList.get(i);
+            int tmpLeftIndex = anEnvironmentIndexMap.computeIfAbsent(tmpRule.leftEnvironment(),
+                    aKey -> anEnvironmentIndexMap.size());
+            int tmpRightIndex = anEnvironmentIndexMap.computeIfAbsent(tmpRule.rightEnvironment(),
+                    aKey -> anEnvironmentIndexMap.size());
+            tmpCompiledRules[i] = new CompiledRule(tmpRule, tmpLeftIndex, tmpRightIndex);
+        }
+        return tmpCompiledRules;
+    }
+    //
+    /**
+     * Creates the eleven RECAP bond rules in the order of their numbers, with or without the strict functional group
+     * exclusions (see class documentation).
+     *
+     * @param isStrict true for the rules with the strict functional group exclusions
      * @return list of all rules
      */
-    private static List<BondRule> createRules() {
+    private static List<BondRule> createRules(boolean isStrict) {
         IBond.Order tmpSingle = IBond.Order.SINGLE;
         //carbonyl carbon atom of amides, not of ureas (bond type 4)
         String tmpAmideCarbon = "[C;$(C=O);!$(C(~[#7])~[#7])]";
-        //nitrogen atom of amides and ureas (also aromatic nitrogen atoms)
+        //nitrogen atom of amides, ureas and sulphonamides (also aromatic nitrogen atoms)
         String tmpAmideNitrogen = "[#7;+0]";
+        String tmpUreaNitrogen = tmpAmideNitrogen;
+        String tmpSulphonamideNitrogen = tmpAmideNitrogen;
         //carbonyl carbon atom of esters (also carbonates and carbamates)
         String tmpEsterCarbon = "[C;$(C=O)]";
         //ester oxygen atom, bonded to two carbon atoms (no carboxylic acids)
         String tmpEsterOxygen = "[O;D2;$(O([#6])[#6])]";
         //sp3 carbon atom of amines and ethers
         String tmpSp3Carbon = "[C;X4]";
-        //amine nitrogen atom: neutral, three-connected, not acylated or bonded to an imine or thiocarbonyl carbon atom
-        //(amides, ureas, amidines), and not bonded to another heteroatom (e.g. sulfonamides, hydrazines)
-        String tmpAmineNitrogen = "[N;+0;X3;!$(N[#6]=[#7,#8,#16]);!$(N[#7,#8,#15,#16])]";
+        //amine nitrogen atom: neutral, three-connected, not acylated or bonded to an imine, thiocarbonyl or nitrile carbon
+        //atom (amides, ureas, amidines, cyanamides), and not bonded to another heteroatom (e.g. sulfonamides, hydrazines)
+        String tmpAmineNitrogen = "[N;+0;X3;!$(N[#6]=,#[#7,#8,#16]);!$(N[#7,#8,#15,#16])]";
         //carbonyl carbon atom of ureas
         String tmpUreaCarbon = "[C;$(C(=O)(~[#7])~[#7])]";
-        //ether oxygen atom, bonded to two carbon atoms, not part of an ester
-        String tmpEtherOxygen = "[O;D2;+0;$(O([#6])[#6]);!$(O[#6]=[#7,#8,#16])]";
+        //ether oxygen atom, bonded to two carbon atoms, not part of an ester, carbamate or cyanate
+        String tmpEtherOxygen = "[O;D2;+0;$(O([#6])[#6]);!$(O[#6]=,#[#7,#8,#16])]";
         //olefinic carbon atom, not part of a cumulene
         String tmpOlefinCarbon = "[C;!$(C(=*)=*)]";
         //quaternary ammonium nitrogen atom with four carbon substituents
         String tmpQuaternaryNitrogen = "[N+;D4;!$([N+]~[!#6])]";
+        //carbon atom bonded to a quaternary ammonium nitrogen atom
+        String tmpQuaternaryNitrogenCarbon = "[#6]";
         //aliphatic (non-aromatic) carbon atom
         String tmpAliphaticCarbon = "[C]";
         //lactam nitrogen atom: ring nitrogen atom bonded to a ring carbonyl carbon atom
         String tmpLactamNitrogen = "[N;R;$(N@C=O)]";
         //sulfonyl sulfur atom
         String tmpSulfonylSulfur = "[S;X4;$(S(=O)=O)]";
+        if (isStrict) {
+            //no carbamates, carbamoyl halides, or 1,2-dicarbonyl compounds (e.g. alpha-keto amides, oxamides)
+            tmpAmideCarbon = "[C;$(C=O);!$(C(~[#7])~[#7]);!$(C(=O)([#7])[!#6;!#1;!#0]);!$(C(=O)C=[#7,#8,#16])]";
+            //no hydrazides, hydroxamic acids or N-acyl sulphonamides (non-aromatic single bond to a heteroatom), no
+            //imides or acyl ureas (second acyl, imidoyl or thioacyl group), and no nitrogen atoms with a non-aromatic
+            //double or triple bond
+            tmpAmideNitrogen = "[#7;+0;!$([#7]-[!#6;!#1;!#0]);!$([#7]=,#*);!$([#7](C=[#7,#8,#16])C=[#7,#8,#16])]";
+            tmpUreaNitrogen = tmpAmideNitrogen;
+            //no acyl ureas, biurets or ureas at imide nitrogen atoms (nitrogen atom with a second acyl, imidoyl or
+            //thioacyl group), so that neither of their urea bonds is cleaved
+            tmpUreaCarbon = "[C;$(C(=O)(~[#7])~[#7]);!$(C(=O)~[#7]C=[#7,#8,#16])]";
+            //no N-acyl sulphonamides, sulphonyl hydrazides or disulphonimides
+            tmpSulphonamideNitrogen = "[#7;+0;!$([#7]C=[#7,#8,#16]);!$([#7](S)[!#6;!#1;!#0]);!$([#7]=,#*)]";
+            //no carbonates, carbamates, haloformates, or 1,2-dicarbonyl compounds
+            tmpEsterCarbon = "[C;$(C=O);!$(C(=O)([#8])[!#6;!#1;!#0]);!$(C(=O)C=[#7,#8,#16])]";
+            //no anhydrides
+            tmpEsterOxygen = "[O;D2;$(O([#6])[#6]);!$(O(C=[#7,#8,#16])C=[#7,#8,#16])]";
+            //no enols, enol ethers, enamines or other olefins with a nitrogen, oxygen or sulfur substituent, and no
+            //double bonds conjugated with another carbon-carbon double or triple bond (polyenes)
+            tmpOlefinCarbon = "[C;!$(C(=*)=*);!$(C-[#7,#8,#16]);!$(C-[#6]=,#[#6])]";
+            //no acyl ammonium ions, i.e. no bond of a quaternary nitrogen atom that carries an acyl, imidoyl or cyano
+            //group is cleaved
+            tmpQuaternaryNitrogen = "[N+;D4;!$([N+]~[!#6]);!$([N+][#6]=,#[!#6])]";
+            //no carbonyl, imidoyl or thiocarbonyl carbon atoms, e.g. of carbamates or amidines at the nitrogen atom
+            tmpAliphaticCarbon = "[C;!$(C=[#7,#8,#16])]";
+            //only lactams in the strict sense: the carbonyl carbon atom is bonded to a ring carbon atom (no cyclic ureas
+            //or carbamates), and no cyclic imides, amidines or hydrazides
+            tmpLactamNitrogen = "[N;R;$(N@[C;R](=O)@[#6]);!$(N-[!#6;!#1;!#0]);!$(N(C=[#7,#8,#16])C=[#7,#8,#16])]";
+            //no sulphamides, sulphamates or sulphamoyl halides
+            tmpSulfonylSulfur = "[S;X4;$(S(=O)=O);!$(S(=O)(=O)([#7])[!#6;!#1;!#0])]";
+        }
         List<BondRule> tmpRules = new ArrayList<>(11);
         tmpRules.add(new BondRule(1, "amide", tmpAmideCarbon, tmpSingle, tmpAmideNitrogen));
         tmpRules.add(new BondRule(2, "ester", tmpEsterCarbon, tmpSingle, tmpEsterOxygen));
         tmpRules.add(new BondRule(3, "amine", tmpSp3Carbon, tmpSingle, tmpAmineNitrogen));
-        tmpRules.add(new BondRule(4, "urea", tmpAmideNitrogen, tmpSingle, tmpUreaCarbon));
+        tmpRules.add(new BondRule(4, "urea", tmpUreaNitrogen, tmpSingle, tmpUreaCarbon));
         tmpRules.add(new BondRule(5, "ether", tmpSp3Carbon, tmpSingle, tmpEtherOxygen));
         tmpRules.add(new BondRule(6, "olefin", tmpOlefinCarbon, IBond.Order.DOUBLE, tmpOlefinCarbon));
-        tmpRules.add(new BondRule(7, "quaternary nitrogen", tmpQuaternaryNitrogen, tmpSingle, "[#6]"));
+        tmpRules.add(new BondRule(7, "quaternary nitrogen", tmpQuaternaryNitrogen, tmpSingle, tmpQuaternaryNitrogenCarbon));
         tmpRules.add(new BondRule(8, "aromatic nitrogen - aliphatic carbon", "[n]", tmpSingle, tmpAliphaticCarbon));
         tmpRules.add(new BondRule(9, "lactam nitrogen - aliphatic carbon", tmpLactamNitrogen, tmpSingle, tmpAliphaticCarbon));
         tmpRules.add(new BondRule(10, "aromatic carbon - aromatic carbon", "[c]", tmpSingle, "[c]"));
-        tmpRules.add(new BondRule(11, "sulphonamide", tmpAmideNitrogen, tmpSingle, tmpSulfonylSulfur));
+        tmpRules.add(new BondRule(11, "sulphonamide", tmpSulphonamideNitrogen, tmpSingle, tmpSulfonylSulfur));
         return Collections.unmodifiableList(tmpRules);
     }
     //</editor-fold>

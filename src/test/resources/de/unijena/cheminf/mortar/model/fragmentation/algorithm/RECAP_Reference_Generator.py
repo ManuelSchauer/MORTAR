@@ -9,16 +9,19 @@ can be cross-validated against an independent SMARTS engine, see RECAPFragmenter
 the number of the bond type as isotope, e.g. [5*]Oc1ccc(F)cc1.
 
 Usage: python -I RECAP_Reference_Generator.py <input .sdf|.smi> <output .tsv> [--every N] [--max N] [--rdkit]
-       [--small-group-carbons N] [--comment TEXT]
+       [--small-group-carbons N] [--strict] [--comment TEXT]
   --every N              use only every N-th molecule of the input
   --max N                stop after N molecules
   --rdkit                add a column with the leaf fragments of the RECAP implementation of the RDKit
   --small-group-carbons N  maximum number of carbon atoms of small terminal groups (default 4)
+  --strict               apply the strict functional group rules (setting of RECAPFragmenter)
   --comment              add a comment line to the header of the output, e.g. the source and licence of the input data
 
-The reference file of the BIOFACQUIM data set in the MORTAR test resources was generated with RDKit 2025.03.3 by
+The reference files of the BIOFACQUIM data set in the MORTAR test resources were generated with RDKit 2025.03.3 by
   python -I RECAP_Reference_Generator.py Tutorial/biofacquim-06-2025.sdf RECAP_Reference_Fragments_BIOFACQUIM.tsv
       --comment "..."
+  python -I RECAP_Reference_Generator.py Tutorial/biofacquim-06-2025.sdf RECAP_Reference_Fragments_BIOFACQUIM_strict.tsv
+      --strict --comment "..."
 """
 import os
 import sys
@@ -35,43 +38,72 @@ AMIDE_NITROGEN = '[#7;+0]'
 ESTER_CARBON = '[C;$(C=O)]'
 ESTER_OXYGEN = '[O;D2;$(O([#6])[#6])]'
 SP3_CARBON = '[C;X4]'
-AMINE_NITROGEN = '[N;+0;X3;!$(N[#6]=[#7,#8,#16]);!$(N[#7,#8,#15,#16])]'
+AMINE_NITROGEN = '[N;+0;X3;!$(N[#6]=,#[#7,#8,#16]);!$(N[#7,#8,#15,#16])]'
 UREA_CARBON = '[C;$(C(=O)(~[#7])~[#7])]'
-ETHER_OXYGEN = '[O;D2;+0;$(O([#6])[#6]);!$(O[#6]=[#7,#8,#16])]'
+ETHER_OXYGEN = '[O;D2;+0;$(O([#6])[#6]);!$(O[#6]=,#[#7,#8,#16])]'
 OLEFIN_CARBON = '[C;!$(C(=*)=*)]'
 QUATERNARY_NITROGEN = '[N+;D4;!$([N+]~[!#6])]'
 ALIPHATIC_CARBON = '[C]'
 LACTAM_NITROGEN = '[N;R;$(N@C=O)]'
 SULFONYL_SULFUR = '[S;X4;$(S(=O)=O)]'
 
+# strict functional group rules (exclusions of extended functional groups, see RECAPFragmenter)
+STRICT_AMIDE_CARBON = '[C;$(C=O);!$(C(~[#7])~[#7]);!$(C(=O)([#7])[!#6;!#1;!#0]);!$(C(=O)C=[#7,#8,#16])]'
+STRICT_AMIDE_NITROGEN = '[#7;+0;!$([#7]-[!#6;!#1;!#0]);!$([#7]=,#*);!$([#7](C=[#7,#8,#16])C=[#7,#8,#16])]'
+STRICT_UREA_CARBON = '[C;$(C(=O)(~[#7])~[#7]);!$(C(=O)~[#7]C=[#7,#8,#16])]'
+STRICT_SULPHONAMIDE_NITROGEN = '[#7;+0;!$([#7]C=[#7,#8,#16]);!$([#7](S)[!#6;!#1;!#0]);!$([#7]=,#*)]'
+STRICT_ESTER_CARBON = '[C;$(C=O);!$(C(=O)([#8])[!#6;!#1;!#0]);!$(C(=O)C=[#7,#8,#16])]'
+STRICT_ESTER_OXYGEN = '[O;D2;$(O([#6])[#6]);!$(O(C=[#7,#8,#16])C=[#7,#8,#16])]'
+STRICT_OLEFIN_CARBON = '[C;!$(C(=*)=*);!$(C-[#7,#8,#16]);!$(C-[#6]=,#[#6])]'
+STRICT_QUATERNARY_NITROGEN = '[N+;D4;!$([N+]~[!#6]);!$([N+][#6]=,#[!#6])]'
+STRICT_ALIPHATIC_CARBON = '[C;!$(C=[#7,#8,#16])]'
+STRICT_LACTAM_NITROGEN = '[N;R;$(N@[C;R](=O)@[#6]);!$(N-[!#6;!#1;!#0]);!$(N(C=[#7,#8,#16])C=[#7,#8,#16])]'
+STRICT_SULFONYL_SULFUR = '[S;X4;$(S(=O)=O);!$(S(=O)(=O)([#7])[!#6;!#1;!#0])]'
+
 SINGLE = '-;!@'
 DOUBLE = '=;!@'
-# (bond type, name, left, bond, right)
-RULES = [
-    (1, 'amide', AMIDE_CARBON, SINGLE, AMIDE_NITROGEN),
-    (2, 'ester', ESTER_CARBON, SINGLE, ESTER_OXYGEN),
-    (3, 'amine', SP3_CARBON, SINGLE, AMINE_NITROGEN),
-    (4, 'urea', AMIDE_NITROGEN, SINGLE, UREA_CARBON),
-    (5, 'ether', SP3_CARBON, SINGLE, ETHER_OXYGEN),
-    (6, 'olefin', OLEFIN_CARBON, DOUBLE, OLEFIN_CARBON),
-    (7, 'quaternary nitrogen', QUATERNARY_NITROGEN, SINGLE, '[#6]'),
-    (8, 'aromatic nitrogen - aliphatic carbon', '[n]', SINGLE, ALIPHATIC_CARBON),
-    (9, 'lactam nitrogen - aliphatic carbon', LACTAM_NITROGEN, SINGLE, ALIPHATIC_CARBON),
-    (10, 'aromatic carbon - aromatic carbon', '[c]', SINGLE, '[c]'),
-    (11, 'sulphonamide', AMIDE_NITROGEN, SINGLE, SULFONYL_SULFUR),
-]
-PATTERNS = []
-for bond_type, name, left, bond, right in RULES:
-    patt = Chem.MolFromSmarts(left + bond + right)
-    if patt is None:
-        raise ValueError('cannot parse rule %d' % bond_type)
-    PATTERNS.append((bond_type, patt))
 
 
-def find_recap_bonds(mol):
+def create_rules(strict):
+    """returns the rules as (bond type, name, left, bond, right), with the strict functional group exclusions if
+    strict is true"""
+    s = strict
+    return [
+        (1, 'amide', STRICT_AMIDE_CARBON if s else AMIDE_CARBON, SINGLE, STRICT_AMIDE_NITROGEN if s else AMIDE_NITROGEN),
+        (2, 'ester', STRICT_ESTER_CARBON if s else ESTER_CARBON, SINGLE, STRICT_ESTER_OXYGEN if s else ESTER_OXYGEN),
+        (3, 'amine', SP3_CARBON, SINGLE, AMINE_NITROGEN),
+        (4, 'urea', STRICT_AMIDE_NITROGEN if s else AMIDE_NITROGEN, SINGLE, STRICT_UREA_CARBON if s else UREA_CARBON),
+        (5, 'ether', SP3_CARBON, SINGLE, ETHER_OXYGEN),
+        (6, 'olefin', STRICT_OLEFIN_CARBON if s else OLEFIN_CARBON, DOUBLE,
+         STRICT_OLEFIN_CARBON if s else OLEFIN_CARBON),
+        (7, 'quaternary nitrogen', STRICT_QUATERNARY_NITROGEN if s else QUATERNARY_NITROGEN, SINGLE, '[#6]'),
+        (8, 'aromatic nitrogen - aliphatic carbon', '[n]', SINGLE, STRICT_ALIPHATIC_CARBON if s else ALIPHATIC_CARBON),
+        (9, 'lactam nitrogen - aliphatic carbon', STRICT_LACTAM_NITROGEN if s else LACTAM_NITROGEN, SINGLE,
+         STRICT_ALIPHATIC_CARBON if s else ALIPHATIC_CARBON),
+        (10, 'aromatic carbon - aromatic carbon', '[c]', SINGLE, '[c]'),
+        (11, 'sulphonamide', STRICT_SULPHONAMIDE_NITROGEN if s else AMIDE_NITROGEN, SINGLE,
+         STRICT_SULFONYL_SULFUR if s else SULFONYL_SULFUR),
+    ]
+
+
+def compile_rules(rules):
+    patterns = []
+    for bond_type, name, left, bond, right in rules:
+        patt = Chem.MolFromSmarts(left + bond + right)
+        if patt is None:
+            raise ValueError('cannot parse rule %d' % bond_type)
+        patterns.append((bond_type, patt))
+    return patterns
+
+
+PATTERNS = compile_rules(create_rules(False))
+STRICT_PATTERNS = compile_rules(create_rules(True))
+
+
+def find_recap_bonds(mol, strict=False):
     """returns {bond index: bond type}, the lowest bond type number of all matching rules"""
     found = {}
-    for bond_type, patt in PATTERNS:
+    for bond_type, patt in (STRICT_PATTERNS if strict else PATTERNS):
         for match in mol.GetSubstructMatches(patt, uniquify=False, maxMatches=1000000):
             idx = mol.GetBondBetweenAtoms(match[0], match[1]).GetIdx()
             if idx not in found:
@@ -178,10 +210,12 @@ def main():
     maximum = int(args[args.index('--max') + 1]) if '--max' in args else 0
     max_carbons = int(args[args.index('--small-group-carbons') + 1]) if '--small-group-carbons' in args else 4
     with_rdkit = '--rdkit' in args
+    strict = '--strict' in args
     with open(args[1], 'w') as out:
-        out.write('# RECAP reference fragments (rules of MORTAR RECAPFragmenter, small terminal groups up to %d carbon atoms)'
-                  ' generated by RECAP_Reference_Generator.py with RDKit %s from %s\n'
-                  % (max_carbons, rdBase.rdkitVersion, os.path.basename(args[0])))
+        out.write('# RECAP reference fragments (rules of MORTAR RECAPFragmenter%s, small terminal groups up to %d carbon'
+                  ' atoms) generated by RECAP_Reference_Generator.py with RDKit %s from %s\n'
+                  % (' with strict functional groups' if strict else '', max_carbons, rdBase.rdkitVersion,
+                     os.path.basename(args[0])))
         if '--comment' in args:
             out.write('# %s\n' % args[args.index('--comment') + 1])
         out.write('# name\tinput SMILES\tRECAP fragments\tcleaved bonds (type:begin-end)'
@@ -192,7 +226,7 @@ def main():
             mol = Chem.MolFromSmiles(smiles)
             if mol is None:
                 continue
-            bonds = select_bonds(mol, find_recap_bonds(mol), max_carbons)
+            bonds = select_bonds(mol, find_recap_bonds(mol, strict), max_carbons)
             cut = ' '.join('%d:%d-%d' % (bonds[i], mol.GetBondWithIdx(i).GetBeginAtomIdx(),
                                          mol.GetBondWithIdx(i).GetEndAtomIdx()) for i in sorted(bonds))
             row = [name, smiles, '.'.join(fragment(mol, bonds)), cut]

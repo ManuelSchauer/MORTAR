@@ -1,0 +1,284 @@
+# RECAP rule cases: the test molecules of the individual rules of the RECAP re-implementation for the CDK by Jonas
+# Schaub (RecapFragmenterTest, branch devel/recap of https://github.com/JonasSchaub/cdk, commit f9d78ba3), with the
+# expected result of that implementation (match of its rule) and of RECAPFragmenter with default and strict functional
+# group settings (a bond of the given RECAP bond type is cleaved or not); the category explains differences.
+# rule of the CDK implementation	SMILES	bond type	CDK implementation	default	strict	category
+AMIDE	*C(=O)N(*)*	1	no match	cleaved	cleaved	pseudo atoms of the input are attachment points
+AMIDE	CCCCC(=O)N(*)*	1	no match	not cleaved	not cleaved	agrees; terminal group kept by the small-group rule
+AMIDE	CCCCC(=O)N(*)CCCCCCCCCC	1	no match	not cleaved	not cleaved	agrees; terminal group kept by the small-group rule
+AMIDE	*C(=O)N(CCCCCCCCCCCC)CCCCCCCCCC	1	no match	cleaved	cleaved	pseudo atoms of the input are attachment points
+AMIDE	CCCCC(=O)N(CCCCCCCCC)CCCCCCCCCC	1	match	not cleaved	not cleaved	rule matches, not cleaved because of the small-group rule
+AMIDE	CCCCC(=O)NCCCCCCCCCC	1	match	not cleaved	not cleaved	rule matches, not cleaved because of the small-group rule
+AMIDE	C(=O)N(CCCCCCCCC)CCCCCCCCCC	1	no match	not cleaved	not cleaved	agrees; terminal group kept by the small-group rule
+AMIDE	CCCCC(=O)N	1	no match	not cleaved	not cleaved	agrees; terminal group kept by the small-group rule
+AMIDE	C1(=O)NCCCCCC1	1	no match	not cleaved	not cleaved	agrees
+AMIDE	CCCCC(=O)N(CCC2)CCCCC2	1	match	not cleaved	not cleaved	rule matches, not cleaved because of the small-group rule
+AMIDE	CCCCC(=O)n(cn1)cc1	1	match	not cleaved	not cleaved	rule matches, not cleaved because of the small-group rule
+AMIDE	CCCCCN(CCCC)C(=O)N(CCCC)CCCC	1	no match	not cleaved	not cleaved	agrees
+AMIDE	ClC(=O)N(CCCC)CCCC	1	no match	cleaved	not cleaved	extended functional group, not cleaved with the strict setting
+AMIDE	CCCCCCOC(=O)N(CCCC)CCCC	1	no match	cleaved	not cleaved	extended functional group, not cleaved with the strict setting
+AMIDE	CCCCCCCCCC(=O)NC(=O)CCCCCCCCCCC	1	no match	cleaved	not cleaved	extended functional group, not cleaved with the strict setting
+AMIDE	c1ccccc1C(=O)N(CCCCCCCCCC)CCCCCCCCCCC	1	match	cleaved	cleaved	agrees
+AMIDE	O=CC(=O)NCCCCCCCCCCCC	1	no match	cleaved	not cleaved	extended functional group, not cleaved with the strict setting
+AMIDE	OCC(=O)NCCCCCCCCCCCC	1	match	cleaved	cleaved	agrees
+AMIDE	CC(=O)NC	1	match	not cleaved	not cleaved	rule matches, not cleaved because of the small-group rule
+AMIDE	CC(=O)N(C)C	1	match	not cleaved	not cleaved	rule matches, not cleaved because of the small-group rule
+AMIDE	CC(=O)N(C)C=O	1	no match	not cleaved	not cleaved	agrees; terminal group kept by the small-group rule
+AMIDE	CC(=O)N(C)CCl	1	match	not cleaved	not cleaved	rule matches, not cleaved because of the small-group rule
+AMIDE	*CC(=O)N(C*)C*	1	match	cleaved	cleaved	agrees
+AMIDE	CCCC(=O)N=CCCCCCC	1	no match	not cleaved	not cleaved	agrees; terminal group kept by the small-group rule
+AMIDE	c1ccccc1C(=O)N(c1ccccc1)c1ccccc1	1	match	cleaved	cleaved	agrees
+ESTER	CCCCC(=O)O*	2	no match	not cleaved	not cleaved	agrees
+ESTER	*C(=O)OCCCCCCCCCC	2	no match	cleaved	cleaved	pseudo atoms of the input are attachment points
+ESTER	*C(=O)O*	2	no match	not cleaved	not cleaved	agrees
+ESTER	CC(=O)OC	2	match	not cleaved	not cleaved	rule matches, not cleaved because of the small-group rule
+ESTER	CCCCC(=O)OCCCCCCCCCC	2	match	not cleaved	not cleaved	rule matches, not cleaved because of the small-group rule
+ESTER	C(=O)OCCCCCCCCCC	2	no match	not cleaved	not cleaved	agrees; terminal group kept by the small-group rule
+ESTER	CCCCC(=O)O	2	no match	not cleaved	not cleaved	agrees
+ESTER	C1(=O)OCCCCCC1	2	no match	not cleaved	not cleaved	agrees
+ESTER	CCCCOC(=O)OCCCCCCCCCC	2	no match	cleaved	not cleaved	extended functional group, not cleaved with the strict setting
+ESTER	CCCCC(=O)OC(=O)CCCCCCC	2	no match	cleaved	not cleaved	extended functional group, not cleaved with the strict setting
+ESTER	CCCCNC(=O)OCCCCCCCCCC	2	no match	cleaved	not cleaved	extended functional group, not cleaved with the strict setting
+ESTER	c1ccccc1C(=O)OCCCCCCCCCCC	2	match	cleaved	cleaved	agrees
+ESTER	O=CC(=O)OCCCCCCCCCCCC	2	no match	cleaved	not cleaved	extended functional group, not cleaved with the strict setting
+ESTER	OCC(=O)OCCCCCCCCCCCC	2	match	cleaved	cleaved	agrees
+SECONDARY_AMINE	CCCCCCCCCN	3	no match	not cleaved	not cleaved	agrees; terminal group kept by the small-group rule
+SECONDARY_AMINE	CNC	3	match	not cleaved	not cleaved	rule matches, not cleaved because of the small-group rule
+SECONDARY_AMINE	CCCCCCCCCNCCCCCCCCCCCCCC	3	match	cleaved	cleaved	agrees
+SECONDARY_AMINE	CCCCCCCCCN(CCCCCCCCCCC)CCCCCCCCCCCCCC	3	no match	cleaved	cleaved	covered by another amine rule of the CDK implementation
+SECONDARY_AMINE	C1CCCCCCCCN(CCCCCCCCCCC)CCCCCCCCCCCCCC1	3	no match	cleaved	cleaved	covered by another amine rule of the CDK implementation
+SECONDARY_AMINE	CCCCCCCCCN*	3	no match	cleaved	cleaved	pseudo atoms of the input are attachment points
+SECONDARY_AMINE	CCCCCCCCCN(*)CCCCCCCCCCCC	3	no match	cleaved	cleaved	pseudo atoms of the input are attachment points
+SECONDARY_AMINE	*N*	3	no match	not cleaved	not cleaved	agrees
+SECONDARY_AMINE	*N(*)*	3	no match	not cleaved	not cleaved	agrees
+SECONDARY_AMINE	CCCCC(=O)NCCCCCCCCCC	3	no match	not cleaved	not cleaved	agrees
+SECONDARY_AMINE	CCCCCNC(=O)NCCCC	3	no match	not cleaved	not cleaved	agrees
+SECONDARY_AMINE	C1(=O)NCCCCCC1	3	no match	not cleaved	not cleaved	agrees
+SECONDARY_AMINE	CCCCCCCCC[N+](CCCCCCCCCC)(CCCCCCC)CCCCCCC	3	no match	not cleaved	not cleaved	agrees
+SECONDARY_AMINE	CCCCCn(cn1)cc1	3	no match	not cleaved	not cleaved	agrees
+SECONDARY_AMINE	CCCCCCCCCCNS(=O)(=O)CCCCCCCCCCCCC	3	no match	not cleaved	not cleaved	agrees
+SECONDARY_AMINE	CCCCCCCCCCN=CNCCCCCCCCCCCCC	3	no match	not cleaved	not cleaved	agrees
+SECONDARY_AMINE	CCCCCCCCCCNC(=NCCCCCC)NCCCCCCCCCCCCC	3	no match	not cleaved	not cleaved	agrees
+SECONDARY_AMINE	CCCCCCCCCC(=O)NC(=O)CCCCCCCCCCC	3	no match	not cleaved	not cleaved	agrees
+SECONDARY_AMINE	CCCCCCCCCOC(=O)NCCCCCCCCCCCCCC	3	no match	not cleaved	not cleaved	agrees
+SECONDARY_AMINE	CCCCCCCCC(=NNCCCCCCC)CCCCCCCCCCCCCC	3	no match	not cleaved	not cleaved	agrees
+SECONDARY_AMINE	CCCCCCCCC(=NCCCCCCC)CCCCCCCCCCCCCC	3	no match	not cleaved	not cleaved	agrees
+SECONDARY_AMINE	CCCCCCCCC=NCCCCCCCCCCCCCCCCCCCCC	3	no match	not cleaved	not cleaved	agrees
+SECONDARY_AMINE	CCCCCCCCCCN=NCCCCCCCCCCC	3	no match	not cleaved	not cleaved	agrees
+SECONDARY_AMINE	CCCCCCCCCCOC#N	3	no match	not cleaved	not cleaved	agrees
+SECONDARY_AMINE	CCCCCCCCCCN=C=O	3	no match	not cleaved	not cleaved	agrees
+SECONDARY_AMINE	CCCCCCCCCC#N	3	no match	not cleaved	not cleaved	agrees
+SECONDARY_AMINE	CCCCCCCCCCON=O	3	no match	not cleaved	not cleaved	agrees
+SECONDARY_AMINE	CCCCCCCCCCN(=O)=O	3	no match	not cleaved	not cleaved	agrees; terminal group kept by the small-group rule
+SECONDARY_AMINE	CCCCCCCCCCN=O	3	no match	not cleaved	not cleaved	agrees
+SECONDARY_AMINE	CCCCCCCCCC[N+](=O)[O-]	3	no match	not cleaved	not cleaved	agrees
+SECONDARY_AMINE	C1CCCCCCCCCC1NC2CCCCCCCCCCCC2	3	match	cleaved	cleaved	agrees
+SECONDARY_AMINE	c1ccccc1Nc1ccccc1	3	match	not cleaved	not cleaved	aryl-nitrogen and aryl-oxygen bonds are not cleaved (publication, Figures 3 and 9)
+TERTIARY_AMINE	CCCCCCCCCN	3	no match	not cleaved	not cleaved	agrees; terminal group kept by the small-group rule
+TERTIARY_AMINE	CCCCCCCCCNCCCCCCCCCCCCCC	3	no match	cleaved	cleaved	covered by another amine rule of the CDK implementation
+TERTIARY_AMINE	CN(C)C	3	match	not cleaved	not cleaved	rule matches, not cleaved because of the small-group rule
+TERTIARY_AMINE	CCCCCCCCCN(CCCCCCCCCCC)CCCCCCCCCCCCCC	3	match	cleaved	cleaved	agrees
+TERTIARY_AMINE	C1CCCCCCCCN(CCCCCCCCCCC)CCCCCCCCCCCCCC1	3	no match	cleaved	cleaved	covered by another amine rule of the CDK implementation
+TERTIARY_AMINE	CCCCCCCCCN*	3	no match	cleaved	cleaved	pseudo atoms of the input are attachment points
+TERTIARY_AMINE	CCCCCCCCCN(*)CCCCCCCCCCCC	3	no match	cleaved	cleaved	pseudo atoms of the input are attachment points
+TERTIARY_AMINE	*N*	3	no match	not cleaved	not cleaved	agrees
+TERTIARY_AMINE	*N(*)*	3	no match	not cleaved	not cleaved	agrees
+TERTIARY_AMINE	CCCCC(=O)N(CCCCCCCCC)CCCCCCCCCC	3	no match	not cleaved	not cleaved	agrees
+TERTIARY_AMINE	CCCCCN(CCCC)C(=O)N(CCCC)CCCC	3	no match	not cleaved	not cleaved	agrees
+TERTIARY_AMINE	C1(=O)N(CCCCCCCCCC)CCCCCC1	3	no match	not cleaved	not cleaved	agrees
+TERTIARY_AMINE	CCCCCCCCC[N+](CCCCCCCCCC)(CCCCCCC)CCCCCCC	3	no match	not cleaved	not cleaved	agrees
+TERTIARY_AMINE	CCCCCn(cn1)cc1	3	no match	not cleaved	not cleaved	agrees
+TERTIARY_AMINE	CCCCCCCCCCN(CCCCCCCCCC)S(=O)(=O)CCCCCCCCCCCCC	3	no match	not cleaved	not cleaved	agrees
+TERTIARY_AMINE	CCCCCCCCCCN(CCCCCCCCCCC)=CN(CCCCCCCCCC)CCCCCCCCCCCCC	3	no match	not cleaved	not cleaved	agrees
+TERTIARY_AMINE	CCCCCCCCCCN(CCCCCCCCCC)C(=NCCCCCC)N(CCCCCCC)CCCCCCCCCCCCC	3	no match	not cleaved	not cleaved	agrees
+TERTIARY_AMINE	CCCCCCCCCC(=O)N(CCCCCCCCCC)C(=O)CCCCCCCCCCC	3	no match	not cleaved	not cleaved	agrees
+TERTIARY_AMINE	CCCCCCCCCOC(=O)N(CCCCCCCCCC)CCCCCCCCCCCCCC	3	no match	not cleaved	not cleaved	agrees
+TERTIARY_AMINE	CCCCCCCCC(=NN(CCCCCCCCCC)CCCCCCC)CCCCCCCCCCCCCC	3	no match	not cleaved	not cleaved	agrees
+TERTIARY_AMINE	CCCCCCCCC(=NCCCCCCC)CCCCCCCCCCCCCC	3	no match	not cleaved	not cleaved	agrees
+TERTIARY_AMINE	CCCCCCCCC=NCCCCCCCCCCCCCCCCCCCCC	3	no match	not cleaved	not cleaved	agrees
+TERTIARY_AMINE	CCCCCCCCCCN=NCCCCCCCCCCC	3	no match	not cleaved	not cleaved	agrees
+TERTIARY_AMINE	CCCCCCCCCCOC#N	3	no match	not cleaved	not cleaved	agrees
+TERTIARY_AMINE	CCCCCCCCCCN=C=O	3	no match	not cleaved	not cleaved	agrees
+TERTIARY_AMINE	CCCCCCCCCC#N	3	no match	not cleaved	not cleaved	agrees
+TERTIARY_AMINE	CCCCCCCCCCON=O	3	no match	not cleaved	not cleaved	agrees
+TERTIARY_AMINE	CCCCCCCCCCN(=O)=O	3	no match	not cleaved	not cleaved	agrees; terminal group kept by the small-group rule
+TERTIARY_AMINE	CCCCCCCCCCN=O	3	no match	not cleaved	not cleaved	agrees
+TERTIARY_AMINE	CCCCCCCCCC[N+](=O)[O-]	3	no match	not cleaved	not cleaved	agrees
+TERTIARY_AMINE	C1CCCCCCCCCC1N(C2CCCCCCCCCCCC2)C3CCCCCCCCCCC3	3	match	cleaved	cleaved	agrees
+TERTIARY_AMINE	c1ccccc1N(c1ccccc1)c1ccccc1	3	match	not cleaved	not cleaved	aryl-nitrogen and aryl-oxygen bonds are not cleaved (publication, Figures 3 and 9)
+CYCLIC_TERTIARY_AMINES_ALIPHATIC	CCCCCCCCCN	3	no match	not cleaved	not cleaved	agrees; terminal group kept by the small-group rule
+CYCLIC_TERTIARY_AMINES_ALIPHATIC	C1N(CCCCCCCCCCC)(CCCCCCCCCCC)CCCCCC1	3	no match	not cleaved	not cleaved	agrees
+CYCLIC_TERTIARY_AMINES_ALIPHATIC	N1(CCCC)CCCCC1	3	match	not cleaved	not cleaved	rule matches, not cleaved because of the small-group rule
+CYCLIC_TERTIARY_AMINES_ALIPHATIC	N1(C)CCCCC1	3	match	not cleaved	not cleaved	rule matches, not cleaved because of the small-group rule
+CYCLIC_TERTIARY_AMINES_ALIPHATIC	N1(*)CCCCC1	3	no match	not cleaved	not cleaved	agrees
+CYCLIC_TERTIARY_AMINES_ALIPHATIC	N1CCCCC1	3	no match	not cleaved	not cleaved	agrees
+CYCLIC_TERTIARY_AMINES_ALIPHATIC	N1(c2ccccc2)CCCCC1	3	match	not cleaved	not cleaved	aryl-nitrogen and aryl-oxygen bonds are not cleaved (publication, Figures 3 and 9)
+CYCLIC_TERTIARY_AMINES_ALIPHATIC	C1CCCN1C(=O)N(CCCCCC)CCCCC	3	no match	not cleaved	not cleaved	agrees
+CYCLIC_TERTIARY_AMINES_ALIPHATIC	C1CCCN1C(=O)CCCCCC	3	no match	not cleaved	not cleaved	agrees
+CYCLIC_TERTIARY_AMINES_ALIPHATIC	C1CCCN1C=NCCCCCC	3	no match	not cleaved	not cleaved	agrees
+CYCLIC_TERTIARY_AMINES_ALIPHATIC	C1CCCN1S(=O)(=O)CCCCCCC	3	no match	not cleaved	not cleaved	agrees
+CYCLIC_TERTIARY_AMINES_ALIPHATIC	C1CCCN1N=CCCCCC	3	no match	not cleaved	not cleaved	agrees
+CYCLIC_TERTIARY_AMINES_ALIPHATIC	C1CCCN1C(=NCCCCCCCCC)N(CCCC)CCCC	3	no match	not cleaved	not cleaved	agrees
+CYCLIC_TERTIARY_AMINES_ALIPHATIC	C1CCCN1C(=O)OCCCCC	3	no match	not cleaved	not cleaved	agrees
+CYCLIC_TERTIARY_AMINES_ALIPHATIC	C1CCC=NN1CCCCCC	3	no match	not cleaved	not cleaved	agrees
+CYCLIC_TERTIARY_AMINES_ALIPHATIC	CCCCCCN1CCCN(CCCCC)C1=O	3	no match	not cleaved	not cleaved	agrees
+CYCLIC_TERTIARY_AMINES_ALIPHATIC	C1(=O)CCC(=O)N1CCCCCCCCCCCC	3	no match	not cleaved	not cleaved	agrees
+CYCLIC_TERTIARY_AMINES_ALIPHATIC	C1CCN=CN1CCCCC	3	no match	not cleaved	not cleaved	agrees
+CYCLIC_TERTIARY_AMINES_ALIPHATIC	C1(=O)N(CCCCCCCCCCC)CCCCCC1	3	no match	not cleaved	not cleaved	agrees
+CYCLIC_TERTIARY_AMINES_ALIPHATIC	C1CCOC(=O)N1CCCCC	3	no match	not cleaved	not cleaved	agrees
+CYCLIC_TERTIARY_AMINES_ALIPHATIC	C1CCN(CCCCC)C(=NCCCCC)N1CCCCC	3	no match	not cleaved	not cleaved	agrees
+CYCLIC_TERTIARY_AMINES_ALIPHATIC	c1cccn1CCCCCCCC	3	no match	not cleaved	not cleaved	agrees
+UREA	CN(C)C(=O)N(C)C	4	match	cleaved	cleaved	agrees
+UREA	*N(*)C(=O)N(*)*	4	no match	cleaved	cleaved	pseudo atoms of the input are attachment points
+UREA	CC(=O)N(C)C	4	no match	not cleaved	not cleaved	agrees
+UREA	C1N(C1)C(=O)NC2CCCCCC2	4	match	cleaved	cleaved	agrees
+UREA	CNC(=O)NC	4	match	cleaved	cleaved	agrees
+UREA	NC(=O)N	4	no match	not cleaved	not cleaved	agrees; terminal group kept by the small-group rule
+UREA	CN(C)C(=O)N(C)C	4	match	cleaved	cleaved	agrees
+UREA	CCCCNC(=O)n(cn1)cc1	4	match	cleaved	cleaved	agrees
+UREA	n1(cncc1)C(=O)n(cn1)cc1	4	match	cleaved	cleaved	agrees
+UREA	CCCCNC(=O)NC(=O)NCCC	4	no match	cleaved	not cleaved	extended functional group, not cleaved with the strict setting
+UREA	N1(C(=O)CCC1)C(=O)N(CCCC)CCCC	4	no match	cleaved	not cleaved	extended functional group, not cleaved with the strict setting
+UREA	CCCCNC(=O)NC(Cl)CCCCCCC	4	match	cleaved	cleaved	agrees
+UREA	CCCCNC(=O)NC=CCCCCCC	4	no match	cleaved	cleaved	N-vinyl urea is cleaved as a urea
+UREA	CCCCCCN1CCCN(CCCCC)C1=O	4	no match	not cleaved	not cleaved	agrees
+ETHER	O	5	no match	not cleaved	not cleaved	agrees
+ETHER	CCCCCCCCO	5	no match	not cleaved	not cleaved	agrees
+ETHER	COC	5	match	not cleaved	not cleaved	rule matches, not cleaved because of the small-group rule
+ETHER	*O*	5	no match	not cleaved	not cleaved	agrees
+ETHER	CCCCCCCCO*	5	no match	not cleaved	not cleaved	agrees
+ETHER	CCCOC*	5	match	not cleaved	not cleaved	rule matches, not cleaved because of the small-group rule
+ETHER	C1CCCCOCCCC1	5	no match	not cleaved	not cleaved	agrees
+ETHER	c1cocc1	5	no match	not cleaved	not cleaved	agrees
+ETHER	C1CCCCC(CCCC1)OC2CCCCCCCCC2	5	match	cleaved	cleaved	agrees
+ETHER	c1ccccc1Oc1ccccc1	5	match	not cleaved	not cleaved	aryl-nitrogen and aryl-oxygen bonds are not cleaved (publication, Figures 3 and 9)
+ETHER	CCCCCC(=O)OCCCCCC	5	no match	not cleaved	not cleaved	agrees
+ETHER	CCCCCOC(=O)OCCCC	5	no match	not cleaved	not cleaved	agrees
+ETHER	CCCCCCOOCCCC	5	no match	not cleaved	not cleaved	agrees
+ETHER	CCCCCCOO	5	no match	not cleaved	not cleaved	agrees
+ETHER	CCCCCCC(=O)OC(=O)CCCC	5	no match	not cleaved	not cleaved	agrees
+ETHER	CCCCCCOC#N	5	no match	not cleaved	not cleaved	cyanate, not an ether (corrected default rule)
+ETHER	CCCCCCOC(=O)NCCC	5	no match	not cleaved	not cleaved	agrees
+ETHER	CCCCCC(OCCCC)O	5	match	not cleaved	not cleaved	rule matches, not cleaved because of the small-group rule
+ETHER	CCCCCC(OCCCC)(O)CCCCCCCC	5	match	not cleaved	not cleaved	rule matches, not cleaved because of the small-group rule
+ETHER	CCCCCC(OCCCC)OCCCCCCCC	5	match	cleaved	cleaved	agrees
+ETHER	CCCCCC(OCCCC)(OCCCCCCCC)CCCCCCCC	5	match	cleaved	cleaved	agrees
+ETHER	CCCCCC(OCCCC)(OCCCCCCCC)CCCCCCCC	5	match	cleaved	cleaved	agrees
+ETHER	CCCCCC(OCCCC)(OCCCCCCCC)OCCCCCCCC	5	match	cleaved	cleaved	agrees
+ETHER	CCCCCOC(OCCCC)(OCCCCCCCC)OCCCCCCCC	5	match	cleaved	cleaved	agrees
+ETHER	OC1[C@@H](O)[C@@H](O)C(O[C@@H]2[C@@H](O)[C@@H](O)C(O)O[C@@H]2CO)O[C@@H]1CO	5	match	cleaved	cleaved	agrees
+OLEFIN	C=C	6	no match	not cleaved	not cleaved	agrees; terminal group kept by the small-group rule
+OLEFIN	CCC=C	6	no match	not cleaved	not cleaved	agrees; terminal group kept by the small-group rule
+OLEFIN	CCCCC=C*	6	no match	cleaved	cleaved	pseudo atoms of the input are attachment points
+OLEFIN	*C=C*	6	no match	cleaved	cleaved	pseudo atoms of the input are attachment points
+OLEFIN	CCCCCC=CCCCCCC	6	match	cleaved	cleaved	agrees
+OLEFIN	CCCCCC(CCCCC)=C(CCCCCC)CCCCCC	6	match	cleaved	cleaved	agrees
+OLEFIN	CCCCCC=C(O)CCCCCC	6	no match	cleaved	not cleaved	extended functional group, not cleaved with the strict setting
+OLEFIN	CCCCCC=C(*)CCCCCC	6	no match	cleaved	cleaved	pseudo atoms of the input are attachment points
+OLEFIN	C1CCCCC=CCCCCCC1	6	no match	not cleaved	not cleaved	agrees
+OLEFIN	C1CCCCC1=C2CCCCCC2	6	match	cleaved	cleaved	agrees
+OLEFIN	CCCCCC=CC(=O)CCCCC	6	no match	cleaved	cleaved	olefin conjugated with a carbonyl group is cleaved (olefination, e.g. Horner-Wadsworth-Emmons reaction)
+OLEFIN	CCCCCC=CC(Cl)CCCCC	6	match	cleaved	cleaved	agrees
+OLEFIN	CC=CC=CC=CC=CC=CC=C	6	no match	cleaved	not cleaved	extended functional group, not cleaved with the strict setting
+OLEFIN	CCCCC=C=CCCCCCC	6	no match	not cleaved	not cleaved	agrees
+OLEFIN	c1cccc1=c1cccc1	6	no match	cleaved	not cleaved	extended functional group, not cleaved with the strict setting
+QUATERNARY_NITROGEN	[NH4+]	7	no match	not cleaved	not cleaved	agrees
+QUATERNARY_NITROGEN	*[N+](*)(*)*	7	no match	not cleaved	not cleaved	agrees
+QUATERNARY_NITROGEN	CCCCCCCCCC[N+](CCCCCCCCC)(CCCCCCCC)*	7	no match	not cleaved	not cleaved	agrees
+QUATERNARY_NITROGEN	CCCCCCCCCC[NH+](CCCCCCCCC)CCCCCCCC	7	no match	not cleaved	not cleaved	agrees
+QUATERNARY_NITROGEN	CCCCCCCCCC[NH3+]	7	no match	not cleaved	not cleaved	agrees
+QUATERNARY_NITROGEN	C[N+](C)(C)C	7	match	not cleaved	not cleaved	rule matches, not cleaved because of the small-group rule
+QUATERNARY_NITROGEN	CCCCCCCC[N+](CCCCCCCC)(CCCCCCC)CCCCCCCCC	7	match	cleaved	cleaved	agrees
+QUATERNARY_NITROGEN	C1[N+](CCCCCC1)(CCCCCC)CCCCC	7	no match	cleaved	cleaved	exocyclic bonds of quaternary ring nitrogen atoms are cleaved
+QUATERNARY_NITROGEN	C1CCCCCCCC1[N+](C)(C)C	7	match	cleaved	cleaved	agrees
+QUATERNARY_NITROGEN	c1ccccc1[N+](C)(C)C	7	match	cleaved	cleaved	agrees
+QUATERNARY_NITROGEN	c1[nH+]cc[nH]1	7	no match	not cleaved	not cleaved	agrees
+QUATERNARY_NITROGEN	CCCCCCCCCCN(=O)=O	7	no match	not cleaved	not cleaved	agrees
+QUATERNARY_NITROGEN	CCCCCCCCCCN=O	7	no match	not cleaved	not cleaved	agrees
+QUATERNARY_NITROGEN	CCCCCCCCCC[N+](=O)[O-]	7	no match	not cleaved	not cleaved	agrees
+QUATERNARY_NITROGEN	CCCCCCCCOC#[NH+]	7	no match	not cleaved	not cleaved	agrees
+QUATERNARY_NITROGEN	CCCCC(=O)[N+](CCCCCCCCC)(CCCCCCCCC)CCCCCCCCCC	7	no match	cleaved	not cleaved	extended functional group, not cleaved with the strict setting
+QUATERNARY_NITROGEN	CCCCCN(CCCC)C(=O)[N+](CCCC)(CCCC)CCCC	7	no match	cleaved	not cleaved	extended functional group, not cleaved with the strict setting
+QUATERNARY_NITROGEN	CCCCCCCCCC[N+](CCCCCCCCCC)(CCCCCCCCCC)S(=O)(=O)CCCCCCCCCCCCC	7	no match	not cleaved	not cleaved	agrees
+QUATERNARY_NITROGEN	CCCCCCCCCCN(CCCCCCCCCCC)=C[N+](CCCCCCCCCC)(CCCCCCCCCC)CCCCCCCCCCCCC	7	no match	cleaved	not cleaved	extended functional group, not cleaved with the strict setting
+QUATERNARY_NITROGEN	CCCCCCCCCCN(CCCCCCCCCC)C(=NCCCCCC)[N+](CCCCCCC)(CCCCCCC)CCCCCCCCCCCCC	7	no match	cleaved	not cleaved	extended functional group, not cleaved with the strict setting
+QUATERNARY_NITROGEN	CCCCC[N+](CCCCC)(C(=O)CCCCC)C(=O)CCCC	7	no match	cleaved	not cleaved	extended functional group, not cleaved with the strict setting
+QUATERNARY_NITROGEN	CCCCCCCCCOC(=O)[N+](CCCCCCCCCC)(CCCCCCCCCC)CCCCCCCCCCCCCC	7	no match	cleaved	not cleaved	extended functional group, not cleaved with the strict setting
+QUATERNARY_NITROGEN	CCCCCCCCC(=N[N+](CCCCCCCCCC)(CCCCCCCCCC)CCCCCCC)CCCCCCCCCCCCCC	7	no match	not cleaved	not cleaved	agrees
+QUATERNARY_NITROGEN	CCCCCCCCC(=[N+](CCCCCCC)CCCCCCC)CCCCCCCCCCCCCC	7	no match	not cleaved	not cleaved	agrees
+QUATERNARY_NITROGEN	CCCCCCCCCCN=[N+](CCCCCCCCCCC)CCCCCCCCCCC	7	no match	not cleaved	not cleaved	agrees
+QUATERNARY_NITROGEN	CCCCCCCCCCOC#[N+]CCCCCC	7	no match	not cleaved	not cleaved	agrees
+QUATERNARY_NITROGEN	CCCCCCCCCC[N+](CCCCCCC)=C=O	7	no match	not cleaved	not cleaved	agrees
+QUATERNARY_NITROGEN	CCCCCCCCCC#[N+]CCCCCCC	7	no match	not cleaved	not cleaved	agrees
+QUATERNARY_NITROGEN	CCCCCCCCCCO[N+](CCCCCCCC)=O	7	no match	not cleaved	not cleaved	agrees
+AROMATIC_NITROGEN_TO_ALIPHATIC_CARBON	CCCCCCCCCCCN	8	no match	not cleaved	not cleaved	agrees
+AROMATIC_NITROGEN_TO_ALIPHATIC_CARBON	CCCCCCCCCCCNCCCCCCCCCCC	8	no match	not cleaved	not cleaved	agrees
+AROMATIC_NITROGEN_TO_ALIPHATIC_CARBON	CCCCCCCCCCCN(CCCCCCCCCCC)CCCCCCCCCCC	8	no match	not cleaved	not cleaved	agrees
+AROMATIC_NITROGEN_TO_ALIPHATIC_CARBON	C1(=O)N(CCCCCCCCCCC)CCCCCC1	8	no match	not cleaved	not cleaved	agrees
+AROMATIC_NITROGEN_TO_ALIPHATIC_CARBON	N1(CCCC)CCCCC1	8	no match	not cleaved	not cleaved	agrees
+AROMATIC_NITROGEN_TO_ALIPHATIC_CARBON	c1ccc[nH]1	8	no match	not cleaved	not cleaved	agrees
+AROMATIC_NITROGEN_TO_ALIPHATIC_CARBON	c1cccn1*	8	no match	not cleaved	not cleaved	agrees
+AROMATIC_NITROGEN_TO_ALIPHATIC_CARBON	c1cccn1CCCCCCCC	8	match	cleaved	cleaved	agrees
+AROMATIC_NITROGEN_TO_ALIPHATIC_CARBON	c1ncnn1C(C)(C)C	8	match	not cleaved	not cleaved	rule matches, not cleaved because of the small-group rule
+AROMATIC_NITROGEN_TO_ALIPHATIC_CARBON	c1ncnn1C(=O)CCCCC	8	no match	not cleaved	not cleaved	agrees
+AROMATIC_NITROGEN_TO_ALIPHATIC_CARBON	c1cccn1C(=O)CCCCC	8	no match	not cleaved	not cleaved	agrees
+AROMATIC_NITROGEN_TO_ALIPHATIC_CARBON	c12ncnn1CCCCCC2	8	no match	not cleaved	not cleaved	agrees
+AROMATIC_NITROGEN_TO_ALIPHATIC_CARBON	C1CCCCN1c2ccccc2	8	no match	not cleaved	not cleaved	agrees
+AROMATIC_NITROGEN_TO_ALIPHATIC_CARBON	c1ncnn1C2CCCCC2	8	match	cleaved	cleaved	agrees
+AROMATIC_NITROGEN_TO_ALIPHATIC_CARBON	c1cccn1C(=O)NCCCCC	8	no match	not cleaved	not cleaved	agrees
+AROMATIC_NITROGEN_TO_ALIPHATIC_CARBON	c1cccn1C=NCCCCC	8	no match	cleaved	not cleaved	extended functional group, not cleaved with the strict setting
+AROMATIC_NITROGEN_TO_ALIPHATIC_CARBON	c1cccn1S(=O)(=O)CCCCCCC	8	no match	not cleaved	not cleaved	agrees
+AROMATIC_NITROGEN_TO_ALIPHATIC_CARBON	c1cccn1N=CCCCCC	8	no match	not cleaved	not cleaved	agrees
+AROMATIC_NITROGEN_TO_ALIPHATIC_CARBON	c1cccn1C(NCCCCC)=NCCCCC	8	no match	cleaved	not cleaved	extended functional group, not cleaved with the strict setting
+AROMATIC_NITROGEN_TO_ALIPHATIC_CARBON	c1cccn1C(=O)OCCCCC	8	no match	not cleaved	not cleaved	agrees
+AROMATIC_NITROGEN_TO_ALIPHATIC_CARBON	CCCCCn1nccc1	8	match	cleaved	cleaved	agrees
+AROMATIC_NITROGEN_TO_ALIPHATIC_CARBON	CCCCn1c(=O)n(CCCC)cc1	8	match	not cleaved	not cleaved	rule matches, not cleaved because of the small-group rule
+AROMATIC_NITROGEN_TO_ALIPHATIC_CARBON	CCCCn1c(=O)ccccc1=O	8	match	not cleaved	not cleaved	rule matches, not cleaved because of the small-group rule
+AROMATIC_NITROGEN_TO_ALIPHATIC_CARBON	CCCCCCn1ccoc1=O	8	match	cleaved	cleaved	agrees
+AROMATIC_NITROGEN_TO_ALIPHATIC_CARBON	CCCCCn1c(=O)cccc1	8	match	cleaved	cleaved	agrees
+AROMATIC_NITROGEN_TO_ALIPHATIC_CARBON	CCCCCn1c(=NCCCCC)n(CCCC)cc1	8	match	cleaved	cleaved	agrees
+AROMATIC_NITROGEN_TO_ALIPHATIC_CARBON	CCCCCn1cncc1	8	match	cleaved	cleaved	agrees
+LACTAM_NITROGEN_TO_ALIPHATIC_CARBON	C1CCCC(=O)N1CCCCCCCCCCC	9	match	cleaved	cleaved	agrees
+LACTAM_NITROGEN_TO_ALIPHATIC_CARBON	C1CCCC(=O)N1*	9	no match	not cleaved	not cleaved	agrees
+LACTAM_NITROGEN_TO_ALIPHATIC_CARBON	C1CCCC(=O)N1	9	no match	not cleaved	not cleaved	agrees
+LACTAM_NITROGEN_TO_ALIPHATIC_CARBON	C1CCCC(=O)N1N	9	no match	not cleaved	not cleaved	agrees
+LACTAM_NITROGEN_TO_ALIPHATIC_CARBON	CCCCC(=O)N(CCCCC)CCCCCC	9	no match	not cleaved	not cleaved	agrees
+LACTAM_NITROGEN_TO_ALIPHATIC_CARBON	C1CCC(=O)N1C(=O)N(CCCC)CCCCC	9	no match	not cleaved	not cleaved	agrees
+LACTAM_NITROGEN_TO_ALIPHATIC_CARBON	C1CCC(=O)N1C(=O)CCCCC	9	no match	not cleaved	not cleaved	agrees
+LACTAM_NITROGEN_TO_ALIPHATIC_CARBON	C1CCC(=O)N1C=N(CCCC)CCCCC	9	no match	cleaved	not cleaved	extended functional group, not cleaved with the strict setting
+LACTAM_NITROGEN_TO_ALIPHATIC_CARBON	C1CCC(=O)N1S(=O)(=O)CCCCC	9	no match	not cleaved	not cleaved	agrees
+LACTAM_NITROGEN_TO_ALIPHATIC_CARBON	C1CCC(=O)N1N(CCCC)=CCCCC	9	no match	not cleaved	not cleaved	agrees
+LACTAM_NITROGEN_TO_ALIPHATIC_CARBON	C1CCC(=O)N1C(=N(CCCC)CCCC)N(CCCC)CCCC	9	no match	cleaved	not cleaved	extended functional group, not cleaved with the strict setting
+LACTAM_NITROGEN_TO_ALIPHATIC_CARBON	C1CCC(=O)N1C(=O)OCCCCC	9	no match	not cleaved	not cleaved	agrees
+LACTAM_NITROGEN_TO_ALIPHATIC_CARBON	C1CCN(CCCCC)C(=O)N1CCCCCCC	9	no match	cleaved	not cleaved	extended functional group, not cleaved with the strict setting
+LACTAM_NITROGEN_TO_ALIPHATIC_CARBON	C1(=O)CCCC(=O)N1CCCCCCC	9	no match	cleaved	not cleaved	extended functional group, not cleaved with the strict setting
+LACTAM_NITROGEN_TO_ALIPHATIC_CARBON	C1CCOC(=O)N1CCCCCCC	9	no match	cleaved	not cleaved	extended functional group, not cleaved with the strict setting
+LACTAM_NITROGEN_TO_ALIPHATIC_CARBON	O=C(OCCC1=O)N1CCCCC	9	no match	cleaved	not cleaved	extended functional group, not cleaved with the strict setting
+LACTAM_NITROGEN_TO_ALIPHATIC_CARBON	C1CCCCN1CCCCCCC	9	no match	not cleaved	not cleaved	agrees
+LACTAM_NITROGEN_TO_ALIPHATIC_CARBON	C1CC=CC(=O)N1CCCCCCC	9	no match	cleaved	cleaved	unsaturated lactam is cleaved as a lactam
+LACTAM_NITROGEN_TO_ALIPHATIC_CARBON	C1CCC(=C)C(=O)N1CCCCCCC	9	no match	cleaved	cleaved	unsaturated lactam is cleaved as a lactam
+LACTAM_NITROGEN_TO_ALIPHATIC_CARBON	C1CCCC(=O)N1C2CCCCCC2	9	match	cleaved	cleaved	agrees
+LACTAM_NITROGEN_TO_ALIPHATIC_CARBON	C1CCCC(=O)N1c2ccccc2	9	no match	not cleaved	not cleaved	agrees
+LACTAM_NITROGEN_TO_ALIPHATIC_CARBON	C1(N)CCCC(=O)N1CCCCCCC	9	match	cleaved	cleaved	agrees
+LACTAM_NITROGEN_TO_ALIPHATIC_CARBON	C1CCCC(=O)N1C(=O)CCCCCCCC	9	no match	not cleaved	not cleaved	agrees
+LACTAM_NITROGEN_TO_ALIPHATIC_CARBON	C1CCCC(=O)N1C*	9	match	cleaved	cleaved	agrees
+LACTAM_NITROGEN_TO_ALIPHATIC_CARBON	O=c1n(CCCCCCCCCCC)c2c(cccc2)c3c1cccc3	9	no match	not cleaved	not cleaved	agrees
+LACTAM_NITROGEN_TO_ALIPHATIC_CARBON	CCCCCn1c(=O)cccc1	9	no match	not cleaved	not cleaved	agrees
+LACTAM_NITROGEN_TO_ALIPHATIC_CARBON	C1CCC2CC(=O)N1CCCCCC2	9	no match	not cleaved	not cleaved	agrees
+LACTAM_NITROGEN_TO_ALIPHATIC_CARBON	C1=NN(CCCCCC)C(=O)CC1	9	no match	cleaved	not cleaved	extended functional group, not cleaved with the strict setting
+LACTAM_NITROGEN_TO_ALIPHATIC_CARBON	N1(CCCCCCC)=CN(CCCC)C(=O)CC1	9	no match	not cleaved	not cleaved	agrees; terminal group kept by the small-group rule
+LACTAM_NITROGEN_TO_ALIPHATIC_CARBON	N1(CCCCCC)C(=N(CCCCC)CCCCCC)N(CCCCC)C(=O)CC1	9	no match	cleaved	not cleaved	extended functional group, not cleaved with the strict setting
+AROMATIC_CARBON_TO_AROMATIC_CARBON	c1ccccc1c2ccccc2	10	match	cleaved	cleaved	agrees
+AROMATIC_CARBON_TO_AROMATIC_CARBON	c1ccccc1*	10	no match	not cleaved	not cleaved	agrees
+AROMATIC_CARBON_TO_AROMATIC_CARBON	C1=CC=CC=C1C2=CC=CC=C2	10	match	cleaved	cleaved	agrees
+AROMATIC_CARBON_TO_AROMATIC_CARBON	c1cnccc1c2ccccc2	10	match	cleaved	cleaved	agrees
+AROMATIC_CARBON_TO_AROMATIC_CARBON	c1cccnc1c2ccccc2	10	match	cleaved	cleaved	agrees
+AROMATIC_CARBON_TO_AROMATIC_CARBON	c1cnccc1	10	no match	not cleaved	not cleaved	agrees
+AROMATIC_CARBON_TO_AROMATIC_CARBON	c1cnccc1C	10	no match	not cleaved	not cleaved	agrees
+AROMATIC_CARBON_TO_AROMATIC_CARBON	C12=CC=CC=C1C3=CC=CC=C32	10	no match	not cleaved	not cleaved	agrees
+AROMATIC_CARBON_TO_AROMATIC_CARBON	C1=CNC=C1C2=CNC=C2	10	match	cleaved	cleaved	agrees
+AROMATIC_CARBON_TO_AROMATIC_CARBON	c1[nH]ccc1c1cc[nH]c1	10	match	cleaved	cleaved	agrees
+AROMATIC_CARBON_TO_AROMATIC_CARBON	c1cc[nH]c1CCCCCCCC	10	no match	not cleaved	not cleaved	agrees
+AROMATIC_CARBON_TO_AROMATIC_CARBON	c1ccccc1CCCCCCCC	10	no match	not cleaved	not cleaved	agrees
+AROMATIC_CARBON_TO_AROMATIC_CARBON	c1[nH]c(-c2[nH]cnn2)nn1	10	match	cleaved	cleaved	agrees
+AROMATIC_CARBON_TO_AROMATIC_CARBON	c1ncccc1c2ncccc2	10	match	cleaved	cleaved	agrees

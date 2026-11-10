@@ -77,7 +77,7 @@ public class RECAPFragmenterTest {
         RECAPFragmenter tmpFragmenter = new RECAPFragmenter();
         Assertions.assertEquals(RECAPFragmenter.ALGORITHM_NAME, tmpFragmenter.getFragmentationAlgorithmName());
         Assertions.assertFalse(tmpFragmenter.getFragmentationAlgorithmDisplayName().isBlank());
-        Assertions.assertEquals(3, tmpFragmenter.settingsProperties().size());
+        Assertions.assertEquals(5, tmpFragmenter.settingsProperties().size());
         for (Property<?> tmpSetting : tmpFragmenter.settingsProperties()) {
             Assertions.assertTrue(tmpFragmenter.getSettingNameToDisplayNameMap().containsKey(tmpSetting.getName()));
             Assertions.assertTrue(tmpFragmenter.getSettingNameToTooltipTextMap().containsKey(tmpSetting.getName()));
@@ -86,19 +86,29 @@ public class RECAPFragmenterTest {
         Assertions.assertEquals(RECAPFragmenter.SMALL_GROUP_MAXIMUM_CARBON_ATOMS_DEFAULT,
                 tmpFragmenter.getSmallGroupMaximumCarbonAtomsSetting());
         Assertions.assertTrue(tmpFragmenter.getReturnUnfragmentedMoleculesSetting());
+        Assertions.assertFalse(tmpFragmenter.getStrictFunctionalGroupsSetting());
+        Assertions.assertEquals(RECAPFragmenter.FragmentOutputOption.TERMINAL_FRAGMENTS, tmpFragmenter.getFragmentOutputSetting());
         tmpFragmenter.setSaturationSetting(RECAPFragmenter.SaturationOption.HYDROGEN_SATURATION);
         tmpFragmenter.setSmallGroupMaximumCarbonAtomsSetting(2);
         tmpFragmenter.setReturnUnfragmentedMoleculesSetting(false);
+        tmpFragmenter.setStrictFunctionalGroupsSetting(true);
+        tmpFragmenter.setFragmentOutputSetting(RECAPFragmenter.FragmentOutputOption.ALL_HIERARCHY_FRAGMENTS);
         RECAPFragmenter tmpCopy = (RECAPFragmenter) tmpFragmenter.copy();
         Assertions.assertEquals(RECAPFragmenter.SaturationOption.HYDROGEN_SATURATION, tmpCopy.getSaturationSetting());
         Assertions.assertEquals(2, tmpCopy.getSmallGroupMaximumCarbonAtomsSetting());
         Assertions.assertFalse(tmpCopy.getReturnUnfragmentedMoleculesSetting());
+        Assertions.assertTrue(tmpCopy.getStrictFunctionalGroupsSetting());
+        Assertions.assertEquals(RECAPFragmenter.FragmentOutputOption.ALL_HIERARCHY_FRAGMENTS, tmpCopy.getFragmentOutputSetting());
         tmpFragmenter.restoreDefaultSettings();
         Assertions.assertEquals(RECAPFragmenter.SATURATION_OPTION_DEFAULT, tmpFragmenter.getSaturationSetting());
         Assertions.assertEquals(RECAPFragmenter.SMALL_GROUP_MAXIMUM_CARBON_ATOMS_DEFAULT,
                 tmpFragmenter.getSmallGroupMaximumCarbonAtomsSetting());
         Assertions.assertTrue(tmpFragmenter.getReturnUnfragmentedMoleculesSetting());
+        Assertions.assertEquals(RECAPFragmenter.STRICT_FUNCTIONAL_GROUPS_OPTION_DEFAULT,
+                tmpFragmenter.getStrictFunctionalGroupsSetting());
+        Assertions.assertEquals(RECAPFragmenter.FRAGMENT_OUTPUT_OPTION_DEFAULT, tmpFragmenter.getFragmentOutputSetting());
         Assertions.assertThrows(NullPointerException.class, () -> tmpFragmenter.setSaturationSetting(null));
+        Assertions.assertThrows(NullPointerException.class, () -> tmpFragmenter.setFragmentOutputSetting(null));
         Assertions.assertThrows(IllegalArgumentException.class, () -> tmpFragmenter.setSmallGroupMaximumCarbonAtomsSetting(-1));
         List<String> tmpBondTypeNames = RECAPFragmenter.getBondTypeNames();
         Assertions.assertEquals(11, tmpBondTypeNames.size());
@@ -341,6 +351,138 @@ public class RECAPFragmenterTest {
     }
     //
     /**
+     * Tests that cyanates and cyanamides are not cleaved as ethers or amines: the nitrile carbon atom is excluded like
+     * an imine or carbonyl carbon atom.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    public void nitrileTest() throws Exception {
+        this.assertFragments("CCCCCCCCOC#N", "CCCCCCCCOC#N");
+        this.assertFragments("N#CN(CCCCCC)CCCCCC", "N#CN(CCCCCC)CCCCCC");
+    }
+    //
+    /**
+     * Tests the strict functional group setting: bonds of extended functional groups are cleaved with the default
+     * rules, but not with the strict ones, while plain amides and esters are cleaved with both.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    public void strictFunctionalGroupsTest() throws Exception {
+        RECAPFragmenter tmpStrictFragmenter = new RECAPFragmenter();
+        tmpStrictFragmenter.setStrictFunctionalGroupsSetting(true);
+        String[][] tmpCases = {
+                //smiles, default fragments separated by '.'
+                {"CCCCCNC(=O)OCc1ccccc1", "[1*]C([2*])=O.[1*]NCCCCC.[2*]OCc1ccccc1"}, //carbamate (1, 2)
+                {"O=C(OC(=O)c1ccccc1)c1ccccc1", "[2*]C(=O)c1ccccc1.[2*]C(=O)c1ccccc1.[2*]O[2*]"}, //anhydride (2)
+                {"O=C(NC(=O)c1ccccc1)c1ccccc1", "[1*]C(=O)c1ccccc1.[1*]C(=O)c1ccccc1.[1*]N[1*]"}, //imide (1)
+                {"O=C(NC(=O)NCc1ccccc1)c1ccccc1", "[1*]C(=O)c1ccccc1.[1*]N[4*].[4*]C([4*])=O.[4*]NCc1ccccc1"}, //acyl urea
+                {"O=S(=O)(NCc1ccccc1)NCc1ccccc1", "[11*]NCc1ccccc1.[11*]NCc1ccccc1.[11*]S([11*])(=O)=O"}, //sulphamide
+                {"O=C1N(CCc2ccccc2)CCN1C", "[9*]CCc1ccccc1.[9*]N1C(=O)N(C)CC1"}, //cyclic urea (9)
+        };
+        for (String[] tmpCase : tmpCases) {
+            this.assertFragments(tmpCase[0], tmpCase[1].split("\\."));
+            this.assertFragments(tmpStrictFragmenter, tmpCase[0], false, tmpCase[0]);
+        }
+        //piperine: the polyene is not cleaved with the strict rules, but the amide is
+        String tmpPiperine = "O=C(/C=C/C=C/c1ccc2OCOc2c1)N1CCCCC1";
+        this.assertFragments(tmpPiperine, "[1*]C(=O)C=[6*]", "[1*]N1CCCCC1", "[6*]=CC=[6*]", "[6*]=Cc1ccc2OCOc2c1");
+        this.assertFragments(tmpStrictFragmenter, tmpPiperine, false, "[1*]C(=O)C=CC=Cc1ccc2OCOc2c1", "[1*]N1CCCCC1");
+        //enol ether: the olefin with an oxygen substituent is not cleaved, the ether is
+        String tmpEnolEther = "CCCCCC/C=C/OCC1CCCCC1";
+        this.assertFragments(tmpEnolEther, "[5*]CC1CCCCC1", "[5*]OC=[6*]", "[6*]=CCCCCCC");
+        this.assertFragments(tmpStrictFragmenter, tmpEnolEther, false, "[5*]CC1CCCCC1", "[5*]OC=CCCCCCC");
+        //plain amides and esters
+        this.assertFragments(tmpStrictFragmenter, "O=C(Cc1ccccc1)NCc1ccccc1", false, "[1*]C(=O)Cc1ccccc1", "[1*]NCc1ccccc1");
+        this.assertFragments(tmpStrictFragmenter, "O=C(OCc1ccccc1)c1ccccc1", false, "[2*]C(=O)c1ccccc1", "[2*]OCc1ccccc1");
+    }
+    //
+    /**
+     * Tests the RECAP hierarchy of 1,2-diphenoxyethane: the two ether bonds can be cleaved in either order, so the
+     * hierarchy has six nodes, and the phenoxy fragments and the central fragment have two parents each. Its leaves are
+     * the single-pass fragments.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    public void hierarchyTest() throws Exception {
+        RECAPFragmenter tmpFragmenter = new RECAPFragmenter();
+        IAtomContainer tmpMolecule = RECAPFragmenterTest.parse("c1ccccc1OCCOc1ccccc1");
+        String tmpInputSmiles = RECAPFragmenterTest.toCanonicalSmiles(tmpMolecule, true);
+        RECAPFragmenter.RECAPHierarchyNode tmpRoot = tmpFragmenter.buildHierarchy(tmpMolecule);
+        Assertions.assertEquals(tmpInputSmiles, RECAPFragmenterTest.toCanonicalSmiles(tmpMolecule, true));
+        Assertions.assertTrue(tmpRoot.isRoot());
+        Assertions.assertFalse(tmpRoot.isLeaf());
+        Assertions.assertEquals(4, tmpRoot.getChildren().size());
+        Assertions.assertEquals(5, tmpRoot.getAllDescendants().size());
+        Assertions.assertEquals(RECAPFragmenterTest.canonical(List.of("[5*]Oc1ccccc1", "[5*]CCOc1ccccc1",
+                        "[5*]Oc1ccccc1", "[5*]CCOc1ccccc1"), false),
+                RECAPFragmenterTest.toCanonicalSmiles(RECAPFragmenterTest.fragmentsOf(tmpRoot.getChildren()), false));
+        List<RECAPFragmenter.RECAPHierarchyNode> tmpLeaves = tmpRoot.getLeaves();
+        Assertions.assertEquals(RECAPFragmenterTest.toCanonicalSmiles(tmpFragmenter.fragmentMolecule(tmpMolecule), false),
+                RECAPFragmenterTest.toCanonicalSmiles(RECAPFragmenterTest.fragmentsOf(tmpLeaves), false));
+        //the phenoxy fragments result from the molecule and from the larger fragment, the central fragment from both
+        //larger fragments
+        List<IAtomContainer> tmpFragmentsWithTwoParents = new ArrayList<>();
+        for (RECAPFragmenter.RECAPHierarchyNode tmpNode : tmpRoot.getAllDescendants()) {
+            Assertions.assertTrue(tmpNode.getParents().size() <= 2);
+            if (tmpNode.getParents().size() == 2) {
+                tmpFragmentsWithTwoParents.add(tmpNode.getFragment());
+            }
+        }
+        Assertions.assertEquals(RECAPFragmenterTest.canonical(List.of("[5*]Oc1ccccc1", "[5*]Oc1ccccc1", "[5*]CC[5*]"), false),
+                RECAPFragmenterTest.toCanonicalSmiles(tmpFragmentsWithTwoParents, false));
+        //all hierarchy fragments, i.e. all nodes except the root
+        tmpFragmenter.setFragmentOutputSetting(RECAPFragmenter.FragmentOutputOption.ALL_HIERARCHY_FRAGMENTS);
+        this.assertFragments(tmpFragmenter, "c1ccccc1OCCOc1ccccc1", false, "[5*]Oc1ccccc1", "[5*]Oc1ccccc1",
+                "[5*]CCOc1ccccc1", "[5*]CCOc1ccccc1", "[5*]CC[5*]");
+        //counter ions are children of the root and returned as fragments
+        tmpRoot = tmpFragmenter.buildHierarchy(RECAPFragmenterTest.parse("c1ccccc1OCCOc1ccccc1.[Na+].[Cl-]"));
+        Assertions.assertEquals(6, tmpRoot.getChildren().size());
+        this.assertFragments(tmpFragmenter, "c1ccccc1OCCOc1ccccc1.[Na+].[Cl-]", false, "[5*]Oc1ccccc1", "[5*]Oc1ccccc1",
+                "[5*]CCOc1ccccc1", "[5*]CCOc1ccccc1", "[5*]CC[5*]", "[Na+]", "[Cl-]");
+        //molecules without cleavable bonds
+        tmpRoot = tmpFragmenter.buildHierarchy(RECAPFragmenterTest.parse("c1ccccc1"));
+        Assertions.assertTrue(tmpRoot.isLeaf());
+        Assertions.assertTrue(tmpRoot.getLeaves().isEmpty());
+        this.assertFragments(tmpFragmenter, "c1ccccc1", false, "c1ccccc1");
+    }
+    //
+    /**
+     * Tests the size of RECAP hierarchies: a chain of 13 para-phenylene rings (12 biaryl bonds) has one node per
+     * contiguous section (91 nodes), 1,3,5-triphenylbenzene has 2^3 + 3 = 11 nodes, and a molecule with 14 benzamide
+     * groups at a common core exceeds the maximum number of nodes. The leaves of the hierarchy of cisapride are its
+     * single-pass fragments, including their stereochemistry.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    public void hierarchySizeTest() throws Exception {
+        RECAPFragmenter tmpFragmenter = new RECAPFragmenter();
+        String tmpChain = "c1ccc(cc1)-".repeat(12) + "c1ccccc1";
+        RECAPFragmenter.RECAPHierarchyNode tmpRoot = tmpFragmenter.buildHierarchy(RECAPFragmenterTest.parse(tmpChain));
+        Assertions.assertEquals(91, 1 + tmpRoot.getAllDescendants().size());
+        Assertions.assertEquals(13, tmpRoot.getLeaves().size());
+        tmpRoot = tmpFragmenter.buildHierarchy(RECAPFragmenterTest.parse("c1ccc(cc1)-c1cc(cc(c1)-c1ccccc1)-c1ccccc1"));
+        Assertions.assertEquals(11, 1 + tmpRoot.getAllDescendants().size());
+        String tmpStar = "C" + "C(NC(=O)c1ccccc1)".repeat(14) + "C";
+        Assertions.assertThrows(IllegalArgumentException.class,
+                () -> tmpFragmenter.buildHierarchy(RECAPFragmenterTest.parse(tmpStar)));
+        tmpFragmenter.setFragmentOutputSetting(RECAPFragmenter.FragmentOutputOption.ALL_HIERARCHY_FRAGMENTS);
+        Assertions.assertThrows(IllegalArgumentException.class,
+                () -> tmpFragmenter.fragmentMolecule(RECAPFragmenterTest.parse(tmpStar)));
+        tmpFragmenter.setFragmentOutputSetting(RECAPFragmenter.FragmentOutputOption.TERMINAL_FRAGMENTS);
+        Assertions.assertEquals(15, tmpFragmenter.fragmentMolecule(RECAPFragmenterTest.parse(tmpStar)).size());
+        IAtomContainer tmpCisapride = RECAPFragmenterTest.parse(
+                "COc1cc(N)c(Cl)cc1C(=O)N[C@@H]1CCN(CCCOc2ccc(F)cc2)C[C@@H]1OC");
+        tmpRoot = tmpFragmenter.buildHierarchy(tmpCisapride);
+        Assertions.assertEquals(
+                RECAPFragmenterTest.toStereoSmilesOfFragments(tmpFragmenter.fragmentMolecule(tmpCisapride), false),
+                RECAPFragmenterTest.toStereoSmilesOfFragments(RECAPFragmenterTest.fragmentsOf(tmpRoot.getLeaves()), false));
+    }
+    //
+    /**
      * Fragments the given molecule with a fragmenter with default settings and compares the fragments to the given
      * expected fragments, without stereochemistry.
      *
@@ -382,6 +524,20 @@ public class RECAPFragmenterTest {
      */
     static IAtomContainer parse(String aSmiles) throws CDKException {
         return new SmilesParser(SilentChemObjectBuilder.getInstance()).parseSmiles(aSmiles);
+    }
+    //
+    /**
+     * Returns the fragments of the given hierarchy nodes.
+     *
+     * @param aNodeList hierarchy nodes
+     * @return list of their fragments
+     */
+    static List<IAtomContainer> fragmentsOf(List<RECAPFragmenter.RECAPHierarchyNode> aNodeList) {
+        List<IAtomContainer> tmpFragments = new ArrayList<>(aNodeList.size());
+        for (RECAPFragmenter.RECAPHierarchyNode tmpNode : aNodeList) {
+            tmpFragments.add(tmpNode.getFragment());
+        }
+        return tmpFragments;
     }
     //
     /**
