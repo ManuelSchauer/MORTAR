@@ -32,9 +32,8 @@ import de.unijena.cheminf.mortar.model.util.CollectionUtil;
 import org.openscience.cdk.interfaces.IAtomContainer;
 
 import java.util.EnumMap;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.Objects;
-import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -47,8 +46,10 @@ import java.util.logging.Logger;
  *     component, or remove), then elements, then heavy atom count; the latter two judge the possibly reduced
  *     molecule;</li>
  *     <li>the importer generates the unique SMILES string of the molecule returned by step 1;</li>
- *     <li>{@link #isDuplicate(String)} with that SMILES string (or {@link #registerSmilesGenerationFailure()} if none
- *     could be generated); the first occurrence of a SMILES string is kept.</li>
+ *     <li>{@link #checkDuplicate(String, String, int)} (or {@link #isDuplicate(String)}) with the duplicate key of the
+ *     molecule (see {@link MoleculeFilterUtil#createDuplicateKey(IAtomContainer, boolean, String, boolean)}), or
+ *     {@link #registerSmilesGenerationFailure()} if no SMILES string could be generated; the first occurrence of a key
+ *     is kept.</li>
  * </ol>
  * Consequently, with "reduce to the largest component", a counter-ion does not cause removal by the element filter,
  * and different salt forms of one compound become duplicates of each other.
@@ -62,7 +63,8 @@ import java.util.logging.Logger;
  * <br>Thread safety: the structural filtering is stateless and may run in parallel; the counting, the duplicate check,
  * and {@link #getSummary()} are synchronised, so the summary may also be retrieved by another thread (e.g. the GUI
  * thread) during the run. Note that with parallel callers, "first occurrence" means the first call of
- * {@link #isDuplicate(String)}, not the first molecule in the file. No GUI code is called.
+ * {@link #checkDuplicate(String, String, int)} or {@link #isDuplicate(String)} with a key, not the first molecule in
+ * the file. No GUI code is called.
  * <br>Removed molecules are not logged individually by this class, so that every removal is logged in one place only:
  * the importer logs one line per removed molecule with its name and the reason (see
  * {@link Importer#importMoleculeFile(java.io.File, boolean, boolean, boolean, MoleculeFilterSettingsSnapshot)}); the
@@ -73,6 +75,18 @@ import java.util.logging.Logger;
  * @version 1.0.0.0
  */
 public class MoleculeFilterRun {
+    //<editor-fold desc="Record FirstOccurrence">
+    /**
+     * The first occurrence of a duplicate key in an import run, i.e. the molecule that was kept and of which later
+     * molecules with the same key are duplicates, see {@link #checkDuplicate(String, String, int)}.
+     *
+     * @param moleculeName name of the molecule; null if it was not given
+     * @param position 1-based position of the molecule among the molecules of the import run; 0 if it was not given
+     */
+    public record FirstOccurrence(String moleculeName, int position) {
+    }
+    //</editor-fold>
+    //
     //<editor-fold desc="Private static final constants">
     /**
      * Logger of this class.
@@ -80,9 +94,9 @@ public class MoleculeFilterRun {
     private static final Logger LOGGER = Logger.getLogger(MoleculeFilterRun.class.getName());
 
     /**
-     * Initial capacity of the set of registered SMILES strings.
+     * Initial capacity of the map of registered duplicate keys.
      */
-    private static final int INITIAL_SMILES_SET_CAPACITY = CollectionUtil.calculateInitialHashCollectionCapacity(
+    private static final int INITIAL_KEY_MAP_CAPACITY = CollectionUtil.calculateInitialHashCollectionCapacity(
             1000, BasicDefinitions.DEFAULT_HASH_COLLECTION_LOAD_FACTOR);
     //</editor-fold>
     //
@@ -93,10 +107,10 @@ public class MoleculeFilterRun {
     private final MoleculeFilterSettingsSnapshot settingsSnapshot;
 
     /**
-     * Unique SMILES strings of the molecules kept so far; only filled if the duplicate filter is active. Guarded by
-     * this.
+     * Duplicate keys of the molecules kept so far, with their first occurrence; only filled if the duplicate filter is
+     * active. Guarded by this.
      */
-    private final Set<String> registeredSmilesSet;
+    private final HashMap<String, FirstOccurrence> firstOccurrencesMap;
 
     /**
      * Number of removed molecules per reason. Guarded by this.
@@ -131,7 +145,7 @@ public class MoleculeFilterRun {
     public MoleculeFilterRun(MoleculeFilterSettingsSnapshot aSettingsSnapshot) throws NullPointerException {
         Objects.requireNonNull(aSettingsSnapshot, "Given settings snapshot is null.");
         this.settingsSnapshot = aSettingsSnapshot;
-        this.registeredSmilesSet = new HashSet<>(MoleculeFilterRun.INITIAL_SMILES_SET_CAPACITY,
+        this.firstOccurrencesMap = new HashMap<>(MoleculeFilterRun.INITIAL_KEY_MAP_CAPACITY,
                 BasicDefinitions.DEFAULT_HASH_COLLECTION_LOAD_FACTOR);
         this.removedCountsMap = new EnumMap<>(MoleculeFilterReason.class);
         for (MoleculeFilterReason tmpReason : MoleculeFilterReason.values()) {
@@ -169,9 +183,9 @@ public class MoleculeFilterRun {
      * Applies the structural filters to the given molecule in the order disconnected structures, elements, heavy atom
      * count, and counts it as read. Call this exactly once per molecule of the import, after the importer's
      * preprocessing. If the returned result is kept, continue with {@link MoleculeFilterResult#getMolecule()} (which
-     * may be a new, reduced container) and finally call {@link #isDuplicate(String)} or
-     * {@link #registerSmilesGenerationFailure()} for it. If none of the structural filters is active, the given
-     * container is returned unchanged without inspection.
+     * may be a new, reduced container) and finally call {@link #checkDuplicate(String, String, int)} (or
+     * {@link #isDuplicate(String)}) or {@link #registerSmilesGenerationFailure()} for it. If none of the structural
+     * filters is active, the given container is returned unchanged without inspection.
      *
      * @param aMolecule the preprocessed molecule
      * @return the result, never null
@@ -194,36 +208,64 @@ public class MoleculeFilterRun {
 
     /**
      * Duplicate check, the last filter step for a molecule that passed the structural filters and for which the
-     * importer generated the given unique SMILES string. If the duplicate filter is active and the SMILES string was
-     * registered before in this run, the molecule is counted as duplicate and true is returned; otherwise, the SMILES
-     * string is registered (only if the filter is active), the molecule is counted as kept, and false is returned.
-     * Call this exactly once per such molecule. The comparison is a plain string comparison, so whether stereoisomers
-     * or aromatic and Kekule notations of one compound count as duplicates depends on how the importer generated the
-     * SMILES strings (stereochemistry and Kekule settings).
+     * importer generated a unique SMILES string. If the duplicate filter is active and the given key was registered
+     * before in this run, the molecule is counted as duplicate and the first occurrence of the key is returned;
+     * otherwise, the key is registered with the given name and position as its first occurrence (only if the filter is
+     * active), the molecule is counted as kept, and null is returned. Call this (or {@link #isDuplicate(String)})
+     * exactly once per such molecule. The comparison is a plain string comparison; the importer passes the key created
+     * by {@link MoleculeFilterUtil#createDuplicateKey(IAtomContainer, boolean, String, boolean)}, which does not depend
+     * on the atom order or on the aromatic or Kekule notation of the input, but on the stereochemistry setting.
      *
-     * @param aUniqueSmiles the unique SMILES string generated by the importer
-     * @return true if the molecule is a duplicate and must not be taken over; false if it is kept
-     * @throws NullPointerException if the given SMILES string is null; use {@link #registerSmilesGenerationFailure()}
-     * in that case
-     * @throws IllegalArgumentException if the given SMILES string is blank; use
-     * {@link #registerSmilesGenerationFailure()} in that case
+     * @param aDuplicateKey the duplicate key of the molecule
+     * @param aMoleculeName name of the molecule, stored for its first occurrence; may be null
+     * @param aPosition 1-based position of the molecule among the molecules of the import run, stored for its first
+     *                  occurrence; 0 if unknown
+     * @return the first occurrence of the key if the molecule is a duplicate and must not be taken over; null if it is
+     * kept
+     * @throws NullPointerException if the given key is null; use {@link #registerSmilesGenerationFailure()} if no
+     * SMILES string could be generated
+     * @throws IllegalArgumentException if the given key is blank (use {@link #registerSmilesGenerationFailure()} in
+     * that case) or the given position is negative
      */
-    public synchronized boolean isDuplicate(String aUniqueSmiles) throws NullPointerException, IllegalArgumentException {
-        Objects.requireNonNull(aUniqueSmiles, "Given SMILES string is null.");
-        if (aUniqueSmiles.isBlank()) {
-            throw new IllegalArgumentException("Given SMILES string is blank.");
+    public synchronized FirstOccurrence checkDuplicate(String aDuplicateKey, String aMoleculeName, int aPosition)
+            throws NullPointerException, IllegalArgumentException {
+        Objects.requireNonNull(aDuplicateKey, "Given duplicate key is null.");
+        if (aDuplicateKey.isBlank()) {
+            throw new IllegalArgumentException("Given duplicate key is blank.");
         }
-        if (this.settingsSnapshot.isDuplicateFilterActive() && !this.registeredSmilesSet.add(aUniqueSmiles)) {
-            this.removedCountsMap.merge(MoleculeFilterReason.DUPLICATE, 1, Integer::sum);
-            return true;
+        if (aPosition < 0) {
+            throw new IllegalArgumentException("Given position is negative: " + aPosition);
+        }
+        if (this.settingsSnapshot.isDuplicateFilterActive()) {
+            FirstOccurrence tmpFirstOccurrence = this.firstOccurrencesMap.get(aDuplicateKey);
+            if (Objects.nonNull(tmpFirstOccurrence)) {
+                this.removedCountsMap.merge(MoleculeFilterReason.DUPLICATE, 1, Integer::sum);
+                return tmpFirstOccurrence;
+            }
+            this.firstOccurrencesMap.put(aDuplicateKey, new FirstOccurrence(aMoleculeName, aPosition));
         }
         this.keptCount++;
-        return false;
+        return null;
+    }
+
+    /**
+     * Duplicate check without name and position of the molecule, see {@link #checkDuplicate(String, String, int)}.
+     *
+     * @param aDuplicateKey the duplicate key of the molecule
+     * @return true if the molecule is a duplicate and must not be taken over; false if it is kept
+     * @throws NullPointerException if the given key is null; use {@link #registerSmilesGenerationFailure()} if no
+     * SMILES string could be generated
+     * @throws IllegalArgumentException if the given key is blank; use {@link #registerSmilesGenerationFailure()} in
+     * that case
+     */
+    public synchronized boolean isDuplicate(String aDuplicateKey) throws NullPointerException, IllegalArgumentException {
+        return Objects.nonNull(this.checkDuplicate(aDuplicateKey, null, 0));
     }
 
     /**
      * Registers that the importer could not generate a SMILES string for a molecule that passed the structural
-     * filters, so that the summary is complete. Call this instead of {@link #isDuplicate(String)} for such a molecule.
+     * filters, so that the summary is complete. Call this instead of {@link #checkDuplicate(String, String, int)} for
+     * such a molecule.
      */
     public synchronized void registerSmilesGenerationFailure() {
         this.removedCountsMap.merge(MoleculeFilterReason.SMILES_GENERATION_FAILED, 1, Integer::sum);

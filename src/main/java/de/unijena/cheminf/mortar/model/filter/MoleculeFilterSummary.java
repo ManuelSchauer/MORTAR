@@ -175,19 +175,23 @@ public final class MoleculeFilterSummary {
 
     /**
      * Returns the number of molecules removed by the molecule filters, i.e. the total number of removed molecules
-     * without the molecules for which the importer could not generate a SMILES string (these are not imported without
-     * molecule filters either). Always 0 if all filters are inactive.
+     * without the empty molecules and the molecules for which the importer could not generate a SMILES string. These
+     * are not imported without molecule filters either (an empty molecule has no SMILES string), so they are listed
+     * in the counts per reason but do not count as changed by the filters. Always 0 if all filters are inactive.
      *
      * @return number of molecules removed by the filters
      */
     public int getRemovedByFiltersCount() {
-        return this.getTotalRemovedCount() - this.getRemovedCount(MoleculeFilterReason.SMILES_GENERATION_FAILED);
+        return this.getTotalRemovedCount()
+                - this.getRemovedCount(MoleculeFilterReason.EMPTY_MOLECULE)
+                - this.getRemovedCount(MoleculeFilterReason.SMILES_GENERATION_FAILED);
     }
 
     /**
      * Returns whether the molecule filters changed the imported data set, i.e. whether at least one molecule was removed
      * by a filter (see {@link #getRemovedByFiltersCount()}) or reduced to its largest component. Always false if all
-     * filters are inactive, so that, e.g., no summary is shown to the user for an import without molecule filters.
+     * filters are inactive, so that, e.g., no summary is shown to the user for an import without molecule filters, and
+     * also false if only empty molecules or molecules without SMILES string were not imported.
      *
      * @return true if the filters removed or reduced at least one molecule
      */

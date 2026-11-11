@@ -276,12 +276,12 @@ public class MoleculeFilterRunTest {
     }
 
     /**
-     * Tests the duplicate filter alone on the dirty set: different notations of one compound are duplicates, the first
-     * occurrence is kept; stereoisomers are only distinct if stereochemistry is regarded; aromatic and Kekule notations
-     * are only duplicates if Kekule structures are enforced (MORTAR's SMILES strings do not perceive aromaticity); mass
+     * Tests the duplicate filter alone on the dirty set, with the duplicate key the importer uses: different notations
+     * of one compound are duplicates, also the aromatic and the Kekule notation of phenol, independently of the Kekule
+     * setting; the first occurrence is kept; stereoisomers are only distinct if stereochemistry is regarded; mass
      * numbers are not encoded, so the carbon-13 labelled ethanol is a duplicate of ethanol, while deuterated methanol
      * keeps its explicit hydrogen atoms and differs from methanol. Salts are no duplicates of each other without
-     * reduction.
+     * reduction. Also tests the first occurrence returned by the run.
      *
      * @throws Exception if anything goes wrong
      */
@@ -289,38 +289,41 @@ public class MoleculeFilterRunTest {
     public void testDuplicateFilter() throws Exception {
         MoleculeFilterSettingsSnapshot tmpSnapshot = this.createSnapshot(
                 MoleculeFilterSettings.DisconnectedStructuresOption.KEEP_UNCHANGED, false, false, 0, 0, true);
-        //stereo regarded, aromaticity encoded (MORTAR defaults)
-        MoleculeFilterRun tmpRun = new MoleculeFilterRun(tmpSnapshot);
-        List<String> tmpKeptSmiles = this.runImport(tmpRun, this.preprocessDirtySet(), true, false);
-        //duplicates: 1 (of 0) and 12 (of 0); the empty molecule has no SMILES
-        this.assertSummary(tmpRun.getSummary(), 24, 21, 0, Map.of(
-                MoleculeFilterReason.DUPLICATE, 2,
-                MoleculeFilterReason.SMILES_GENERATION_FAILED, 1));
-        Assertions.assertEquals(tmpKeptSmiles.size(), Set.copyOf(tmpKeptSmiles).size());
-        //first occurrence kept: ethanol is the first kept molecule
-        Assertions.assertEquals(ChemUtil.createUniqueSmiles(this.preprocessDirtySet().getFirst(), true, true), tmpKeptSmiles.getFirst());
-        //stereo ignored: D-alanine becomes a duplicate of L-alanine
-        tmpRun = new MoleculeFilterRun(tmpSnapshot);
-        this.runImport(tmpRun, this.preprocessDirtySet(), false, false);
-        Assertions.assertEquals(3, tmpRun.getSummary().getRemovedCount(MoleculeFilterReason.DUPLICATE));
-        //Kekule structures enforced: the two phenol notations become duplicates
-        tmpRun = new MoleculeFilterRun(tmpSnapshot);
-        this.runImport(tmpRun, this.preprocessDirtySet(), true, true);
-        Assertions.assertEquals(3, tmpRun.getSummary().getRemovedCount(MoleculeFilterReason.DUPLICATE));
-        tmpRun = new MoleculeFilterRun(tmpSnapshot);
-        this.runImport(tmpRun, this.preprocessDirtySet(), false, true);
-        Assertions.assertEquals(4, tmpRun.getSummary().getRemovedCount(MoleculeFilterReason.DUPLICATE));
-        //the check itself is a plain string comparison
+        for (boolean tmpIsKekulizationEnforced : new boolean[] {false, true}) {
+            //stereo regarded (MORTAR default)
+            MoleculeFilterRun tmpRun = new MoleculeFilterRun(tmpSnapshot);
+            List<String> tmpKeptSmiles = this.runImport(tmpRun, this.preprocessDirtySet(), true, tmpIsKekulizationEnforced);
+            //duplicates: 1 (of 0), 12 (of 0), and 16 (of 15); the empty molecule has no SMILES
+            this.assertSummary(tmpRun.getSummary(), 24, 20, 0, Map.of(
+                    MoleculeFilterReason.DUPLICATE, 3,
+                    MoleculeFilterReason.SMILES_GENERATION_FAILED, 1));
+            Assertions.assertEquals(tmpKeptSmiles.size(), Set.copyOf(tmpKeptSmiles).size());
+            //first occurrence kept: ethanol is the first kept molecule
+            Assertions.assertEquals(ChemUtil.createUniqueSmiles(this.preprocessDirtySet().getFirst(), true, !tmpIsKekulizationEnforced),
+                    tmpKeptSmiles.getFirst());
+            //stereo ignored: D-alanine becomes a duplicate of L-alanine
+            tmpRun = new MoleculeFilterRun(tmpSnapshot);
+            this.runImport(tmpRun, this.preprocessDirtySet(), false, tmpIsKekulizationEnforced);
+            Assertions.assertEquals(4, tmpRun.getSummary().getRemovedCount(MoleculeFilterReason.DUPLICATE));
+        }
+        //the check itself is a plain string comparison and remembers the first occurrence
         MoleculeFilterRun tmpStringRun = new MoleculeFilterRun(tmpSnapshot);
-        Assertions.assertFalse(tmpStringRun.isDuplicate("CCO"));
+        Assertions.assertNull(tmpStringRun.checkDuplicate("CCO", "ethanol", 1));
+        Assertions.assertNull(tmpStringRun.checkDuplicate("OCC", "ethanol in another notation", 2));
+        Assertions.assertEquals(new MoleculeFilterRun.FirstOccurrence("ethanol", 1), tmpStringRun.checkDuplicate("CCO", "nan", 3));
+        Assertions.assertEquals(new MoleculeFilterRun.FirstOccurrence("ethanol", 1), tmpStringRun.checkDuplicate("CCO", null, 0));
         Assertions.assertTrue(tmpStringRun.isDuplicate("CCO"));
-        Assertions.assertFalse(tmpStringRun.isDuplicate("OCC"));
+        Assertions.assertFalse(tmpStringRun.isDuplicate("CCN"));
+        Assertions.assertEquals(new MoleculeFilterRun.FirstOccurrence(null, 0), tmpStringRun.checkDuplicate("CCN", "ethylamine", 5));
         Assertions.assertThrows(NullPointerException.class, () -> tmpStringRun.isDuplicate(null));
         Assertions.assertThrows(IllegalArgumentException.class, () -> tmpStringRun.isDuplicate(" "));
-        //inactive filter: never a duplicate
+        Assertions.assertThrows(IllegalArgumentException.class, () -> tmpStringRun.checkDuplicate("CCC", "propane", -1));
+        Assertions.assertEquals(3, tmpStringRun.getSummary().getKeptCount());
+        Assertions.assertEquals(4, tmpStringRun.getSummary().getRemovedCount(MoleculeFilterReason.DUPLICATE));
+        //inactive filter: never a duplicate, nothing registered
         MoleculeFilterRun tmpInactiveRun = new MoleculeFilterRun(MoleculeFilterSettingsSnapshot.createDefault());
         Assertions.assertFalse(tmpInactiveRun.isDuplicate("CCO"));
-        Assertions.assertFalse(tmpInactiveRun.isDuplicate("CCO"));
+        Assertions.assertNull(tmpInactiveRun.checkDuplicate("CCO", "ethanol", 2));
         Assertions.assertEquals(2, tmpInactiveRun.getSummary().getKeptCount());
     }
 
@@ -378,9 +381,9 @@ public class MoleculeFilterRunTest {
 
     /**
      * Tests all filters together on the dirty set and that the summary counts add up (read = kept + removed). Expected
-     * per molecule: kept 0, 2 (as acetate), 3, 6 (as cyclohexane), 11, 13, 14, 15, 16, 20 (as tosylate), 21, 22;
-     * duplicates 1, 4, 5 (as ethanol), 12; disallowed elements 8, 9, 10, 23; heavy atom count 7 (as chloride), 17, 19;
-     * empty 18; reduced 2, 4, 5, 6, 7, 20.
+     * per molecule: kept 0, 2 (as acetate), 3, 6 (as cyclohexane), 11, 13, 14, 15, 20 (as tosylate), 21, 22;
+     * duplicates 1, 4, 5 (as ethanol), 12, 16 (Kekule notation of 15); disallowed elements 8, 9, 10, 23; heavy atom
+     * count 7 (as chloride), 17, 19; empty 18; reduced 2, 4, 5, 6, 7, 20.
      *
      * @throws Exception if anything goes wrong
      */
@@ -396,22 +399,24 @@ public class MoleculeFilterRunTest {
         tmpSettings.restoreDefaultSettings();
         List<String> tmpKeptSmiles = this.runImport(tmpRun, this.preprocessDirtySet(), true, false);
         MoleculeFilterSummary tmpSummary = tmpRun.getSummary();
-        this.assertSummary(tmpSummary, 24, 12, 6, Map.of(
-                MoleculeFilterReason.DUPLICATE, 4,
+        this.assertSummary(tmpSummary, 24, 11, 6, Map.of(
+                MoleculeFilterReason.DUPLICATE, 5,
                 MoleculeFilterReason.DISALLOWED_ELEMENT, 4,
                 MoleculeFilterReason.HEAVY_ATOM_COUNT_OUT_OF_RANGE, 3,
                 MoleculeFilterReason.EMPTY_MOLECULE, 1));
-        Assertions.assertEquals(12, tmpKeptSmiles.size());
+        Assertions.assertEquals(11, tmpKeptSmiles.size());
         List<IAtomContainer> tmpExpectedMolecules = new PreprocessingTestImporter().parseAndPreprocess(
                 "CCO", "CC(=O)[O-]", "CC(=O)O", "C1CCCCC1", "[2H]C([2H])([2H])O", "C[C@H](N)C(=O)O", "C[C@@H](N)C(=O)O",
-                "c1ccccc1O", "C1=CC=CC=C1O", "Cc1ccc(cc1)S(=O)(=O)[O-]", "OB(O)c1ccccc1", "C[Se]C");
+                "c1ccccc1O", "Cc1ccc(cc1)S(=O)(=O)[O-]", "OB(O)c1ccccc1", "C[Se]C");
         List<String> tmpExpectedSmiles = new ArrayList<>(tmpExpectedMolecules.size());
         for (IAtomContainer tmpMolecule : tmpExpectedMolecules) {
             tmpExpectedSmiles.add(this.uniqueSmiles(tmpMolecule));
         }
         Assertions.assertEquals(tmpExpectedSmiles, tmpKeptSmiles);
         String tmpLogMessage = tmpSummary.toString();
-        Assertions.assertTrue(tmpLogMessage.contains("24 molecules read, 12 kept, 12 removed"), tmpLogMessage);
+        Assertions.assertTrue(tmpLogMessage.contains("24 molecules read, 11 kept, 13 removed"), tmpLogMessage);
+        //the empty molecule does not count as removed by the filters
+        Assertions.assertEquals(12, tmpSummary.getRemovedByFiltersCount());
         Assertions.assertTrue(tmpLogMessage.contains("6 reduced to their largest component"), tmpLogMessage);
         Assertions.assertTrue(tmpLogMessage.contains("heavy atom count filter: on [2, 100]"), tmpLogMessage);
         Assertions.assertFalse(tmpLogMessage.contains("run incomplete"), tmpLogMessage);
@@ -514,8 +519,8 @@ public class MoleculeFilterRunTest {
     }
 
     /**
-     * Runs the given molecules through the filters the way the importer is meant to use them and returns the SMILES
-     * strings of the kept molecules in input order.
+     * Runs the given molecules through the filters the way the importer uses them (including the duplicate key) and
+     * returns the stored SMILES strings of the kept molecules in input order.
      *
      * @param aRun the filter run
      * @param aMoleculeList preprocessed molecules
@@ -536,7 +541,10 @@ public class MoleculeFilterRunTest {
                 aRun.registerSmilesGenerationFailure();
                 continue;
             }
-            if (aRun.isDuplicate(tmpSmiles)) {
+            String tmpDuplicateKey = aRun.getSettingsSnapshot().isDuplicateFilterActive()
+                    ? MoleculeFilterUtil.createDuplicateKey(tmpResult.getMolecule(), isRegardStereo, tmpSmiles, !isKekulizationEnforced)
+                    : tmpSmiles;
+            if (aRun.isDuplicate(tmpDuplicateKey)) {
                 continue;
             }
             tmpKeptSmiles.add(tmpSmiles);

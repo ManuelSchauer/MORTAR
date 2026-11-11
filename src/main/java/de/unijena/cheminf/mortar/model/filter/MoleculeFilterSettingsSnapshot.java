@@ -39,8 +39,9 @@ import java.util.Objects;
  *                                     [minimumHeavyAtomCount, maximumHeavyAtomCount] are taken over
  * @param minimumHeavyAtomCount inclusive lower bound of the heavy atom count range, not negative
  * @param maximumHeavyAtomCount inclusive upper bound of the heavy atom count range, not smaller than the lower bound
- * @param isDuplicateFilterActive whether molecules with a unique SMILES string that occurred before in the same import
- *                                run are removed
+ * @param isDuplicateFilterActive whether molecules with a structure (duplicate key, see
+ *                                {@link MoleculeFilterUtil#createDuplicateKey(org.openscience.cdk.interfaces.IAtomContainer,
+ *                                boolean, String, boolean)}) that occurred before in the same import run are removed
  * @author Manuel Schauer
  * @version 1.0.0.0
  */

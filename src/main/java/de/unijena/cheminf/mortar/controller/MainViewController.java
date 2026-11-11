@@ -248,11 +248,8 @@ public class MainViewController {
         this.settingsContainer = new SettingsContainer();
         this.settingsContainer.reloadGlobalSettings();
         this.moleculeFilterSettings = new MoleculeFilterSettings();
-        if (!this.moleculeFilterSettings.reloadSettings()) {
-            //the reason is logged by the settings; nothing else to do, the defaults (all filters inactive) are safe
-            MainViewController.LOGGER.log(Level.INFO, "Molecule filter settings were not reloaded, the import filters " +
-                    "keep their default values (all inactive).");
-        }
+        //if this fails, the reason is logged by the settings and the import filters keep their defaults (all inactive)
+        this.moleculeFilterSettings.reloadSettings();
         this.fragmentationService = new FragmentationService();
         this.fragmentationService.reloadFragmenterSettings();
         this.fragmentationService.reloadActiveFragmenterAndPipeline();
@@ -568,8 +565,8 @@ public class MainViewController {
                     this.updateStatusBar(this.importerThread, Message.get("Status.importFailed"));
                     this.isImportRunningProperty.setValue(false);
                     if (tmpFilterSummary != null && tmpFilterSummary.getRemovedByFiltersCount() > 0) {
-                        MainViewController.LOGGER.log(Level.WARNING, "Import resulted in an empty data set, the import " +
-                                "filters removed all molecules that could be read from the file.");
+                        MainViewController.LOGGER.log(Level.WARNING, "Import resulted in an empty data set because the " +
+                                "import filters removed all molecules that would otherwise have been imported.");
                         Platform.runLater(() -> this.showImportFilterSummary(tmpFilterSummary, true));
                     } else {
                         MainViewController.LOGGER.log(Level.WARNING, "Import failed, set of imported molecules is null or empty");

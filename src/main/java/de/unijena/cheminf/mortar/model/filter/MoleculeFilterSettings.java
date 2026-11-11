@@ -533,7 +533,7 @@ public class MoleculeFilterSettings {
     /**
      * Sets whether the duplicate filter is active.
      *
-     * @param isActive whether molecules with a unique SMILES string that occurred before should be removed
+     * @param isActive whether molecules with a structure (duplicate key) that occurred before should be removed
      */
     public void setDuplicateFilterSetting(boolean isActive) {
         this.duplicateFilterSetting.set(isActive);

@@ -41,7 +41,8 @@ public enum MoleculeFilterReason implements IDisplayEnum {
     /**
      * The molecule contains no atoms. Only checked if at least one structural filter (disconnected structures,
      * elements, heavy atom count) is active; otherwise, empty molecules are passed on unchanged as before (the importer
-     * then fails to generate a SMILES string for them).
+     * then fails to generate a SMILES string for them). Since such molecules are not imported without filters either,
+     * they do not count as removed by the filters, see {@link MoleculeFilterSummary#getRemovedByFiltersCount()}.
      */
     EMPTY_MOLECULE(
             Message.get("MoleculeFilterReason.EmptyMolecule.displayName"),
@@ -67,7 +68,9 @@ public enum MoleculeFilterReason implements IDisplayEnum {
             Message.get("MoleculeFilterReason.HeavyAtomCountOutOfRange.displayName"),
             Message.get("MoleculeFilterReason.HeavyAtomCountOutOfRange.tooltip")),
     /**
-     * A molecule with the same unique SMILES string was taken over before in the same import run.
+     * A molecule with the same duplicate key (see
+     * {@link MoleculeFilterUtil#createDuplicateKey(org.openscience.cdk.interfaces.IAtomContainer, boolean, String, boolean)})
+     * was taken over before in the same import run.
      */
     DUPLICATE(
             Message.get("MoleculeFilterReason.Duplicate.displayName"),

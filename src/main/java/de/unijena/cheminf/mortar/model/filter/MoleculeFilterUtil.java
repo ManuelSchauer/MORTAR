@@ -25,6 +25,8 @@
 
 package de.unijena.cheminf.mortar.model.filter;
 
+import de.unijena.cheminf.mortar.model.util.ChemUtil;
+
 import org.openscience.cdk.CDKConstants;
 import org.openscience.cdk.exception.CDKException;
 import org.openscience.cdk.graph.ConnectivityChecker;
@@ -46,8 +48,8 @@ import java.util.logging.Logger;
 
 /**
  * Stateless utility methods that implement the structural molecule filters (connectivity, largest component, elements,
- * heavy atom count) on CDK atom containers. The methods neither call GUI code nor depend on settings; the order of
- * application and the counting are done by {@link MoleculeFilterRun}.
+ * heavy atom count) on CDK atom containers and create the key of the duplicate filter. The methods neither call GUI
+ * code nor depend on settings; the order of application and the counting are done by {@link MoleculeFilterRun}.
  * <br>Definitions used throughout: the atomic number of a pseudo atom ({@link IPseudoAtom}, e.g. an R group or a '*'
  * attachment point) is 0. A heavy atom is an atom with an atomic number larger than 1, i.e. hydrogen atoms (including
  * deuterium and tritium, explicit or implicit) and pseudo atoms are not heavy atoms.
@@ -73,10 +75,12 @@ public final class MoleculeFilterUtil {
     private static final Logger LOGGER = Logger.getLogger(MoleculeFilterUtil.class.getName());
 
     /**
-     * SMILES flavour of the first tie-break key for the largest component: canonical, with aromatic symbols if the
-     * aromaticity flags are set, without stereochemistry.
+     * SMILES flavour of the first tie-break key for the largest component: canonical Kekule SMILES without
+     * stereochemistry. Without aromatic symbols, CDK normalises the Kekule structure of canonical SMILES, so the key
+     * does not depend on the aromatic or Kekule notation of the input (with aromatic symbols, a molecule without
+     * aromaticity flags would be written with the bond orders of the input).
      */
-    private static final int TIE_BREAK_CONSTITUTION_SMILES_FLAVOUR = SmiFlavor.Canonical | SmiFlavor.UseAromaticSymbols;
+    private static final int TIE_BREAK_CONSTITUTION_SMILES_FLAVOUR = SmiFlavor.Canonical;
 
     /**
      * SMILES flavour of the second tie-break key for the largest component: like the first one plus stereochemistry.
@@ -203,7 +207,9 @@ public final class MoleculeFilterUtil {
      * components in the input: (1) the lexicographically smallest canonical SMILES without stereochemistry, (2) the
      * lexicographically smallest canonical SMILES with stereochemistry, (3) the component that comes first in the atom
      * order of the input (only reached if both SMILES are equal, i.e. for identical components, or cannot be
-     * generated). The SMILES strings use aromatic symbols where aromaticity flags are set, like MORTAR's unique SMILES.
+     * generated, e.g. for components whose Kekule structure could not be assigned in the preprocessing; a component
+     * with a SMILES string wins over one without). The SMILES strings are canonical Kekule SMILES, which CDK normalises,
+     * so the tie-break does not depend on the aromatic or Kekule notation of the input either.
      * <p>
      * The components are created by {@link ConnectivityChecker#partitionIntoMolecules(IAtomContainer)}, which in CDK
      * 2.13 (tested in MoleculeFilterUtilTest) keeps the atoms (the same atom objects as in the input container, so
@@ -250,6 +256,48 @@ public final class MoleculeFilterUtil {
         }
         MoleculeFilterUtil.copyContainerLevelData(aMolecule, tmpSelectedComponent);
         return tmpSelectedComponent;
+    }
+
+    /**
+     * Returns the key under which the duplicate filter compares the given molecule: MORTAR's unique SMILES string
+     * without aromaticity encoding, i.e. {@link ChemUtil#createUniqueSmiles(IAtomContainer, boolean, boolean)} with
+     * aromaticity encoding off, with stereochemistry if requested and present. In this flavour, CDK normalises the
+     * Kekule structure, so the key does not depend on the atom order or on the aromatic or Kekule notation of the input
+     * (e.g. Cc1ccccc1, CC1=CC=CC=C1, and CC1C=CC=CC=1 give the same key). The unique SMILES string with aromatic
+     * symbols, which the importer stores by default, does not have this property, because a molecule without
+     * aromaticity flags (e.g. from an SD file) is written with the bond orders of the input.
+     * <br>The given stored SMILES string (the one the importer generated for the data model) is returned as key without
+     * generating a new one if it was generated without aromaticity encoding (import of aromatics as Kekule structures),
+     * and it is the fallback if the key cannot be generated (e.g. if the Kekule structure of the molecule could not be
+     * assigned in the preprocessing).
+     *
+     * @param aMolecule the molecule, as passed to the SMILES generation of the importer
+     * @param isRegardStereo whether stereochemistry is encoded, as in the stored SMILES string
+     * @param aStoredUniqueSmiles the unique SMILES string the importer generated for the molecule
+     * @param isStoredSmilesAromaticityEncoded whether the stored SMILES string was generated with aromaticity encoding
+     * @return the duplicate key, never null or blank
+     * @throws NullPointerException if the given molecule or SMILES string is null
+     * @throws IllegalArgumentException if the given SMILES string is blank
+     */
+    public static String createDuplicateKey(IAtomContainer aMolecule,
+                                            boolean isRegardStereo,
+                                            String aStoredUniqueSmiles,
+                                            boolean isStoredSmilesAromaticityEncoded)
+            throws NullPointerException, IllegalArgumentException {
+        Objects.requireNonNull(aMolecule, "Given molecule is null.");
+        Objects.requireNonNull(aStoredUniqueSmiles, "Given SMILES string is null.");
+        if (aStoredUniqueSmiles.isBlank()) {
+            throw new IllegalArgumentException("Given SMILES string is blank.");
+        }
+        if (!isStoredSmilesAromaticityEncoded) {
+            return aStoredUniqueSmiles;
+        }
+        //returns null and logs the reason if no SMILES string could be created
+        String tmpKey = ChemUtil.createUniqueSmiles(aMolecule, isRegardStereo, false);
+        if (Objects.isNull(tmpKey) || tmpKey.isBlank()) {
+            return aStoredUniqueSmiles;
+        }
+        return tmpKey;
     }
     //</editor-fold>
     //

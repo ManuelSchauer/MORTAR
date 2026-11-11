@@ -56,8 +56,10 @@ import javax.vecmath.Point3d;
 
 import java.io.StringReader;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * Tests the structural filter functions of {@link MoleculeFilterUtil}: atomic numbers and heavy atom count, the element
@@ -144,6 +146,76 @@ public class MoleculeFilterUtilTest {
               7  8  1  0  0  0  0
             M  CHG  1   1  -1
             M  ISO  1   8  13
+            M  END
+            $$$$
+            """;
+
+    /**
+     * SD record of a 1:1 mixture of toluene and phenol (seven heavy atoms each) as Kekule structures without
+     * aromaticity flags, written by hand without coordinates; the double bonds of phenol are shifted compared to
+     * toluene.
+     */
+    private static final String TOLUENE_PHENOL_SDF_RECORD = """
+            toluene and phenol
+              MORTAR test
+
+             14 14  0  0  0  0  0  0  0  0999 V2000
+                0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+                0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+                0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+                0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+                0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+                0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+                0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+                0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+                0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+                0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+                0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+                0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+                0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+                0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
+              1  2  2  0  0  0  0
+              2  3  1  0  0  0  0
+              3  4  2  0  0  0  0
+              4  5  1  0  0  0  0
+              5  6  2  0  0  0  0
+              6  1  1  0  0  0  0
+              1  7  1  0  0  0  0
+              8  9  1  0  0  0  0
+              9 10  2  0  0  0  0
+             10 11  1  0  0  0  0
+             11 12  2  0  0  0  0
+             12 13  1  0  0  0  0
+             13  8  2  0  0  0  0
+              8 14  1  0  0  0  0
+            M  END
+            $$$$
+            """;
+
+    /**
+     * SD record of toluene with the methyl carbon atom first, a permuted order of the ring atoms, and double bonds at
+     * other positions than in a Kekule SMILES string written ring first (same as "toluene_permuted" in the importer's
+     * test file MoleculeFiltersDuplicatesTestFile.sdf).
+     */
+    private static final String TOLUENE_PERMUTED_SDF_RECORD = """
+            toluene_permuted
+              MORTAR test
+
+              7  7  0  0  0  0  0  0  0  0999 V2000
+                2.5714    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+               -1.9286    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+                0.3214    1.2990    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+                0.3214   -1.2990    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+               -1.1786    1.2990    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+                1.0714   -0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+               -1.1786   -1.2990    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+              1  6  1  0
+              6  4  1  0
+              4  7  2  0
+              7  2  1  0
+              2  5  2  0
+              5  3  1  0
+              3  6  2  0
             M  END
             $$$$
             """;
@@ -461,6 +533,101 @@ public class MoleculeFilterUtilTest {
         }
         Assertions.assertEquals(this.uniqueStereoSmiles(tmpMolecules.get(1)), this.uniqueStereoSmiles(tmpReduced));
     }
+
+    /**
+     * Tests that the tie-break of the largest component does not depend on the notation of the input: a 1:1 mixture of
+     * toluene and phenol (seven heavy atoms each) as aromatic SMILES, as Kekule SMILES with different double bond
+     * positions, in both orders of the components, and as SD record without aromaticity flags always gives toluene,
+     * whose canonical Kekule SMILES is the lexicographically smaller one. Also tests the fallback for components whose
+     * SMILES string cannot be generated because no Kekule structure could be assigned (cyclopentadienyl without
+     * hydrogen): the other component wins in both orders, and of two such components, the first in atom order.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    public void testLargestComponentTieBreakIsIndependentOfNotation() throws Exception {
+        PreprocessingTestImporter tmpImporter = new PreprocessingTestImporter();
+        String tmpTolueneKekuleSmiles = this.uniqueKekuleStereoSmiles(tmpImporter.parseAndPreprocess("Cc1ccccc1").getFirst());
+        List<IAtomContainer> tmpMixtures = new ArrayList<>(tmpImporter.parseAndPreprocess("Cc1ccccc1.Oc1ccccc1",
+                "Oc1ccccc1.Cc1ccccc1", "CC1=CC=CC=C1.OC1=CC=CC=C1", "OC1C=CC=CC=1.CC1C=CC=CC=1"));
+        tmpMixtures.add(tmpImporter.readAndPreprocessSdfRecord(MoleculeFilterUtilTest.TOLUENE_PHENOL_SDF_RECORD, "mixture"));
+        for (IAtomContainer tmpMixture : tmpMixtures) {
+            IAtomContainer tmpLargestComponent = MoleculeFilterUtil.extractLargestComponent(tmpMixture);
+            Assertions.assertEquals(7, tmpLargestComponent.getAtomCount());
+            Assertions.assertEquals(tmpTolueneKekuleSmiles, this.uniqueKekuleStereoSmiles(tmpLargestComponent));
+        }
+        //fallback: no SMILES string for cyclopentadienyl, which cannot be kekulized
+        IAtomContainer tmpCyclopentadienyl = tmpImporter.parseAndPreprocess("c1cccc1").getFirst();
+        Assertions.assertNull(this.uniqueKekuleStereoSmiles(tmpCyclopentadienyl));
+        for (String tmpSmiles : new String[] {"c1cccc1.CCCCC", "CCCCC.c1cccc1"}) {
+            IAtomContainer tmpLargestComponent = MoleculeFilterUtil.extractLargestComponent(
+                    tmpImporter.parseAndPreprocess(tmpSmiles).getFirst());
+            Assertions.assertEquals("CCCCC", this.uniqueKekuleStereoSmiles(tmpLargestComponent), tmpSmiles);
+        }
+        IAtomContainer tmpTwoRings = tmpImporter.parseAndPreprocess("c1cccc1.c1cccc1").getFirst();
+        IAtomContainer tmpFirstRing = MoleculeFilterUtil.extractLargestComponent(tmpTwoRings);
+        Assertions.assertEquals(5, tmpFirstRing.getAtomCount());
+        Assertions.assertSame(AtomRef.deref(tmpTwoRings.getAtom(0)), AtomRef.deref(tmpFirstRing.getAtom(0)));
+    }
+
+    /**
+     * Tests the duplicate key: one compound in aromatic and different Kekule notations (also from an SD record with
+     * another atom order and double bond positions) gives one key, while the stored unique SMILES strings with aromatic
+     * symbols differ; different compounds give different keys; stereoisomers differ only with stereochemistry; a stored
+     * SMILES string without aromaticity encoding is reused as key; the stored SMILES string is the fallback if no
+     * Kekule SMILES string can be generated.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    public void testDuplicateKey() throws Exception {
+        PreprocessingTestImporter tmpImporter = new PreprocessingTestImporter();
+        String[][] tmpNotationGroups = {
+                {"Cc1ccccc1", "CC1=CC=CC=C1", "CC1C=CC=CC=1", "c1cc(C)ccc1"},
+                {"c1ccncc1", "C1=CC=NC=C1", "N1=CC=CC=C1"},
+                {"c1ccc2ccccc2c1", "C1=CC=C2C=CC=CC2=C1", "C1=CC2=CC=CC=C2C=C1"},
+                {"CC(=O)Nc1ccc(O)cc1", "CC(=O)NC1=CC=C(O)C=C1", "OC1=CC=C(NC(C)=O)C=C1"}};
+        Set<String> tmpAllKeys = new HashSet<>();
+        for (String[] tmpGroup : tmpNotationGroups) {
+            Set<String> tmpKeys = new HashSet<>();
+            Set<String> tmpStoredSmiles = new HashSet<>();
+            for (IAtomContainer tmpMolecule : tmpImporter.parseAndPreprocess(tmpGroup)) {
+                String tmpStored = this.uniqueStereoSmiles(tmpMolecule);
+                tmpStoredSmiles.add(tmpStored);
+                tmpKeys.add(MoleculeFilterUtil.createDuplicateKey(tmpMolecule, true, tmpStored, true));
+            }
+            Assertions.assertEquals(1, tmpKeys.size(), tmpKeys.toString());
+            Assertions.assertTrue(tmpStoredSmiles.size() > 1, tmpStoredSmiles.toString());
+            tmpAllKeys.addAll(tmpKeys);
+        }
+        Assertions.assertEquals(tmpNotationGroups.length, tmpAllKeys.size());
+        //SD record of toluene
+        IAtomContainer tmpToluene = tmpImporter.parseAndPreprocess("Cc1ccccc1").getFirst();
+        String tmpTolueneKey = MoleculeFilterUtil.createDuplicateKey(tmpToluene, true, this.uniqueStereoSmiles(tmpToluene), true);
+        IAtomContainer tmpSdfToluene = tmpImporter.readAndPreprocessSdfRecord(MoleculeFilterUtilTest.TOLUENE_PERMUTED_SDF_RECORD, "toluene");
+        Assertions.assertEquals(tmpTolueneKey, MoleculeFilterUtil.createDuplicateKey(tmpSdfToluene, true,
+                this.uniqueStereoSmiles(tmpSdfToluene), true));
+        //stereoisomers
+        List<IAtomContainer> tmpAlanines = tmpImporter.parseAndPreprocess("C[C@H](N)C(=O)O", "C[C@@H](N)C(=O)O");
+        Assertions.assertNotEquals(MoleculeFilterUtil.createDuplicateKey(tmpAlanines.get(0), true, "x", true),
+                MoleculeFilterUtil.createDuplicateKey(tmpAlanines.get(1), true, "x", true));
+        Assertions.assertEquals(MoleculeFilterUtil.createDuplicateKey(tmpAlanines.get(0), false, "x", true),
+                MoleculeFilterUtil.createDuplicateKey(tmpAlanines.get(1), false, "x", true));
+        //reuse of a stored SMILES string without aromaticity encoding
+        String tmpStoredKekuleSmiles = this.uniqueKekuleStereoSmiles(tmpToluene);
+        Assertions.assertEquals(tmpTolueneKey, tmpStoredKekuleSmiles);
+        Assertions.assertSame(tmpStoredKekuleSmiles, MoleculeFilterUtil.createDuplicateKey(tmpToluene, true, tmpStoredKekuleSmiles, false));
+        //fallback
+        IAtomContainer tmpCyclopentadienyl = tmpImporter.parseAndPreprocess("c1cccc1").getFirst();
+        String tmpStoredAromaticSmiles = this.uniqueStereoSmiles(tmpCyclopentadienyl);
+        Assertions.assertNotNull(tmpStoredAromaticSmiles);
+        Assertions.assertSame(tmpStoredAromaticSmiles, MoleculeFilterUtil.createDuplicateKey(tmpCyclopentadienyl, true,
+                tmpStoredAromaticSmiles, true));
+        //argument checks
+        Assertions.assertThrows(NullPointerException.class, () -> MoleculeFilterUtil.createDuplicateKey(null, true, "C", true));
+        Assertions.assertThrows(NullPointerException.class, () -> MoleculeFilterUtil.createDuplicateKey(tmpToluene, true, null, true));
+        Assertions.assertThrows(IllegalArgumentException.class, () -> MoleculeFilterUtil.createDuplicateKey(tmpToluene, true, " ", true));
+    }
     //</editor-fold>
     //
     //<editor-fold desc="Private methods">
@@ -489,6 +656,17 @@ public class MoleculeFilterUtilTest {
      */
     private String uniqueStereoSmiles(IAtomContainer aMolecule) {
         return ChemUtil.createUniqueSmiles(aMolecule, true, true);
+    }
+
+    /**
+     * Returns MORTAR's unique SMILES with stereochemistry and without aromaticity encoding, i.e. in the normalised Kekule
+     * notation of the duplicate key.
+     *
+     * @param aMolecule the molecule
+     * @return unique SMILES or null if it cannot be generated
+     */
+    private String uniqueKekuleStereoSmiles(IAtomContainer aMolecule) {
+        return ChemUtil.createUniqueSmiles(aMolecule, true, false);
     }
 
     /**
