@@ -164,7 +164,7 @@ import java.util.logging.Logger;
  *     <li>Explicit hydrogen atoms are suppressed, and ring membership and aromaticity are perceived with the Daylight
  *     model, on which the SMARTS semantics of the rules are based. Since the aromaticity perception needs the bond
  *     orders, a Kekulé structure is assigned first if bond orders are unset (e.g. the aromatic bonds of a molecule
- *     whose kekulization failed on import); molecules that cannot be kekulized are not fragmented.</li>
+ *     whose kekulization failed on import); molecules that cannot be kekulized are filtered.</li>
  *     <li>Every acyclic, non-aromatic single or double bond is tested against the rules in the order of their numbers;
  *     the atom environments are evaluated lazily and only once per atom.</li>
  *     <li>The cleavable bonds are processed in the order of their bond type number (and bond index); a bond is cleaved
@@ -1051,9 +1051,17 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
         }
     }
     //
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Molecules are filtered if they are null or empty, or if the order of a bond is unset and cannot be determined
+     * by kekulization (see {@link #prepareMolecule(IAtomContainer)}), e.g. the aromatic remnants of opened rings in
+     * fragments of a preceding fragmentation, which MORTAR parses without kekulization because their kekulization
+     * fails. The given molecule is not altered.</p>
+     */
     @Override
     public boolean shouldBeFiltered(IAtomContainer aMolecule) {
-        return Objects.isNull(aMolecule) || aMolecule.isEmpty();
+        return Objects.isNull(aMolecule) || aMolecule.isEmpty() || this.hasUnresolvableBondOrders(aMolecule);
     }
     //
     @Override
@@ -1258,6 +1266,35 @@ public class RECAPFragmenter implements IMoleculeFragmenter {
     //</editor-fold>
     //
     //<editor-fold desc="Private methods">
+    /**
+     * Checks whether the order of a bond of the given molecule is unset and cannot be determined by kekulization in the
+     * preparation of the molecule, see {@link #prepareMolecule(IAtomContainer)}. Molecules without bonds of unset
+     * order are not cloned; otherwise, a clone of the molecule is prepared, so that the check and the fragmentation
+     * cannot deviate.
+     *
+     * @param aMolecule the molecule to check, it is not altered
+     * @return true if the order of a bond is unset (or null) and the preparation of a clone fails, e.g. because no
+     *         Kekulé structure can be assigned, or if the molecule cannot be cloned
+     */
+    private boolean hasUnresolvableBondOrders(IAtomContainer aMolecule) {
+        boolean tmpIsBondOrderUnset = false;
+        for (IBond tmpBond : aMolecule.bonds()) {
+            if (Objects.isNull(tmpBond.getOrder()) || tmpBond.getOrder() == IBond.Order.UNSET) {
+                tmpIsBondOrderUnset = true;
+                break;
+            }
+        }
+        if (!tmpIsBondOrderUnset) {
+            return false;
+        }
+        try {
+            this.prepareMolecule(aMolecule.clone());
+            return false;
+        } catch (CDKException | CloneNotSupportedException anException) {
+            return true;
+        }
+    }
+    //
     /**
      * Returns whether the given atom matches the environment pattern with the given index; the result is cached.
      *
