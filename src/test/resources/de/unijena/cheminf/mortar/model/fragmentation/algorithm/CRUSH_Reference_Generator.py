@@ -38,8 +38,8 @@ Usage: python -I CRUSH_Reference_Generator.py steps <input> <output .tsv> [optio
 
 Stereochemistry: the default stereo perception of the RDKit is used. It removes the configuration of atoms that are not
 stereogenic because of the configuration of other atoms (e.g. C3 of the chiral 1,5-anhydroarabinitol formed from
-xylopyranosides by rule 7), which the CDK keeps as potential (para) stereocentres; CRUSHFragmenterReferenceTest
-reports such differences separately.
+arabinopyranosides by rules 6 and 7), which the CDK classifies as potential (para) stereocentres and keeps;
+CRUSHFragmenterReferenceTest reports such differences separately.
 
 The reference files in the MORTAR test resources were generated with RDKit 2026.09.1 (Python 3.12) by
   python -I CRUSH_Reference_Generator.py steps CRUSH_Rule_Cases_Input.tsv CRUSH_Rule_Cases.tsv --comment "..."

@@ -105,8 +105,10 @@ import java.util.logging.Logger;
  * <p><b>Algorithm.</b>
  * <ol>
  *     <li>Explicit hydrogen atoms are suppressed, and ring membership and aromaticity are perceived with the Daylight
- *     model, on which the SMARTS semantics of the rules are based. Every connected component of the molecule (e.g. a
- *     counter ion) is a start fragment of its own.</li>
+ *     model, on which the SMARTS semantics of the rules are based. Since the aromaticity perception needs the bond
+ *     orders, a Kekulé structure is assigned first if bond orders are unset (e.g. the aromatic bonds of a molecule whose
+ *     kekulization failed on import); molecules that cannot be kekulized are filtered. Every connected component of the
+ *     molecule (e.g. a counter ion) is a start fragment of its own.</li>
  *     <li>A fragment is a connected set of atoms of the molecule. Its cleavage steps are determined on a copy that is
  *     saturated with hydrogen atoms at the bonds cleaved before (as the products of the authors' reactions are), with
  *     ring membership and aromaticity perceived again:
@@ -124,24 +126,31 @@ import java.util.logging.Logger;
  *     of one of its steps, the leaves are fragments without steps. The route with the maximum number of leaves is
  *     determined by an exact search that is memoised per atom set. Ties between steps are broken by the lowest rule
  *     number and then by the lexicographically smallest sorted list of the unique SMILES codes of the parts (with link
- *     atoms, rule numbers, and stereochemistry), so that the result does not depend on the order of the atoms. At most
- *     {@value #MAXIMUM_SEARCH_FRAGMENT_COUNT} fragments are evaluated per molecule; if this number is exceeded (e.g. for
- *     large glycosides or peptides), the remaining fragments are decomposed greedily (first step in the order above),
- *     see {@link CRUSHRouteNode#isExhaustive()}.</li>
+ *     atoms, rule numbers, and stereochemistry), so that the result of an exhaustive search does not depend on the
+ *     order of the atoms. At most {@value #MAXIMUM_SEARCH_FRAGMENT_COUNT} fragments are evaluated per molecule; if this
+ *     number is exceeded (e.g. for large glycosides or peptides), the remaining fragments are decomposed greedily, see
+ *     {@link CRUSHRouteNode#isExhaustive()}: the step with the lowest rule number is chosen, and ties are broken by the
+ *     unique SMILES codes of the parts without stereochemistry, in which the link atoms of the bonds cleaved before
+ *     carry no rule number. For such molecules, the result can depend on the order of the atoms, e.g. if tied steps
+ *     yield parts that differ only in their stereochemistry or in the rule numbers of earlier cleavages.</li>
  *     <li>The final fragments (leaves of the route) are returned, so every heavy atom of the molecule is contained in
- *     exactly one fragment; optionally, all fragments of the route are returned (setting). Each cleaved bond is replaced
- *     by two bonds of the same order to new link atoms, pseudo atoms carrying the rule number as mass number (resulting
- *     in SMILES like [26*]OCC, if the mass number is encoded) and as property {@link #RULE_NUMBER_PROPERTY_KEY}.
- *     Alternatively, the open valences can be saturated with hydrogen atoms (setting), as in the output of the authors'
- *     script.</li>
+ *     exactly one fragment; optionally, all fragments of the route are returned (setting), except the molecule itself
+ *     and, for molecules with several connected components, the components that are cleaved (components without a
+ *     cleavage step, e.g. counter ions, are returned). Each cleaved bond is replaced by two bonds of the same order to
+ *     new link atoms, pseudo atoms carrying the rule number as mass number (resulting in SMILES like [26*]OCC, if the
+ *     mass number is encoded) and as property {@link #RULE_NUMBER_PROPERTY_KEY}. Alternatively, the open valences can
+ *     be saturated with hydrogen atoms (setting), as in the output of the authors' script.</li>
  *     <li>Stereo elements are transferred to the fragments; ligands that were cleaved off are replaced by the link atom
  *     (or hydrogen atom) at their position, and stereo elements that lost their stereogenicity are removed. As in the
  *     RECAP fragmenter, stereogenicity is perceived from the constitution (CDK class {@link Stereocenters}), so the
  *     configuration of a potential (para) stereocentre is kept even if it is not stereogenic because of the
- *     configuration of other atoms (e.g. C3 of the 1,5-anhydroarabinitol unit that rule 7 forms from xylopyranoses,
- *     whose configuration the RDKit removes). A configuration-aware perception would be needed to remove it (in the meso
- *     isomers, this atom is a genuine pseudo-asymmetric centre); like for any molecule with such an atom in MORTAR, the
- *     unique SMILES code of such a fragment then depends on the configuration given for the atom.</li>
+ *     configuration of other atoms. An example is C3 of the 1,5-anhydroarabinitol that rules 6 and 7 form from
+ *     arabinopyranosides with hydrogen saturation: the CDK classifies it as a potential (para) stereocentre, the RDKit
+ *     removes its configuration, since it is not stereogenic because of the configuration of C2 and C4 (with link
+ *     atoms, the link atom at C1 makes C3 a true stereocentre). A configuration-aware perception would be needed to
+ *     remove it (in the meso isomers, e.g. the 1,5-anhydroxylitol formed from xylopyranosides, this atom is a genuine
+ *     pseudo-asymmetric centre); like for any molecule with such an atom in MORTAR, the unique SMILES code of such a
+ *     fragment then depends on the configuration given for the atom.</li>
  * </ol>
  *
  * <p><b>Differences to the script of the authors.</b> The script applies the reaction SMIRKS with the RDKit and
@@ -306,7 +315,9 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
         /**
          * All fragments of the route (see {@link CRUSHFragmenter#buildRoute(IAtomContainer)}) except the molecule
          * itself, i.e. the final fragments and all intermediate fragments, as in the output of the script of the
-         * authors; these fragments overlap.
+         * authors; these fragments overlap. For a molecule with several connected components (e.g. a salt), the
+         * components that are cleaved are not returned either, like the molecule itself; components without a cleavage
+         * step (e.g. counter ions) are returned.
          */
         ALL_ROUTE_FRAGMENTS(Message.get("CRUSHFragmenter.FragmentOutputOption.allRouteFragments.displayName"),
                 Message.get("CRUSHFragmenter.FragmentOutputOption.allRouteFragments.tooltip"));
@@ -1374,8 +1385,11 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
      * {@link #buildRoute(IAtomContainer)}), i.e. the disconnected parts of a clone of the given molecule in which all
      * bonds cleaved on the route have been cleaved and the open valences saturated according to the saturation setting.
      * With the fragment output option {@link FragmentOutputOption#ALL_ROUTE_FRAGMENTS}, all fragments of the route
-     * except its root (the molecule) are returned instead. If no bond is cleaved, the clone (or its disconnected parts,
-     * e.g. counter ions, separately) is returned or, depending on the respective setting, no fragment is returned.</p>
+     * except its root (the molecule) are returned instead; for a molecule with several connected components, the
+     * components that are cleaved (children of the root that are not leaves) are not returned either, so that e.g. a
+     * salt gives the same fragments as the free base, plus the counter ions. If no bond is cleaved, the clone (or its
+     * disconnected parts, e.g. counter ions, separately) is returned or, depending on the respective setting, no
+     * fragment is returned.</p>
      */
     @Override
     public List<IAtomContainer> fragmentMolecule(IAtomContainer aMolecule)
@@ -1418,7 +1432,13 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
             if (this.fragmentOutputSetting.get().equals(FragmentOutputOption.ALL_ROUTE_FRAGMENTS)) {
                 List<CRUSHRouteNode> tmpNodes = tmpRoot.getAllDescendants();
                 List<IAtomContainer> tmpFragments = new ArrayList<>(tmpNodes.size());
+                //the root of a molecule with several connected components has no rule number, its children are the
+                //components; a component that is cleaved is not returned, like the root of a molecule with one component
+                boolean tmpHasSeveralComponents = tmpRoot.getRuleNumber() == 0;
                 for (CRUSHRouteNode tmpNode : tmpNodes) {
+                    if (tmpHasSeveralComponents && tmpNode.getParent().isRoot() && !tmpNode.isLeaf()) {
+                        continue;
+                    }
                     tmpFragments.add(tmpNode.getFragment());
                 }
                 return tmpFragments;
@@ -1439,9 +1459,17 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
         }
     }
     //
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Molecules are filtered if they are null or empty, or if the order of a bond is unset and cannot be determined
+     * by kekulization (see {@link #prepareMolecule(IAtomContainer)}), e.g. the aromatic remnants of opened rings in
+     * fragments of a preceding fragmentation, which MORTAR parses without kekulization because their kekulization
+     * fails. The given molecule is not altered.</p>
+     */
     @Override
     public boolean shouldBeFiltered(IAtomContainer aMolecule) {
-        return Objects.isNull(aMolecule) || aMolecule.isEmpty();
+        return Objects.isNull(aMolecule) || aMolecule.isEmpty() || this.hasUnresolvableBondOrders(aMolecule);
     }
     //
     @Override
@@ -1630,6 +1658,35 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
     //</editor-fold>
     //
     //<editor-fold desc="Private methods">
+    /**
+     * Checks whether the order of a bond of the given molecule is unset and cannot be determined by kekulization in the
+     * preparation of the molecule, see {@link #prepareMolecule(IAtomContainer)}. Molecules without bonds of unset
+     * order are not cloned; otherwise, a clone of the molecule is prepared, so that the check and the fragmentation
+     * cannot deviate.
+     *
+     * @param aMolecule the molecule to check, it is not altered
+     * @return true if the order of a bond is unset (or null) and the preparation of a clone fails, e.g. because no
+     *         Kekulé structure can be assigned, or if the molecule cannot be cloned
+     */
+    private boolean hasUnresolvableBondOrders(IAtomContainer aMolecule) {
+        boolean tmpIsBondOrderUnset = false;
+        for (IBond tmpBond : aMolecule.bonds()) {
+            if (Objects.isNull(tmpBond.getOrder()) || tmpBond.getOrder() == IBond.Order.UNSET) {
+                tmpIsBondOrderUnset = true;
+                break;
+            }
+        }
+        if (!tmpIsBondOrderUnset) {
+            return false;
+        }
+        try {
+            this.prepareMolecule(aMolecule.clone());
+            return false;
+        } catch (CDKException | CloneNotSupportedException anException) {
+            return true;
+        }
+    }
+    //
     /**
      * Determines the route of the given prepared molecule, see {@link #buildRoute(IAtomContainer)}.
      *

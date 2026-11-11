@@ -231,9 +231,10 @@ public class CRUSHFragmenterReferenceTest {
      * differences are counted separately, with the numbers of this data set:
      * <ul>
      *     <li>16 molecules (intermediate fragments of CNP0383187.1 and CNP0436828.1 and CNP0436828.1 itself) with steps of
-     *     rules 6 and 7 at xylopyranosyl and 1,5-anhydrohexitol units whose products, 1,5-anhydroarabinitol units, differ
-     *     only in the configuration of C3: it is not stereogenic in these products because of the configuration of C2 and
-     *     C4, so the RDKit removes it, while the CDK keeps it as a potential (para) stereocentre;</li>
+     *     rules 6 and 7 at arabinopyranosyl and 1,5-anhydrohexitol units whose products, 1,5-anhydroarabinitol units
+     *     (saturated with hydrogen atoms), differ only in the configuration of C3: it is not stereogenic in these
+     *     products because of the configuration of C2 and C4, so the RDKit removes it, while the CDK classifies it as a
+     *     potential (para) stereocentre and keeps it;</li>
      *     <li>5 molecules (intermediate fragments of CNP0561292.0, CNP0560805.0 and CNP0520177.1, which contain atoms with
      *     radical electrons) with products that are identical but have different unique SMILES codes in the CDK
      *     (e.g. C=C[CH2] and [CH2]C=C); they are compared by isomorphism.</li>
@@ -288,8 +289,9 @@ public class CRUSHFragmenterReferenceTest {
      * Checks the consistency of the routes and fragments of all molecules of the BIOFACQUIM data set with default
      * settings (link atoms): every heavy atom of the molecule is contained in exactly one final fragment, there are two
      * link atoms per cleaved bond carrying the rule number of the step, the final fragments are the leaves of the route,
-     * and all route fragments are the fragments of all nodes of the route except the root. For every tenth molecule
-     * whose search is exhaustive, the fragments must not depend on the order of the atoms and bonds of the input.
+     * and all route fragments are the fragments of all nodes of the route except the root and the cleaved components of
+     * molecules with several connected components. For every tenth molecule whose search is exhaustive, the fragments
+     * must not depend on the order of the atoms and bonds of the input.
      *
      * @throws Exception if anything goes wrong
      */
@@ -351,7 +353,7 @@ public class CRUSHFragmenterReferenceTest {
                             CRUSHFragmenterTest.toCanonicalSmiles(CRUSHFragmenterTest.fragmentsOf(tmpRoot.getLeaves()),
                                     false), tmpColumns[0]);
                     Assertions.assertEquals(CRUSHFragmenterTest.toCanonicalSmiles(CRUSHFragmenterTest.fragmentsOf(
-                                    tmpRoot.getAllDescendants()), false),
+                                    CRUSHFragmenterTest.allRouteFragmentNodes(tmpRoot)), false),
                             CRUSHFragmenterTest.toCanonicalSmiles(tmpRouteFragmenter.fragmentMolecule(tmpMolecule), false),
                             tmpColumns[0]);
                 }

@@ -59,6 +59,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -340,7 +341,8 @@ public class CRUSHFragmenterTest {
     //
     /**
      * Tests the output options: the final fragments contain every heavy atom of the molecule exactly once and two link
-     * atoms per cleaved bond; all route fragments are the fragments of all nodes of the route except the root.
+     * atoms per cleaved bond; all route fragments are the fragments of all nodes of the route except the root and, for
+     * molecules with several connected components, except the components that are cleaved.
      *
      * @throws Exception if anything goes wrong
      */
@@ -386,18 +388,29 @@ public class CRUSHFragmenterTest {
                     CRUSHFragmenterTest.toCanonicalSmiles(CRUSHFragmenterTest.fragmentsOf(tmpRoot.getLeaves()), false));
             Assertions.assertEquals(CRUSHFragmenterTest.toStereoSmilesOfFragments(tmpFragments, false),
                     CRUSHFragmenterTest.toStereoSmilesOfFragments(CRUSHFragmenterTest.fragmentsOf(tmpRoot.getLeaves()), false));
-            //all route fragments are all nodes except the root, including the intermediate fragments
+            //all route fragments are all nodes except the root and the cleaved components, including the intermediate
+            //fragments
             Assertions.assertEquals(CRUSHFragmenterTest.toCanonicalSmiles(CRUSHFragmenterTest.fragmentsOf(
-                    tmpRoot.getAllDescendants()), false),
+                    CRUSHFragmenterTest.allRouteFragmentNodes(tmpRoot)), false),
                     CRUSHFragmenterTest.toCanonicalSmiles(tmpRouteFragmenter.fragmentMolecule(tmpMolecule), false));
         }
         //intermediate fragments of the route of nonane (the parts of the first step)
         this.assertFragments(tmpRouteFragmenter, "CCCCCCCCC", "[25*]CCC", "[25*]CCCCCC", "[25*]CCC", "[25*]CCC[25*]");
-        //salts: the components are children of the root and returned as fragments
+        //salts: the components are children of the root; like the molecule itself, a cleaved component is not returned,
+        //but the components without a cleavage step are
         CRUSHFragmenter.CRUSHRouteNode tmpRoot = tmpFragmenter.buildRoute(CRUSHFragmenterTest.parse("CCCCCC.[Na+].[Cl-]"));
         Assertions.assertEquals(3, tmpRoot.getChildren().size());
         Assertions.assertEquals(0, tmpRoot.getRuleNumber());
-        this.assertFragments(tmpRouteFragmenter, "CCCCCC.[Na+].[Cl-]", "CCCCCC", "[25*]CCC", "[25*]CCC", "[Na+]", "[Cl-]");
+        this.assertFragments(tmpRouteFragmenter, "CCCCCC.[Na+].[Cl-]", "[25*]CCC", "[25*]CCC", "[Na+]", "[Cl-]");
+        //a salt gives the same route fragments as the free base, apart from the counter ion
+        for (String tmpSmiles : new String[] {"CCCN1CCCCC1", "CC(C)NCC(O)COc1cccc2ccccc12", "CCCCCCCC(=O)OCCCC"}) {
+            List<String> tmpExpectedFragments = new ArrayList<>(CRUSHFragmenterTest.toCanonicalSmiles(
+                    tmpRouteFragmenter.fragmentMolecule(CRUSHFragmenterTest.parse(tmpSmiles)), false));
+            tmpExpectedFragments.add(CRUSHFragmenterTest.canonical("Cl", false));
+            Collections.sort(tmpExpectedFragments);
+            Assertions.assertEquals(tmpExpectedFragments, CRUSHFragmenterTest.toCanonicalSmiles(
+                    tmpRouteFragmenter.fragmentMolecule(CRUSHFragmenterTest.parse(tmpSmiles + ".Cl")), false), tmpSmiles);
+        }
     }
     //
     /**
@@ -634,6 +647,60 @@ public class CRUSHFragmenterTest {
     }
     //
     /**
+     * Tests the filter for molecules with bonds of unset order that cannot be resolved by kekulization, e.g. the
+     * aromatic remnants of opened rings in fragments of the Ertl fragmenter, which MORTAR parses without kekulization
+     * because their kekulization fails: they are filtered and not altered, whereas molecules with unset bond orders that
+     * can be kekulized are not filtered and give the same fragments as the kekulized molecules.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    public void unresolvableBondOrderTest() throws Exception {
+        CRUSHFragmenter tmpFragmenter = new CRUSHFragmenter();
+        //unset bond orders that can be resolved, also in a molecule with an amide and a biaryl bond
+        for (String tmpSmiles : new String[] {"CCCc1ccccc1OCCCC", "CCCCC(=O)Nc1ccc(cc1)-c1ccccc1"}) {
+            IAtomContainer tmpMolecule = ChemUtil.parseSmilesToAtomContainer(tmpSmiles, false, false);
+            Assertions.assertTrue(this.hasUnsetBondOrder(tmpMolecule), tmpSmiles);
+            Assertions.assertFalse(tmpFragmenter.shouldBeFiltered(tmpMolecule), tmpSmiles);
+            Assertions.assertTrue(tmpFragmenter.canBeFragmented(tmpMolecule), tmpSmiles);
+            List<String> tmpExpectedKeys = this.createUniqueSmilesList(tmpFragmenter.fragmentMolecule(
+                    ChemUtil.parseSmilesToAtomContainer(tmpSmiles, true, true)));
+            List<String> tmpKeys = this.createUniqueSmilesList(tmpFragmenter.fragmentMolecule(tmpMolecule));
+            Assertions.assertTrue(tmpExpectedKeys.size() > 1, tmpSmiles);
+            Assertions.assertFalse(tmpKeys.contains(null), tmpSmiles);
+            Assertions.assertEquals(tmpExpectedKeys, tmpKeys, tmpSmiles);
+        }
+        //aromatic remnants of opened rings cannot be kekulized
+        for (String tmpSmiles : new String[] {"ccc", "c1ccc(cc1)ccc-c2ccccc2"}) {
+            IAtomContainer tmpMolecule = ChemUtil.parseSmilesToAtomContainer(tmpSmiles, false, false);
+            List<String> tmpBondOrdersAndAromaticity = this.getBondOrdersAndAromaticity(tmpMolecule);
+            Assertions.assertTrue(tmpFragmenter.shouldBeFiltered(tmpMolecule), tmpSmiles);
+            Assertions.assertFalse(tmpFragmenter.canBeFragmented(tmpMolecule), tmpSmiles);
+            Assertions.assertThrows(IllegalArgumentException.class, () -> tmpFragmenter.fragmentMolecule(tmpMolecule),
+                    tmpSmiles);
+            //the input molecule is not altered
+            Assertions.assertTrue(this.hasUnsetBondOrder(tmpMolecule), tmpSmiles);
+            Assertions.assertEquals(tmpBondOrdersAndAromaticity, this.getBondOrdersAndAromaticity(tmpMolecule), tmpSmiles);
+        }
+        //a bond of unset or no order between atoms that are not aromatic cannot be resolved
+        IAtomContainer tmpUnsetBondMolecule = SilentChemObjectBuilder.getInstance().newAtomContainer();
+        for (int i = 0; i < 2; i++) {
+            IAtom tmpAtom = SilentChemObjectBuilder.getInstance().newInstance(IAtom.class, "C");
+            tmpAtom.setImplicitHydrogenCount(3);
+            tmpUnsetBondMolecule.addAtom(tmpAtom);
+        }
+        tmpUnsetBondMolecule.addBond(0, 1, IBond.Order.UNSET);
+        Assertions.assertTrue(tmpFragmenter.shouldBeFiltered(tmpUnsetBondMolecule));
+        Assertions.assertFalse(tmpFragmenter.canBeFragmented(tmpUnsetBondMolecule));
+        tmpUnsetBondMolecule.getBond(0).setOrder(null);
+        Assertions.assertTrue(tmpFragmenter.shouldBeFiltered(tmpUnsetBondMolecule));
+        Assertions.assertNull(tmpUnsetBondMolecule.getBond(0).getOrder());
+        //molecules without unset bond orders are not filtered
+        Assertions.assertFalse(tmpFragmenter.shouldBeFiltered(
+                ChemUtil.parseSmilesToAtomContainer("CCCc1ccccc1OCCCC", true, true)));
+    }
+    //
+    /**
      * Tests that the fragments do not depend on the order of the atoms and bonds of the input: the molecules are
      * fragmented with their atoms and bonds in random order, and the fragments must be identical, including rule numbers
      * and stereochemistry.
@@ -748,6 +815,56 @@ public class CRUSHFragmenterTest {
         List<IAtomContainer> tmpFragments = aFragmenter.fragmentMolecule(CRUSHFragmenterTest.parse(aSmiles));
         Assertions.assertEquals(CRUSHFragmenterTest.toStereoSmiles(List.of(anExpectedFragments), false),
                 CRUSHFragmenterTest.toStereoSmilesOfFragments(tmpFragments, false), aSmiles);
+    }
+    //
+    /**
+     * Returns whether the order of a bond of the given molecule is unset.
+     *
+     * @param aMolecule molecule
+     * @return true if a bond has the order UNSET or no order
+     */
+    private boolean hasUnsetBondOrder(IAtomContainer aMolecule) {
+        for (IBond tmpBond : aMolecule.bonds()) {
+            if (tmpBond.getOrder() == null || tmpBond.getOrder() == IBond.Order.UNSET) {
+                return true;
+            }
+        }
+        return false;
+    }
+    //
+    /**
+     * Returns the aromaticity flags of the atoms and the orders and aromaticity flags of the bonds of the given
+     * molecule, in the order of the atoms and bonds.
+     *
+     * @param aMolecule molecule
+     * @return list with one entry per atom and per bond
+     */
+    private List<String> getBondOrdersAndAromaticity(IAtomContainer aMolecule) {
+        List<String> tmpList = new ArrayList<>(aMolecule.getAtomCount() + aMolecule.getBondCount());
+        for (IAtom tmpAtom : aMolecule.atoms()) {
+            tmpList.add(String.valueOf(tmpAtom.isAromatic()));
+        }
+        for (IBond tmpBond : aMolecule.bonds()) {
+            tmpList.add(tmpBond.getOrder() + " " + tmpBond.isAromatic());
+        }
+        return tmpList;
+    }
+    //
+    /**
+     * Returns the sorted unique SMILES codes with stereochemistry of the given fragments as MORTAR creates them
+     * ({@link ChemUtil#createUniqueSmiles(IAtomContainer, boolean)}), with null for fragments whose SMILES code cannot be
+     * created.
+     *
+     * @param aFragmentList fragments
+     * @return sorted list of unique SMILES codes, null values first
+     */
+    private List<String> createUniqueSmilesList(List<IAtomContainer> aFragmentList) {
+        List<String> tmpSmilesList = new ArrayList<>(aFragmentList.size());
+        for (IAtomContainer tmpFragment : aFragmentList) {
+            tmpSmilesList.add(ChemUtil.createUniqueSmiles(tmpFragment, true));
+        }
+        tmpSmilesList.sort(Comparator.nullsFirst(Comparator.naturalOrder()));
+        return tmpSmilesList;
     }
     //
     /**
@@ -989,6 +1106,25 @@ public class CRUSHFragmenterTest {
             tmpFragments.add(tmpNode.getFragment());
         }
         return tmpFragments;
+    }
+    //
+    /**
+     * Returns the nodes of the given route whose fragments are returned with the fragment output option
+     * {@link CRUSHFragmenter.FragmentOutputOption#ALL_ROUTE_FRAGMENTS}: all nodes except the root and, for a molecule
+     * with several connected components (root with rule number 0), except the components that are cleaved.
+     *
+     * @param aRoot root of the route
+     * @return list of the nodes in breadth-first order
+     */
+    static List<CRUSHFragmenter.CRUSHRouteNode> allRouteFragmentNodes(CRUSHFragmenter.CRUSHRouteNode aRoot) {
+        List<CRUSHFragmenter.CRUSHRouteNode> tmpNodes = new ArrayList<>();
+        for (CRUSHFragmenter.CRUSHRouteNode tmpNode : aRoot.getAllDescendants()) {
+            if (aRoot.getRuleNumber() == 0 && tmpNode.getParent() == aRoot && !tmpNode.isLeaf()) {
+                continue;
+            }
+            tmpNodes.add(tmpNode);
+        }
+        return tmpNodes;
     }
     //
     /**
