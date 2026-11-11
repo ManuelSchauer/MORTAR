@@ -33,6 +33,8 @@ import de.unijena.cheminf.mortar.preference.SingleIntegerPreference;
 import de.unijena.cheminf.mortar.preference.SingleTermPreference;
 
 import javafx.beans.property.Property;
+import javafx.scene.control.TextFormatter;
+import javafx.util.converter.IntegerStringConverter;
 
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -40,9 +42,11 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.io.File;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -309,6 +313,57 @@ public class MoleculeFilterSettingsTest {
         Assertions.assertFalse(tmpThirdSettings.getElementFilterSetting());
         //a path that cannot be a directory
         Assertions.assertFalse(tmpSettings.preserveSettings(tmpFile.getPath()));
+    }
+
+    /**
+     * Tests the heavy atom count bounds with bidirectional bindings as created by the generic settings view, which
+     * binds the value property of a text formatter to each integer setting: a value committed in one field that pushes
+     * the other bound also updates the value of the other field (so that it does not show a stale value), no listener
+     * throws, and restoring the recent values in the order of the settings list (as the cancel button of the settings
+     * window does) as well as restoring the defaults gives a consistent pair in the properties and in the fields. The
+     * rendering of the text fields themselves needs the running GUI and is not tested here.
+     */
+    @Test
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    public void testHeavyAtomCountBoundsWithSettingsViewBindings() {
+        MoleculeFilterSettings tmpSettings = new MoleculeFilterSettings();
+        //as in SettingsView: text formatter with integer converter, default value 0, bound to the raw property
+        TextFormatter<Integer> tmpMinimumFormatter = new TextFormatter<>(new IntegerStringConverter(), 0);
+        TextFormatter<Integer> tmpMaximumFormatter = new TextFormatter<>(new IntegerStringConverter(), 0);
+        Property tmpMinimumProperty = tmpSettings.minimumHeavyAtomCountSettingProperty();
+        Property tmpMaximumProperty = tmpSettings.maximumHeavyAtomCountSettingProperty();
+        tmpMinimumFormatter.valueProperty().bindBidirectional(tmpMinimumProperty);
+        tmpMaximumFormatter.valueProperty().bindBidirectional(tmpMaximumProperty);
+        //recent values as recorded by the settings view when the tab is created
+        Map<String, Object> tmpRecentValues = new HashMap<>();
+        for (Property<?> tmpProperty : tmpSettings.settingsProperties()) {
+            tmpRecentValues.put(tmpProperty.getName(), tmpProperty.getValue());
+        }
+        Assertions.assertEquals(MoleculeFilterSettings.MINIMUM_HEAVY_ATOM_COUNT_SETTING_DEFAULT, tmpMinimumFormatter.getValue());
+        Assertions.assertEquals(MoleculeFilterSettings.MAXIMUM_HEAVY_ATOM_COUNT_SETTING_DEFAULT, tmpMaximumFormatter.getValue());
+        //user commits a minimum above the maximum
+        tmpMinimumFormatter.setValue(150);
+        Assertions.assertEquals(150, tmpSettings.getMinimumHeavyAtomCountSetting());
+        Assertions.assertEquals(150, tmpSettings.getMaximumHeavyAtomCountSetting());
+        Assertions.assertEquals(150, tmpMaximumFormatter.getValue());
+        //user commits a maximum below the minimum
+        tmpMaximumFormatter.setValue(5);
+        Assertions.assertEquals(5, tmpSettings.getMinimumHeavyAtomCountSetting());
+        Assertions.assertEquals(5, tmpMinimumFormatter.getValue());
+        Assertions.assertEquals(5, tmpMaximumFormatter.getValue());
+        //cancel: restore in the order of the settings list
+        for (Property tmpProperty : tmpSettings.settingsProperties()) {
+            tmpProperty.setValue(tmpRecentValues.get(tmpProperty.getName()));
+        }
+        Assertions.assertEquals(MoleculeFilterSettingsSnapshot.createDefault(), tmpSettings.createSnapshot());
+        Assertions.assertEquals(MoleculeFilterSettings.MINIMUM_HEAVY_ATOM_COUNT_SETTING_DEFAULT, tmpMinimumFormatter.getValue());
+        Assertions.assertEquals(MoleculeFilterSettings.MAXIMUM_HEAVY_ATOM_COUNT_SETTING_DEFAULT, tmpMaximumFormatter.getValue());
+        //default button after pushing the range up
+        tmpMinimumFormatter.setValue(400);
+        tmpSettings.restoreDefaultSettings();
+        Assertions.assertEquals(MoleculeFilterSettings.MINIMUM_HEAVY_ATOM_COUNT_SETTING_DEFAULT, tmpMinimumFormatter.getValue());
+        Assertions.assertEquals(MoleculeFilterSettings.MAXIMUM_HEAVY_ATOM_COUNT_SETTING_DEFAULT, tmpMaximumFormatter.getValue());
+        Assertions.assertEquals(MoleculeFilterSettingsSnapshot.createDefault(), tmpSettings.createSnapshot());
     }
     //</editor-fold>
     //

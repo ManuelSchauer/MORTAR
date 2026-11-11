@@ -1,0 +1,12 @@
+CCO	ethanol
+OCC	ethanol_duplicate
+C[C@H](N)C(=O)O	L-alanine
+C[C@@H](N)C(=O)O	D-alanine
+CCN(CC)CC.Cl	triethylamine_hydrochloride
+CCN(CC)CC	triethylamine
+CC(=O)[O-].[Na+]	sodium_acetate
+CC(=O)Nc1ccc(O)cc1.O	paracetamol_hydrate
+Cl[Pt](Cl)(N)N	cisplatin
+[Cl-]	chloride_ion
+*CCO	R_group_molecule
+CCCCCCCCCCCCCCCCCCCCCCCCCCCCCC	triacontane

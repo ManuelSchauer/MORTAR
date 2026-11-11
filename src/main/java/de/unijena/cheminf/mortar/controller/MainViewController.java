@@ -38,6 +38,9 @@ import de.unijena.cheminf.mortar.gui.views.MoleculesDataTableView;
 import de.unijena.cheminf.mortar.message.Message;
 import de.unijena.cheminf.mortar.model.data.FragmentDataModel;
 import de.unijena.cheminf.mortar.model.data.MoleculeDataModel;
+import de.unijena.cheminf.mortar.model.filter.MoleculeFilterSettings;
+import de.unijena.cheminf.mortar.model.filter.MoleculeFilterSettingsSnapshot;
+import de.unijena.cheminf.mortar.model.filter.MoleculeFilterSummary;
 import de.unijena.cheminf.mortar.model.fragmentation.FragmentationService;
 import de.unijena.cheminf.mortar.model.fragmentation.algorithm.IMoleculeFragmenter;
 import de.unijena.cheminf.mortar.model.io.ChemFileTypes;
@@ -135,6 +138,10 @@ public class MainViewController {
      * SettingsContainer.
      */
     private final SettingsContainer settingsContainer;
+    /**
+     * Settings of the molecule filters applied at import.
+     */
+    private final MoleculeFilterSettings moleculeFilterSettings;
     /**
      * FragmentationService.
      */
@@ -240,6 +247,12 @@ public class MainViewController {
         this.mainView = aMainView;
         this.settingsContainer = new SettingsContainer();
         this.settingsContainer.reloadGlobalSettings();
+        this.moleculeFilterSettings = new MoleculeFilterSettings();
+        if (!this.moleculeFilterSettings.reloadSettings()) {
+            //the reason is logged by the settings; nothing else to do, the defaults (all filters inactive) are safe
+            MainViewController.LOGGER.log(Level.INFO, "Molecule filter settings were not reloaded, the import filters " +
+                    "keep their default values (all inactive).");
+        }
         this.fragmentationService = new FragmentationService();
         this.fragmentationService.reloadFragmenterSettings();
         this.fragmentationService.reloadActiveFragmenterAndPipeline();
@@ -420,6 +433,12 @@ public class MainViewController {
             return;
         }
         this.settingsContainer.preserveSettings();
+        if (!this.moleculeFilterSettings.preserveSettings()) {
+            //no alert at shutdown, the reason is logged by the settings (and a non-writable settings directory is
+            // already reported by the global settings); the filters start inactive in the next session
+            MainViewController.LOGGER.log(Level.WARNING, "Molecule filter settings could not be persisted, the import " +
+                    "filters will have their default values (all inactive) in the next session.");
+        }
         this.viewToolsManager.persistViewToolsSettings();
         this.fragmentationService.persistFragmenterSettings();
         this.fragmentationService.persistSelectedFragmenterAndPipeline();
@@ -517,10 +536,13 @@ public class MainViewController {
         boolean tmpIsRegardStereo = this.settingsContainer.getRegardStereochemistrySetting();
         boolean tmpIsFillOpenValences = this.settingsContainer.getAddImplicitHydrogensAtImportSetting();
         boolean tmpIsKekulizationEnforced = this.settingsContainer.getImportAromaticsAsKekuleStructuresSetting();
+        //taken here in the GUI thread, so that settings changes during the import do not affect it
+        MoleculeFilterSettingsSnapshot tmpFilterSettingsSnapshot = this.moleculeFilterSettings.createSnapshot();
         this.importTask = new Task<>() {
             @Override
             protected List<MoleculeDataModel> call() throws Exception {
-                List<MoleculeDataModel> tmpSet = tmpImporter.importMoleculeFile(aFile, tmpIsRegardStereo, tmpIsFillOpenValences, tmpIsKekulizationEnforced);
+                List<MoleculeDataModel> tmpSet = tmpImporter.importMoleculeFile(aFile, tmpIsRegardStereo, tmpIsFillOpenValences,
+                        tmpIsKekulizationEnforced, tmpFilterSettingsSnapshot);
                 return tmpSet;
             }
         };
@@ -528,7 +550,7 @@ public class MainViewController {
             //note: setOnSucceeded() takes place in the JavaFX GUI thread again but still runLater() is necessary to wait
             // for the thread to be free for the update
             Platform.runLater(() -> {
-                List<MoleculeDataModel> tmpImportedMoleculeDataModels = null;
+                List<MoleculeDataModel> tmpImportedMoleculeDataModels;
                 try {
                     tmpImportedMoleculeDataModels = this.importTask.get();
                 } catch (InterruptedException | ExecutionException anException) {
@@ -538,20 +560,29 @@ public class MainViewController {
                             Message.get("Importer.FileImportExceptionAlert.Text"),
                             anException);
                     this.updateStatusBar(this.importerThread, Message.get("Status.importFailed"));
-                }
-                this.moleculeDataModelList.addAll(tmpImportedMoleculeDataModels);
-                if (tmpImportedMoleculeDataModels == null || tmpImportedMoleculeDataModels.isEmpty() || this.moleculeDataModelList.isEmpty()) {
-                    MainViewController.LOGGER.log(Level.WARNING, "Import failed, set of imported molecules is null or empty");
-                    this.updateStatusBar(this.importerThread, Message.get("Status.importFailed"));
                     this.isImportRunningProperty.setValue(false);
-                    Platform.runLater(() -> {
-                        GuiUtil.guiMessageAlert(Alert.AlertType.WARNING,
-                                Message.get("Error.ExceptionAlert.Title"),
-                                Message.get("Importer.FileImportEmptyAlert.Header"),
-                                Message.get("Importer.FileImportEmptyAlert.Content"));
-                    });
                     return;
                 }
+                MoleculeFilterSummary tmpFilterSummary = tmpImporter.getMoleculeFilterSummary();
+                if (tmpImportedMoleculeDataModels == null || tmpImportedMoleculeDataModels.isEmpty()) {
+                    this.updateStatusBar(this.importerThread, Message.get("Status.importFailed"));
+                    this.isImportRunningProperty.setValue(false);
+                    if (tmpFilterSummary != null && tmpFilterSummary.getRemovedByFiltersCount() > 0) {
+                        MainViewController.LOGGER.log(Level.WARNING, "Import resulted in an empty data set, the import " +
+                                "filters removed all molecules that could be read from the file.");
+                        Platform.runLater(() -> this.showImportFilterSummary(tmpFilterSummary, true));
+                    } else {
+                        MainViewController.LOGGER.log(Level.WARNING, "Import failed, set of imported molecules is null or empty");
+                        Platform.runLater(() -> {
+                            GuiUtil.guiMessageAlert(Alert.AlertType.WARNING,
+                                    Message.get("Error.ExceptionAlert.Title"),
+                                    Message.get("Importer.FileImportEmptyAlert.Header"),
+                                    Message.get("Importer.FileImportEmptyAlert.Content"));
+                        });
+                    }
+                    return;
+                }
+                this.moleculeDataModelList.addAll(tmpImportedMoleculeDataModels);
                 this.mainView.getMainMenuBar().getExportMenu().setDisable(true);
                 this.mainView.getMainMenuBar().getHistogramViewerMenuItem().setDisable(true);
                 this.mainView.getMainMenuBar().getOverviewViewMenuItem().setDisable(false);
@@ -562,6 +593,9 @@ public class MainViewController {
                 this.isImportRunningProperty.setValue(false);
                 this.mainView.getMainCenterPane().setStyle("-fx-background-image: none");
                 this.openMoleculesTab();
+                if (tmpFilterSummary != null && tmpFilterSummary.isDataSetChangedByFilters()) {
+                    Platform.runLater(() -> this.showImportFilterSummary(tmpFilterSummary, false));
+                }
             })
         );
         this.importTask.setOnCancelled(event -> {
@@ -588,6 +622,29 @@ public class MainViewController {
         this.isImportRunningProperty.setValue(true);
         this.updateStatusBar(this.importerThread, Message.get("Status.importing"));
         this.importerThread.start();
+    }
+    //
+    /**
+     * Shows the summary of the molecule filters of an import in a dialog: the numbers of read, imported, and reduced
+     * molecules and the removed molecules per reason, plus a hint where to find the removed molecules in the log file.
+     * Must be called in the JavaFX GUI thread.
+     *
+     * @param aFilterSummary summary of the molecule filters of the import
+     * @param isAllRemoved true if the filters removed all molecules so that nothing was imported (shown as a warning
+     *                     with a hint to the filter settings), false for an import that changed the data set (shown as
+     *                     information)
+     */
+    private void showImportFilterSummary(MoleculeFilterSummary aFilterSummary, boolean isAllRemoved) {
+        String tmpContent = aFilterSummary.getDisplayText() + "\n\n";
+        if (isAllRemoved) {
+            tmpContent += Message.get("MainViewController.ImportFilterSummary.AllRemoved.Hint") + "\n\n";
+        }
+        tmpContent += Message.get("MainViewController.ImportFilterSummary.LogFileHint") + "\n" + LogUtil.getLogFileDirectoryPath();
+        GuiUtil.guiMessageAlert(isAllRemoved ? Alert.AlertType.WARNING : Alert.AlertType.INFORMATION,
+                Message.get("MainViewController.ImportFilterSummary.Title"),
+                Message.get(isAllRemoved ? "MainViewController.ImportFilterSummary.AllRemoved.Header"
+                        : "MainViewController.ImportFilterSummary.Header"),
+                tmpContent);
     }
     //
     /**
@@ -845,7 +902,8 @@ public class MainViewController {
      * Opens settings view for global settings.
      */
     private void openGlobalSettingsView() {
-        SettingsViewController tmpSettingsViewController = new SettingsViewController(this.primaryStage, this.settingsContainer, this.configuration);
+        SettingsViewController tmpSettingsViewController = new SettingsViewController(this.primaryStage, this.settingsContainer,
+                this.moleculeFilterSettings, this.configuration);
         Platform.runLater(() -> {
             if (tmpSettingsViewController.hasRowsPerPageChanged()) {
                 for (Tab tmpTab : this.mainTabPane.getTabs()) {

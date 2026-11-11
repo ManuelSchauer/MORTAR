@@ -25,6 +25,8 @@
 
 package de.unijena.cheminf.mortar.model.filter;
 
+import de.unijena.cheminf.mortar.message.Message;
+
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.Objects;
@@ -170,9 +172,59 @@ public final class MoleculeFilterSummary {
     public int getPendingCount() {
         return this.readCount - this.keptCount - this.getTotalRemovedCount();
     }
+
+    /**
+     * Returns the number of molecules removed by the molecule filters, i.e. the total number of removed molecules
+     * without the molecules for which the importer could not generate a SMILES string (these are not imported without
+     * molecule filters either). Always 0 if all filters are inactive.
+     *
+     * @return number of molecules removed by the filters
+     */
+    public int getRemovedByFiltersCount() {
+        return this.getTotalRemovedCount() - this.getRemovedCount(MoleculeFilterReason.SMILES_GENERATION_FAILED);
+    }
+
+    /**
+     * Returns whether the molecule filters changed the imported data set, i.e. whether at least one molecule was removed
+     * by a filter (see {@link #getRemovedByFiltersCount()}) or reduced to its largest component. Always false if all
+     * filters are inactive, so that, e.g., no summary is shown to the user for an import without molecule filters.
+     *
+     * @return true if the filters removed or reduced at least one molecule
+     */
+    public boolean isDataSetChangedByFilters() {
+        return this.getRemovedByFiltersCount() > 0 || this.reducedToLargestComponentCount > 0;
+    }
     //</editor-fold>
     //
     //<editor-fold desc="Public methods">
+    /**
+     * Returns a language-specific, multi-line description of the counts for display in the GUI: the numbers of read,
+     * imported, and reduced molecules, the total number of removed molecules, and one indented line per reason with
+     * at least one removed molecule, in the order of {@link MoleculeFilterReason}, using its display name. The settings
+     * are not included.
+     *
+     * @return summary for display
+     */
+    public String getDisplayText() {
+        StringBuilder tmpBuilder = new StringBuilder(400);
+        tmpBuilder.append(String.format(Message.get("MoleculeFilterSummary.DisplayText.read"), this.readCount))
+                .append("\n")
+                .append(String.format(Message.get("MoleculeFilterSummary.DisplayText.kept"), this.keptCount))
+                .append("\n")
+                .append(String.format(Message.get("MoleculeFilterSummary.DisplayText.reduced"),
+                        this.reducedToLargestComponentCount))
+                .append("\n")
+                .append(String.format(Message.get("MoleculeFilterSummary.DisplayText.removed"),
+                        this.getTotalRemovedCount()));
+        for (Map.Entry<MoleculeFilterReason, Integer> tmpEntry : this.removedCountsMap.entrySet()) {
+            if (tmpEntry.getValue() > 0) {
+                tmpBuilder.append("\n  - ").append(tmpEntry.getKey().getDisplayName()).append(": ")
+                        .append(tmpEntry.getValue());
+            }
+        }
+        return tmpBuilder.toString();
+    }
+
     /**
      * Returns an English one-line description of the summary for the log file, including the settings.
      *

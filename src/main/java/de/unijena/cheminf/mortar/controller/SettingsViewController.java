@@ -29,21 +29,25 @@ import de.unijena.cheminf.mortar.configuration.IConfiguration;
 import de.unijena.cheminf.mortar.gui.util.GuiDefinitions;
 import de.unijena.cheminf.mortar.gui.views.SettingsView;
 import de.unijena.cheminf.mortar.message.Message;
+import de.unijena.cheminf.mortar.model.filter.MoleculeFilterSettings;
 import de.unijena.cheminf.mortar.model.settings.SettingsContainer;
 import de.unijena.cheminf.mortar.model.util.CollectionUtil;
 
 import javafx.application.Platform;
 import javafx.beans.property.Property;
 import javafx.scene.Scene;
+import javafx.scene.control.Tab;
 import javafx.scene.image.Image;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
- * SettingsViewController controls {@link SettingsView} for {@link SettingsContainer}.
+ * SettingsViewController controls {@link SettingsView} for {@link SettingsContainer} (first tab) and
+ * {@link MoleculeFilterSettings} (second tab, import filters).
  *
  * @author Felix Baensch
  * @version 1.0.0.0
@@ -54,6 +58,10 @@ public class SettingsViewController {
      * SettingsContainer.
      */
     private final SettingsContainer settingsContainer;
+    /**
+     * Settings of the molecule filters applied at import, shown in a second tab.
+     */
+    private final MoleculeFilterSettings moleculeFilterSettings;
     /**
      * Main stage object of the application.
      */
@@ -75,6 +83,14 @@ public class SettingsViewController {
      */
     private final Map<String, Object> recentProperties;
     /**
+     * Map to hold the initial values of the molecule filter settings.
+     */
+    private final Map<String, Object> recentMoleculeFilterProperties;
+    /**
+     * Tab of the molecule filter settings; null until the tabs are added.
+     */
+    private Tab moleculeFilterSettingsTab;
+    /**
      * Boolean value to check if the rowsPerPage property has changed.
      */
     private boolean hasRowsPerPageChanged;
@@ -89,13 +105,18 @@ public class SettingsViewController {
      *
      * @param aStage Parent stage
      * @param aSettingsContainer SettingsContainer
+     * @param aMoleculeFilterSettings settings of the molecule filters applied at import
      * @param aConfiguration configuration instance to read resource file paths from
      */
-    public SettingsViewController(Stage aStage, SettingsContainer aSettingsContainer, IConfiguration aConfiguration) {
+    public SettingsViewController(Stage aStage, SettingsContainer aSettingsContainer,
+                                  MoleculeFilterSettings aMoleculeFilterSettings, IConfiguration aConfiguration) {
         this.mainStage = aStage;
         this.settingsContainer = aSettingsContainer;
+        this.moleculeFilterSettings = aMoleculeFilterSettings;
         this.configuration = aConfiguration;
         this.recentProperties = new HashMap<>(CollectionUtil.calculateInitialHashCollectionCapacity(this.settingsContainer.settingsProperties().size()));
+        this.recentMoleculeFilterProperties = new HashMap<>(CollectionUtil.calculateInitialHashCollectionCapacity(
+                this.moleculeFilterSettings.settingsProperties().size()));
         this.showSettingsView();
     }
     //
@@ -124,6 +145,9 @@ public class SettingsViewController {
             this.settingsView.addTab(Message.get("GlobalSettingsView.title.text"),
                     this.settingsContainer.settingsProperties(), this.settingsContainer.getSettingNameToDisplayNameMap(),
                     this.settingsContainer.getSettingNameToTooltipTextMap(), this.recentProperties);
+            this.moleculeFilterSettingsTab = this.settingsView.addTab(this.moleculeFilterSettings.getDisplayName(),
+                    this.moleculeFilterSettings.settingsProperties(), this.moleculeFilterSettings.getSettingNameToDisplayNameMap(),
+                    this.moleculeFilterSettings.getSettingNameToTooltipTextMap(), this.recentMoleculeFilterProperties);
         });
         this.settingsViewStage.showAndWait();
     }
@@ -150,21 +174,41 @@ public class SettingsViewController {
             this.setRecentProperties();
             this.settingsViewStage.close();
         });
-        //default button
-        this.settingsView.getDefaultButton().setOnAction(event -> this.settingsContainer.restoreDefaultSettings());
+        //default button, restores only the settings of the selected tab (like the fragmentation settings view)
+        this.settingsView.getDefaultButton().setOnAction(event -> {
+            if (this.moleculeFilterSettingsTab != null
+                    && this.settingsView.getSelectionModel().getSelectedItem() == this.moleculeFilterSettingsTab) {
+                this.moleculeFilterSettings.restoreDefaultSettings();
+            } else {
+                this.settingsContainer.restoreDefaultSettings();
+            }
+        });
     }
     //
     /**
-     * Sets the properties to the values of the 'recentPropertiesMap'.
+     * Sets the properties of both tabs to the values of the respective recent properties map.
      */
     private void setRecentProperties() {
         Platform.runLater(()->{
-            for (Property tmpProperty : this.settingsContainer.settingsProperties()) {
-                if (this.recentProperties.containsKey(tmpProperty.getName())){
-                    tmpProperty.setValue(this.recentProperties.get(tmpProperty.getName()));
-                }
-            }
+            SettingsViewController.restoreRecentValues(this.settingsContainer.settingsProperties(), this.recentProperties);
+            //note: the heavy atom count bounds can be restored in any order, see MoleculeFilterSettings
+            SettingsViewController.restoreRecentValues(this.moleculeFilterSettings.settingsProperties(),
+                    this.recentMoleculeFilterProperties);
         });
+    }
+    //
+    /**
+     * Sets the given properties to their values in the given recent properties map, if contained.
+     *
+     * @param aPropertiesList properties to restore
+     * @param aRecentPropertiesMap map of setting names and recent values
+     */
+    private static void restoreRecentValues(List<Property<?>> aPropertiesList, Map<String, Object> aRecentPropertiesMap) {
+        for (Property tmpProperty : aPropertiesList) {
+            if (aRecentPropertiesMap.containsKey(tmpProperty.getName())){
+                tmpProperty.setValue(aRecentPropertiesMap.get(tmpProperty.getName()));
+            }
+        }
     }
     //</editor-fold>
     //

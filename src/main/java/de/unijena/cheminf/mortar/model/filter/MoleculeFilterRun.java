@@ -63,8 +63,11 @@ import java.util.logging.Logger;
  * and {@link #getSummary()} are synchronised, so the summary may also be retrieved by another thread (e.g. the GUI
  * thread) during the run. Note that with parallel callers, "first occurrence" means the first call of
  * {@link #isDuplicate(String)}, not the first molecule in the file. No GUI code is called.
- * <br>Removed molecules are logged individually at level FINE only, to avoid flooding the log file with large data sets;
- * the summary can be logged via {@link MoleculeFilterSummary#toString()}.
+ * <br>Removed molecules are not logged individually by this class, so that every removal is logged in one place only:
+ * the importer logs one line per removed molecule with its name and the reason (see
+ * {@link Importer#importMoleculeFile(java.io.File, boolean, boolean, boolean, MoleculeFilterSettingsSnapshot)}); the
+ * summary can be logged via {@link MoleculeFilterSummary#toString()}. Only failed filter checks are logged here, with
+ * the exception (see above).
  *
  * @author Manuel Schauer
  * @version 1.0.0.0
@@ -186,11 +189,6 @@ public class MoleculeFilterRun {
                 this.removedCountsMap.merge(tmpResult.getRejectionReason(), 1, Integer::sum);
             }
         }
-        if (!tmpResult.isKept() && MoleculeFilterRun.LOGGER.isLoggable(Level.FINE)) {
-            MoleculeFilterRun.LOGGER.log(Level.FINE, "Molecule {0} removed by the molecule filters, reason: {1}",
-                    new Object[] {aMolecule.getProperty(Importer.MOLECULE_NAME_PROPERTY_KEY),
-                            tmpResult.getRejectionReason().name()});
-        }
         return tmpResult;
     }
 
@@ -217,7 +215,6 @@ public class MoleculeFilterRun {
         }
         if (this.settingsSnapshot.isDuplicateFilterActive() && !this.registeredSmilesSet.add(aUniqueSmiles)) {
             this.removedCountsMap.merge(MoleculeFilterReason.DUPLICATE, 1, Integer::sum);
-            MoleculeFilterRun.LOGGER.log(Level.FINE, "Molecule with SMILES {0} removed as duplicate.", aUniqueSmiles);
             return true;
         }
         this.keptCount++;
