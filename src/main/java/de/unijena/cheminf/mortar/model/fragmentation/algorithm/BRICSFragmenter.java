@@ -36,6 +36,7 @@ import de.unijena.cheminf.mortar.model.util.SimpleIDisplayEnumConstantProperty;
 import javafx.beans.property.Property;
 import javafx.beans.property.SimpleBooleanProperty;
 
+import org.openscience.cdk.aromaticity.Kekulization;
 import org.openscience.cdk.exception.CDKException;
 import org.openscience.cdk.graph.ConnectedComponents;
 import org.openscience.cdk.graph.ConnectivityChecker;
@@ -126,7 +127,9 @@ import java.util.logging.Logger;
  * molecule and then cleaved simultaneously:
  * <ol>
  *     <li>Explicit hydrogen atoms are suppressed, and ring membership and aromaticity are perceived with the Daylight
- *     model, which is the model that the SMARTS semantics of the rules are based on.</li>
+ *     model, which is the model that the SMARTS semantics of the rules are based on. Since the aromaticity perception
+ *     needs the bond orders, a Kekulé structure is assigned first if bond orders are unset (e.g. the aromatic bonds of
+ *     a molecule whose kekulization failed on import); molecules that cannot be kekulized are filtered.</li>
  *     <li>Every acyclic, non-aromatic single or double bond is tested against the rules in their published order, and
  *     the first matching rule determines the link types. The atom environments are evaluated lazily and only once per
  *     atom, i.e. only for atoms of candidate bonds. The environments of the rules are disjoint, so a bond is never
@@ -359,13 +362,10 @@ public class BRICSFragmenter implements IMoleculeFragmenter {
      * The rules with references to the compiled environment patterns.
      */
     private final CompiledRule[] compiledRules;
-    /**
-     * Setting for the saturation of open valences.
-     */
+    //the settings are documented at their property methods (a Javadoc comment here would duplicate it for javadoc)
+    //setting for the saturation of open valences
     private final SimpleIDisplayEnumConstantProperty saturationSetting;
-    /**
-     * Setting for returning molecules without cleavable bonds as one unchanged fragment.
-     */
+    //setting for returning molecules without cleavable bonds as one unchanged fragment
     private final SimpleBooleanProperty returnUnfragmentedMoleculesSetting;
     /**
      * All settings of this fragmenter, encapsulated in JavaFX properties for binding in GUI.
@@ -610,9 +610,17 @@ public class BRICSFragmenter implements IMoleculeFragmenter {
         }
     }
     //
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Molecules are filtered if they are null or empty, or if the order of a bond is unset and cannot be determined
+     * by kekulization (see {@link #prepareMolecule(IAtomContainer)}), e.g. the aromatic remnants of opened rings in
+     * fragments of a preceding fragmentation, which MORTAR parses without kekulization because their kekulization
+     * fails. The given molecule is not altered.</p>
+     */
     @Override
     public boolean shouldBeFiltered(IAtomContainer aMolecule) {
-        return Objects.isNull(aMolecule) || aMolecule.isEmpty();
+        return Objects.isNull(aMolecule) || aMolecule.isEmpty() || this.hasUnresolvableBondOrders(aMolecule);
     }
     //
     @Override
@@ -643,10 +651,15 @@ public class BRICSFragmenter implements IMoleculeFragmenter {
     //<editor-fold desc="Package-private methods">
     /**
      * Prepares the given molecule (in place) for the matching of the BRICS rules: missing implicit hydrogen counts are
-     * set, explicit hydrogen atoms are suppressed, and ring membership and aromaticity (Daylight model) are perceived.
+     * set, a Kekulé structure is assigned if the order of a bond is unset (e.g. the aromatic bonds of a molecule
+     * parsed without kekulization or whose kekulization failed on import), explicit hydrogen atoms are suppressed, and
+     * ring membership and aromaticity (Daylight model) are perceived. The Kekulé structure is needed because the
+     * aromaticity perception clears the aromaticity flags of the input and determines the aromaticity from the bond
+     * orders, so aromatic rings with unset bond orders would otherwise be regarded as non-aromatic.
      *
      * @param aMolecule the molecule to prepare, it is altered
-     * @throws CDKException if implicit hydrogen counts are missing and cannot be determined
+     * @throws CDKException if implicit hydrogen counts are missing and cannot be determined, or if the order of a bond
+     *                      is unset and no Kekulé structure can be assigned
      */
     void prepareMolecule(IAtomContainer aMolecule) throws CDKException {
         boolean tmpIsHydrogenCountMissing = false;
@@ -662,6 +675,26 @@ public class BRICSFragmenter implements IMoleculeFragmenter {
         if (tmpIsHydrogenCountMissing) {
             AtomContainerManipulator.percieveAtomTypesAndConfigureAtoms(aMolecule);
             CDKHydrogenAdder.getInstance(aMolecule.getBuilder()).addImplicitHydrogens(aMolecule);
+        }
+        boolean tmpIsBondOrderUnset = false;
+        for (IBond tmpBond : aMolecule.bonds()) {
+            if (Objects.isNull(tmpBond.getOrder()) || tmpBond.getOrder() == IBond.Order.UNSET) {
+                //the kekulization expects UNSET instead of null
+                tmpBond.setOrder(IBond.Order.UNSET);
+                tmpIsBondOrderUnset = true;
+            }
+        }
+        if (tmpIsBondOrderUnset) {
+            //assigns single and double bonds to the bonds of the aromatic atoms, throws a CDKException if not possible
+            Kekulization.kekulize(aMolecule);
+            for (IBond tmpBond : aMolecule.bonds()) {
+                //the kekulization leaves bonds unset that are not flagged as aromatic and receive no double bond
+                if (tmpBond.getOrder() == IBond.Order.UNSET) {
+                    throw new CDKException(String.format("The order of the bond between the atoms %d and %d is unset "
+                            + "and cannot be determined by kekulization.", tmpBond.getBegin().getIndex(),
+                            tmpBond.getEnd().getIndex()));
+                }
+            }
         }
         AtomContainerManipulator.suppressHydrogens(aMolecule);
         //marks ring atoms and bonds, and applies the Daylight aromaticity model after clearing existing aromaticity flags
@@ -709,6 +742,35 @@ public class BRICSFragmenter implements IMoleculeFragmenter {
     //</editor-fold>
     //
     //<editor-fold desc="Private methods">
+    /**
+     * Checks whether the order of a bond of the given molecule is unset and cannot be determined by kekulization in the
+     * preparation of the molecule, see {@link #prepareMolecule(IAtomContainer)}. Molecules without bonds of unset
+     * order are not cloned; otherwise, a clone of the molecule is prepared, so that the check and the fragmentation
+     * cannot deviate.
+     *
+     * @param aMolecule the molecule to check, it is not altered
+     * @return true if the order of a bond is unset (or null) and the preparation of a clone fails, e.g. because no
+     *         Kekulé structure can be assigned, or if the molecule cannot be cloned
+     */
+    private boolean hasUnresolvableBondOrders(IAtomContainer aMolecule) {
+        boolean tmpIsBondOrderUnset = false;
+        for (IBond tmpBond : aMolecule.bonds()) {
+            if (Objects.isNull(tmpBond.getOrder()) || tmpBond.getOrder() == IBond.Order.UNSET) {
+                tmpIsBondOrderUnset = true;
+                break;
+            }
+        }
+        if (!tmpIsBondOrderUnset) {
+            return false;
+        }
+        try {
+            this.prepareMolecule(aMolecule.clone());
+            return false;
+        } catch (CDKException | CloneNotSupportedException anException) {
+            return true;
+        }
+    }
+    //
     /**
      * Returns whether the given atom matches the environment pattern with the given index; the result is cached.
      *

@@ -47,6 +47,7 @@ import org.openscience.cdk.tools.manipulator.AtomContainerManipulator;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -310,6 +311,97 @@ public class BRICSFragmenterTest {
     }
     //
     /**
+     * Tests molecules with bonds of unset order, e.g. aromatic bonds of molecules parsed without kekulization: a Kekulé
+     * structure is assigned, so that their fragments, link types included, equal those of the kekulized molecules.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    public void unsetBondOrderTest() throws Exception {
+        BRICSFragmenter tmpFragmenter = new BRICSFragmenter();
+        SmilesParser tmpParser = new SmilesParser(SilentChemObjectBuilder.getInstance());
+        tmpParser.kekulise(false);
+        for (String tmpSmiles : new String[] {"CCCc1ccccc1OCCCC", "CCCCn1cccc1", "c1ccccc1-c1ccccn1",
+                "CNC(=O)c1cc(Oc2ccc(NC(=O)Nc3ccc(Cl)c(C(F)(F)F)c3)cc2)ccn1",
+                "CCCC[C@@H](C)Oc1ccc(/C=C/CCCC)cc1"}) {
+            IAtomContainer tmpMolecule = tmpParser.parseSmiles(tmpSmiles);
+            Assertions.assertTrue(this.hasUnsetBondOrder(tmpMolecule), tmpSmiles);
+            List<IAtomContainer> tmpExpectedFragments = tmpFragmenter.fragmentMolecule(BRICSFragmenterTest.parse(tmpSmiles));
+            List<IAtomContainer> tmpFragments = tmpFragmenter.fragmentMolecule(tmpMolecule);
+            Assertions.assertTrue(tmpExpectedFragments.size() > 1, tmpSmiles);
+            Assertions.assertEquals(BRICSFragmenterTest.toCanonicalSmiles(tmpExpectedFragments, false),
+                    BRICSFragmenterTest.toCanonicalSmiles(tmpFragments, false), tmpSmiles);
+            Assertions.assertEquals(BRICSFragmenterTest.toStereoSmilesOfFragments(tmpExpectedFragments, false),
+                    BRICSFragmenterTest.toStereoSmilesOfFragments(tmpFragments, false), tmpSmiles);
+            //the input molecule is not altered
+            Assertions.assertTrue(this.hasUnsetBondOrder(tmpMolecule), tmpSmiles);
+        }
+        //bonds without order (null) are treated like bonds with unset order
+        IAtomContainer tmpMolecule = tmpParser.parseSmiles("CCCCn1cccc1");
+        for (IBond tmpBond : tmpMolecule.bonds()) {
+            if (tmpBond.getOrder() == IBond.Order.UNSET) {
+                tmpBond.setOrder(null);
+            }
+        }
+        Assertions.assertEquals(BRICSFragmenterTest.canonical(List.of("[8*]CCCC", "[9*]n1cccc1"), false),
+                BRICSFragmenterTest.toCanonicalSmiles(tmpFragmenter.fragmentMolecule(tmpMolecule), false));
+    }
+    //
+    /**
+     * Tests the filter for molecules with bonds of unset order that cannot be resolved by kekulization, e.g. the
+     * aromatic remnants of opened rings in fragments of the Ertl fragmenter, which MORTAR parses without kekulization
+     * because their kekulization fails: they are filtered and not altered, whereas molecules with unset bond orders that
+     * can be kekulized are not filtered and give the same fragments as the kekulized molecules.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    public void unresolvableBondOrderTest() throws Exception {
+        BRICSFragmenter tmpFragmenter = new BRICSFragmenter();
+        //unset bond orders that can be resolved, also in a molecule with an amide and a biaryl bond
+        for (String tmpSmiles : new String[] {"CCCc1ccccc1OCCCC", "CCCCC(=O)Nc1ccc(cc1)-c1ccccc1"}) {
+            IAtomContainer tmpMolecule = ChemUtil.parseSmilesToAtomContainer(tmpSmiles, false, false);
+            Assertions.assertTrue(this.hasUnsetBondOrder(tmpMolecule), tmpSmiles);
+            Assertions.assertFalse(tmpFragmenter.shouldBeFiltered(tmpMolecule), tmpSmiles);
+            Assertions.assertTrue(tmpFragmenter.canBeFragmented(tmpMolecule), tmpSmiles);
+            List<String> tmpExpectedKeys = this.createUniqueSmilesList(tmpFragmenter.fragmentMolecule(
+                    ChemUtil.parseSmilesToAtomContainer(tmpSmiles, true, true)));
+            List<String> tmpKeys = this.createUniqueSmilesList(tmpFragmenter.fragmentMolecule(tmpMolecule));
+            Assertions.assertTrue(tmpExpectedKeys.size() > 1, tmpSmiles);
+            Assertions.assertFalse(tmpKeys.contains(null), tmpSmiles);
+            Assertions.assertEquals(tmpExpectedKeys, tmpKeys, tmpSmiles);
+        }
+        //aromatic remnants of opened rings cannot be kekulized
+        for (String tmpSmiles : new String[] {"ccc", "c1ccc(cc1)ccc-c2ccccc2"}) {
+            IAtomContainer tmpMolecule = ChemUtil.parseSmilesToAtomContainer(tmpSmiles, false, false);
+            List<String> tmpBondOrdersAndAromaticity = this.getBondOrdersAndAromaticity(tmpMolecule);
+            Assertions.assertTrue(tmpFragmenter.shouldBeFiltered(tmpMolecule), tmpSmiles);
+            Assertions.assertFalse(tmpFragmenter.canBeFragmented(tmpMolecule), tmpSmiles);
+            Assertions.assertThrows(IllegalArgumentException.class, () -> tmpFragmenter.fragmentMolecule(tmpMolecule),
+                    tmpSmiles);
+            //the input molecule is not altered
+            Assertions.assertTrue(this.hasUnsetBondOrder(tmpMolecule), tmpSmiles);
+            Assertions.assertEquals(tmpBondOrdersAndAromaticity, this.getBondOrdersAndAromaticity(tmpMolecule), tmpSmiles);
+        }
+        //a bond of unset or no order between atoms that are not aromatic cannot be resolved
+        IAtomContainer tmpUnsetBondMolecule = SilentChemObjectBuilder.getInstance().newAtomContainer();
+        for (int i = 0; i < 2; i++) {
+            IAtom tmpAtom = SilentChemObjectBuilder.getInstance().newInstance(IAtom.class, "C");
+            tmpAtom.setImplicitHydrogenCount(3);
+            tmpUnsetBondMolecule.addAtom(tmpAtom);
+        }
+        tmpUnsetBondMolecule.addBond(0, 1, IBond.Order.UNSET);
+        Assertions.assertTrue(tmpFragmenter.shouldBeFiltered(tmpUnsetBondMolecule));
+        Assertions.assertFalse(tmpFragmenter.canBeFragmented(tmpUnsetBondMolecule));
+        tmpUnsetBondMolecule.getBond(0).setOrder(null);
+        Assertions.assertTrue(tmpFragmenter.shouldBeFiltered(tmpUnsetBondMolecule));
+        Assertions.assertNull(tmpUnsetBondMolecule.getBond(0).getOrder());
+        //molecules without unset bond orders are not filtered
+        Assertions.assertFalse(tmpFragmenter.shouldBeFiltered(
+                ChemUtil.parseSmilesToAtomContainer("CCCc1ccccc1OCCCC", true, true)));
+    }
+    //
+    /**
      * Tests the transfer of tetrahedral stereo elements to the fragments.
      *
      * @throws Exception if anything goes wrong
@@ -389,6 +481,56 @@ public class BRICSFragmenterTest {
             Assertions.assertEquals(BRICSFragmenterTest.toStereoSmiles(List.of(anExpectedFragments), false),
                     BRICSFragmenterTest.toStereoSmilesOfFragments(tmpFragments, false), aSmiles);
         }
+    }
+    //
+    /**
+     * Returns whether the order of a bond of the given molecule is unset.
+     *
+     * @param aMolecule molecule
+     * @return true if a bond has the order UNSET or no order
+     */
+    private boolean hasUnsetBondOrder(IAtomContainer aMolecule) {
+        for (IBond tmpBond : aMolecule.bonds()) {
+            if (tmpBond.getOrder() == null || tmpBond.getOrder() == IBond.Order.UNSET) {
+                return true;
+            }
+        }
+        return false;
+    }
+    //
+    /**
+     * Returns the aromaticity flags of the atoms and the orders and aromaticity flags of the bonds of the given
+     * molecule, in the order of the atoms and bonds.
+     *
+     * @param aMolecule molecule
+     * @return list with one entry per atom and per bond
+     */
+    private List<String> getBondOrdersAndAromaticity(IAtomContainer aMolecule) {
+        List<String> tmpList = new ArrayList<>(aMolecule.getAtomCount() + aMolecule.getBondCount());
+        for (IAtom tmpAtom : aMolecule.atoms()) {
+            tmpList.add(String.valueOf(tmpAtom.isAromatic()));
+        }
+        for (IBond tmpBond : aMolecule.bonds()) {
+            tmpList.add(tmpBond.getOrder() + " " + tmpBond.isAromatic());
+        }
+        return tmpList;
+    }
+    //
+    /**
+     * Returns the sorted unique SMILES codes with stereochemistry of the given fragments as MORTAR creates them
+     * ({@link ChemUtil#createUniqueSmiles(IAtomContainer, boolean)}), with null for fragments whose SMILES code cannot be
+     * created.
+     *
+     * @param aFragmentList fragments
+     * @return sorted list of unique SMILES codes, null values first
+     */
+    private List<String> createUniqueSmilesList(List<IAtomContainer> aFragmentList) {
+        List<String> tmpSmilesList = new ArrayList<>(aFragmentList.size());
+        for (IAtomContainer tmpFragment : aFragmentList) {
+            tmpSmilesList.add(ChemUtil.createUniqueSmiles(tmpFragment, true));
+        }
+        tmpSmilesList.sort(Comparator.nullsFirst(Comparator.naturalOrder()));
+        return tmpSmilesList;
     }
     //
     /**
