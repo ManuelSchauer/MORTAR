@@ -45,11 +45,15 @@ import org.openscience.cdk.interfaces.IAtom;
 import org.openscience.cdk.interfaces.IAtomContainer;
 import org.openscience.cdk.interfaces.IBond;
 import org.openscience.cdk.interfaces.IChemObjectBuilder;
+import org.openscience.cdk.interfaces.IDoubleBondStereochemistry;
+import org.openscience.cdk.interfaces.IElement;
 import org.openscience.cdk.interfaces.IStereoElement;
+import org.openscience.cdk.interfaces.ITetrahedralChirality;
 import org.openscience.cdk.silent.SilentChemObjectBuilder;
 import org.openscience.cdk.smarts.SmartsPattern;
 import org.openscience.cdk.smiles.SmiFlavor;
 import org.openscience.cdk.smiles.SmilesGenerator;
+import org.openscience.cdk.stereo.Stereocenters;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -98,9 +102,20 @@ import java.util.logging.Logger;
  * ring, the bond orders of the (Kekulé form of the) input molecule are used instead; since the Kekulé structure of the
  * input may depend on its atom order, such rare fragments of fused aromatic systems may then depend on it as well. If
  * no saturation is set, the added hydrogen atoms are removed again afterwards, so that both saturation options agree
- * in bond orders and aromaticity. Stereo elements of the input molecule are only transferred to a fragment if all of
- * their atoms and bonds are part of the fragment, i.e. stereocentres and stereo double bonds at the border of a
- * fragment lose their configuration.
+ * in bond orders and aromaticity.
+ * <br>
+ * <br><b>Stereochemistry</b>: Stereo elements of the input molecule whose atoms and bonds are all part of a fragment
+ * are transferred to it. With hydrogen saturation, the configuration at the border of a fragment is kept as well,
+ * with the hydrogen atom that replaces the cut bond at the position of the cut neighbour: a stereocentre that had no
+ * hydrogen atom and lost one neighbour keeps its spatial arrangement, and a stereo double bond whose referenced
+ * substituent was cut refers to the other substituent on this end, with the inverted cis/trans configuration.
+ * Stereocentres with two or more cut neighbours or with a hydrogen atom before the cut, and double bond ends that
+ * carry only hydrogen atoms after the cut, lose their configuration. Without saturation, the atoms at cut bonds have
+ * open valences, which cannot carry a valid configuration, so all stereo elements at the border are dropped. Other
+ * element types, e.g. allenes and atropisomers, are only transferred if they are completely part of the fragment.
+ * Tetrahedral and double bond elements that do not describe a stereogenic unit of the finished fragment are dropped,
+ * e.g. if the cut made two ligands of a centre identical, so that the two enantiomers of a molecule yield the same
+ * achiral fragment with the same SMILES code.
  * <br>
  * <br><b>Input restrictions</b>: Molecules with unset bond orders that cannot be resolved by assigning a Kekulé
  * structure are filtered, because SMARTS bond primitives cannot be evaluated on them. If the pattern list is empty,
@@ -663,7 +678,7 @@ public class SmartsFragmenter implements IMoleculeFragmenter {
                 tmpAtom.setImplicitHydrogenCount(tmpAtom.getImplicitHydrogenCount() - tmpAddedHydrogenCounts[i]);
             }
         }
-        SmartsFragmenter.addContainedStereoElements(aMolecule, anAtomIndices, tmpFragment);
+        SmartsFragmenter.addStereoElements(aMolecule, anAtomIndices, tmpFragment, isSaturated);
         return tmpFragment;
     }
 
@@ -887,15 +902,36 @@ public class SmartsFragmenter implements IMoleculeFragmenter {
     }
 
     /**
-     * Adds those stereo elements of the given molecule to the fragment whose atoms and bonds are all part of the
-     * fragment.
+     * Adds the stereo elements of the given molecule to the fragment that can be transferred and still describe a
+     * stereogenic unit in the fragment. Elements whose atoms and bonds are all part of the fragment are transferred
+     * as they are. If the fragment is saturated with hydrogen atoms, elements at the border of the fragment are
+     * transferred as well where the cut bond is replaced by a hydrogen atom at the same position:
+     * <ul>
+     *   <li>A tetrahedral centre whose only cut neighbour is replaced by an implicit hydrogen atom is kept if it did not
+     *   carry a hydrogen atom before; the central atom takes the place of the cut neighbour in the carriers, which is
+     *   how the CDK encodes an implicit hydrogen atom, so the spatial arrangement is unchanged. Centres with more than
+     *   one cut neighbour or with a hydrogen atom before end up with at least two hydrogen atoms and are dropped.</li>
+     *   <li>A stereo double bond whose referenced substituent on one end was cut refers to the other substituent on
+     *   this end instead, with the inverted configuration (cis/trans); if there is no other substituent on this end,
+     *   i.e. it carries two hydrogen atoms now, the element is dropped.</li>
+     * </ul>
+     * Without saturation, the atoms at a cut bond have an open valence instead of a hydrogen atom, which is no valid
+     * stereocentre or stereo double bond end, so these border elements are dropped. Other element types, e.g. extended
+     * tetrahedral (allenes) or atropisomeric ones, are only transferred if they are completely part of the fragment.
+     * Finally, tetrahedral and double bond elements are dropped if they do not describe a stereogenic unit of the
+     * finished fragment (see {@link #getStereogenicElements(IAtomContainer, List)}), e.g. if a cut made two ligands of a
+     * centre identical; otherwise, the two enantiomers of the input would yield two different SMILES codes for one and
+     * the same achiral fragment.
      *
      * @param aMolecule the prepared molecule
      * @param anAtomIndices indices of the atoms of the fragment; the i-th atom of the fragment is a copy of the atom
      *                      with the i-th index
-     * @param aFragment the fragment
+     * @param aFragment the finished fragment, saturated or not
+     * @param isSaturated whether the free valences resulting from cut bonds were saturated with implicit hydrogen atoms
      */
-    private static void addContainedStereoElements(IAtomContainer aMolecule, int[] anAtomIndices, IAtomContainer aFragment) {
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static void addStereoElements(IAtomContainer aMolecule, int[] anAtomIndices, IAtomContainer aFragment,
+                                          boolean isSaturated) {
         if (!aMolecule.stereoElements().iterator().hasNext()) {
             return;
         }
@@ -911,15 +947,247 @@ public class SmartsFragmenter implements IMoleculeFragmenter {
                 tmpBondMap.put(tmpBond, aFragment.getBond(tmpBegin, tmpEnd));
             }
         }
+        List<IStereoElement> tmpCandidates = new ArrayList<>();
         for (IStereoElement tmpStereoElement : aMolecule.stereoElements()) {
-            boolean tmpIsContained = SmartsFragmenter.isMapped(tmpStereoElement.getFocus(), tmpAtomMap, tmpBondMap);
-            for (Object tmpCarrier : tmpStereoElement.getCarriers()) {
-                tmpIsContained = tmpIsContained && SmartsFragmenter.isMapped(tmpCarrier, tmpAtomMap, tmpBondMap);
+            IStereoElement tmpMappedElement;
+            if (tmpStereoElement instanceof ITetrahedralChirality tmpTetrahedralElement) {
+                tmpMappedElement = SmartsFragmenter.mapTetrahedralElement(aMolecule, tmpTetrahedralElement,
+                        tmpAtomMap, tmpBondMap, isSaturated);
+            } else if (tmpStereoElement instanceof IDoubleBondStereochemistry tmpDoubleBondElement) {
+                tmpMappedElement = SmartsFragmenter.mapDoubleBondElement(aMolecule, tmpDoubleBondElement,
+                        tmpAtomMap, tmpBondMap, isSaturated);
+            } else {
+                boolean tmpIsContained = SmartsFragmenter.isMapped(tmpStereoElement.getFocus(), tmpAtomMap, tmpBondMap);
+                for (Object tmpCarrier : tmpStereoElement.getCarriers()) {
+                    tmpIsContained = tmpIsContained && SmartsFragmenter.isMapped(tmpCarrier, tmpAtomMap, tmpBondMap);
+                }
+                tmpMappedElement = tmpIsContained ? tmpStereoElement.map(tmpAtomMap, tmpBondMap) : null;
             }
-            if (tmpIsContained) {
-                aFragment.addStereoElement(tmpStereoElement.map(tmpAtomMap, tmpBondMap));
+            if (!Objects.isNull(tmpMappedElement)) {
+                tmpCandidates.add(tmpMappedElement);
             }
         }
+        for (IStereoElement tmpStereoElement : SmartsFragmenter.getStereogenicElements(aFragment, tmpCandidates)) {
+            aFragment.addStereoElement(tmpStereoElement);
+        }
+    }
+
+    /**
+     * Maps a tetrahedral stereo element of the molecule onto the fragment, see
+     * {@link #addStereoElements(IAtomContainer, int[], IAtomContainer, boolean)}.
+     *
+     * @param aMolecule the prepared molecule
+     * @param anElement the tetrahedral element of the molecule
+     * @param anAtomMap map of the molecule atoms to the fragment atoms
+     * @param aBondMap map of the molecule bonds to the fragment bonds
+     * @param isSaturated whether cut bonds were saturated with implicit hydrogen atoms
+     * @return the element for the fragment or null if it cannot be transferred
+     */
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static IStereoElement mapTetrahedralElement(IAtomContainer aMolecule, ITetrahedralChirality anElement,
+                                                        Map<IAtom, IAtom> anAtomMap, Map<IBond, IBond> aBondMap,
+                                                        boolean isSaturated) {
+        IAtom tmpFocus = anElement.getFocus();
+        if (!anAtomMap.containsKey(tmpFocus)) {
+            return null;
+        }
+        List<IAtom> tmpCutCarriers = new ArrayList<>(1);
+        boolean tmpHasHydrogen = false;
+        for (IAtom tmpCarrier : anElement.getCarriers()) {
+            //the CDK gives the central atom itself as carrier for an implicit hydrogen atom
+            if (tmpCarrier.equals(tmpFocus) || Objects.equals(tmpCarrier.getAtomicNumber(), IElement.H)) {
+                tmpHasHydrogen = true;
+            }
+            if (!anAtomMap.containsKey(tmpCarrier)) {
+                tmpCutCarriers.add(tmpCarrier);
+            }
+        }
+        if (tmpCutCarriers.isEmpty()) {
+            return anElement.map(anAtomMap, aBondMap);
+        }
+        if (!isSaturated || tmpCutCarriers.size() > 1 || tmpHasHydrogen
+                || !Objects.equals(tmpFocus.getImplicitHydrogenCount(), 0)) {
+            return null;
+        }
+        IBond tmpCutBond = aMolecule.getBond(tmpFocus, tmpCutCarriers.getFirst());
+        if (Objects.isNull(tmpCutBond) || tmpCutBond.getOrder() != IBond.Order.SINGLE) {
+            return null;
+        }
+        //the cut neighbour became the only (implicit) hydrogen atom of the centre, which takes its place
+        Map<IAtom, IAtom> tmpAtomMap = new HashMap<>(anAtomMap);
+        tmpAtomMap.put(tmpCutCarriers.getFirst(), anAtomMap.get(tmpFocus));
+        return anElement.map(tmpAtomMap, aBondMap);
+    }
+
+    /**
+     * Maps a double bond stereo element of the molecule onto the fragment, see
+     * {@link #addStereoElements(IAtomContainer, int[], IAtomContainer, boolean)}.
+     *
+     * @param aMolecule the prepared molecule
+     * @param anElement the double bond element of the molecule
+     * @param anAtomMap map of the molecule atoms to the fragment atoms
+     * @param aBondMap map of the molecule bonds to the fragment bonds
+     * @param isSaturated whether cut bonds were saturated with implicit hydrogen atoms
+     * @return the element for the fragment or null if it cannot be transferred
+     */
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static IStereoElement mapDoubleBondElement(IAtomContainer aMolecule, IDoubleBondStereochemistry anElement,
+                                                       Map<IAtom, IAtom> anAtomMap, Map<IBond, IBond> aBondMap,
+                                                       boolean isSaturated) {
+        IBond tmpDoubleBond = anElement.getStereoBond();
+        if (!aBondMap.containsKey(tmpDoubleBond)) {
+            return null;
+        }
+        Map<IBond, IBond> tmpBondMap = aBondMap;
+        boolean tmpIsInverted = false;
+        for (IBond tmpCarrier : anElement.getBonds()) {
+            if (aBondMap.containsKey(tmpCarrier)) {
+                continue;
+            }
+            if (!isSaturated) {
+                return null;
+            }
+            //the referenced substituent was cut, refer to the other substituent on this end instead
+            IAtom tmpEndAtom = tmpCarrier.contains(tmpDoubleBond.getBegin()) ? tmpDoubleBond.getBegin() : tmpDoubleBond.getEnd();
+            IBond tmpOtherCarrier = null;
+            for (IBond tmpBond : aMolecule.getConnectedBondsList(tmpEndAtom)) {
+                if (!tmpBond.equals(tmpDoubleBond) && !tmpBond.equals(tmpCarrier) && aBondMap.containsKey(tmpBond)) {
+                    tmpOtherCarrier = tmpBond;
+                }
+            }
+            if (Objects.isNull(tmpOtherCarrier)) {
+                //only hydrogen atoms are left on this end
+                return null;
+            }
+            if (tmpBondMap == aBondMap) {
+                tmpBondMap = new HashMap<>(aBondMap);
+            }
+            tmpBondMap.put(tmpCarrier, aBondMap.get(tmpOtherCarrier));
+            tmpIsInverted = !tmpIsInverted;
+        }
+        IStereoElement tmpMappedElement = anElement.map(anAtomMap, tmpBondMap);
+        if (tmpIsInverted) {
+            //the other substituent lies on the opposite side
+            tmpMappedElement.setConfigOrder(tmpMappedElement.getConfigOrder() == IStereoElement.TOGETHER
+                    ? IStereoElement.OPPOSITE : IStereoElement.TOGETHER);
+        }
+        return tmpMappedElement;
+    }
+
+    /**
+     * Returns those of the given stereo elements of the fragment that describe a stereogenic unit of the fragment.
+     * Tetrahedral and double bond elements are checked with the stereocentre perception of the CDK
+     * ({@link Stereocenters}), which works on the constitution: an element is dropped if its central atom or one of its
+     * double bond atoms is no stereocentre, e.g. because it carries two hydrogen atoms or two constitutionally
+     * equivalent terminal ligands, or because it has an open valence. If an atom has constitutionally equivalent
+     * ligands with further atoms (potential or para stereocentre), it is only stereogenic if these ligands differ in
+     * their configuration; the element is then kept only if another stereo element of the fragment lies in these
+     * ligands (e.g. the pseudo-asymmetric middle carbon atom of ribitol and xylitol), and dropped otherwise (e.g.
+     * 3-methylpentan-3-ol). Whether ligands with the same constitution and the same configuration make a unit
+     * non-stereogenic is not checked here. Elements of other types are returned unchanged.
+     *
+     * @param aFragment the fragment, without stereo elements
+     * @param anElementList stereo elements mapped onto the fragment
+     * @return stereo elements to keep, in the given order
+     */
+    @SuppressWarnings("rawtypes")
+    private static List<IStereoElement> getStereogenicElements(IAtomContainer aFragment, List<IStereoElement> anElementList) {
+        Stereocenters tmpStereocenters = Stereocenters.of(aFragment);
+        int[][] tmpAdjacencyList = GraphUtil.toAdjList(aFragment);
+        long[] tmpSymmetryClasses = Canon.symmetry(aFragment, tmpAdjacencyList);
+        //central atoms and double bond atoms of the elements, null for other element types
+        List<int[]> tmpStereoAtomsOfElements = new ArrayList<>(anElementList.size());
+        for (IStereoElement tmpElement : anElementList) {
+            if (tmpElement instanceof ITetrahedralChirality tmpTetrahedralElement) {
+                tmpStereoAtomsOfElements.add(new int[] {aFragment.indexOf(tmpTetrahedralElement.getFocus())});
+            } else if (tmpElement instanceof IDoubleBondStereochemistry tmpDoubleBondElement) {
+                tmpStereoAtomsOfElements.add(new int[] {aFragment.indexOf(tmpDoubleBondElement.getStereoBond().getBegin()),
+                        aFragment.indexOf(tmpDoubleBondElement.getStereoBond().getEnd())});
+            } else {
+                tmpStereoAtomsOfElements.add(null);
+            }
+        }
+        List<IStereoElement> tmpStereogenicElements = new ArrayList<>(anElementList.size());
+        for (int i = 0; i < anElementList.size(); i++) {
+            int[] tmpStereoAtoms = tmpStereoAtomsOfElements.get(i);
+            boolean tmpIsStereogenic = true;
+            if (!Objects.isNull(tmpStereoAtoms)) {
+                //atoms of the other elements, which can make a unit with equivalent ligands stereogenic
+                boolean[] tmpIsAtomOfOtherElement = new boolean[aFragment.getAtomCount()];
+                for (int j = 0; j < tmpStereoAtomsOfElements.size(); j++) {
+                    if (j != i && !Objects.isNull(tmpStereoAtomsOfElements.get(j))) {
+                        for (int tmpAtomIndex : tmpStereoAtomsOfElements.get(j)) {
+                            tmpIsAtomOfOtherElement[tmpAtomIndex] = true;
+                        }
+                    }
+                }
+                for (int tmpAtomIndex : tmpStereoAtoms) {
+                    Stereocenters.Stereocenter tmpType = tmpStereocenters.stereocenterType(tmpAtomIndex);
+                    if (tmpType == Stereocenters.Stereocenter.Non) {
+                        tmpIsStereogenic = false;
+                    } else if (tmpType != Stereocenters.Stereocenter.True) {
+                        tmpIsStereogenic = tmpIsStereogenic && SmartsFragmenter.hasStereoInEquivalentLigands(tmpAtomIndex,
+                                tmpStereoAtoms, tmpAdjacencyList, tmpSymmetryClasses, tmpIsAtomOfOtherElement);
+                    }
+                }
+            }
+            if (tmpIsStereogenic) {
+                tmpStereogenicElements.add(anElementList.get(i));
+            }
+        }
+        return tmpStereogenicElements;
+    }
+
+    /**
+     * Checks whether the constitutionally equivalent ligands of the given atom contain an atom of another stereo
+     * element. The ligands are followed through the fragment without passing the atoms of the element itself.
+     *
+     * @param anAtomIndex index of the central atom or double bond atom
+     * @param anElementAtoms indices of the central atom or both double bond atoms of the element
+     * @param anAdjacencyList adjacency list of the fragment
+     * @param aSymmetryClasses constitutional symmetry classes of the atoms of the fragment
+     * @param anIsAtomOfOtherElementArray flags of the atoms of the other stereo elements, indexed by atom index
+     * @return true if an atom of another element lies in the equivalent ligands, or if there are no equivalent ligands
+     */
+    private static boolean hasStereoInEquivalentLigands(int anAtomIndex, int[] anElementAtoms, int[][] anAdjacencyList,
+                                                        long[] aSymmetryClasses, boolean[] anIsAtomOfOtherElementArray) {
+        boolean[] tmpIsVisited = new boolean[anAdjacencyList.length];
+        for (int tmpElementAtom : anElementAtoms) {
+            tmpIsVisited[tmpElementAtom] = true;
+        }
+        Deque<Integer> tmpQueue = new ArrayDeque<>();
+        for (int tmpLigand : anAdjacencyList[anAtomIndex]) {
+            if (tmpIsVisited[tmpLigand]) {
+                continue;
+            }
+            for (int tmpOtherLigand : anAdjacencyList[anAtomIndex]) {
+                if (tmpOtherLigand != tmpLigand && !tmpIsVisited[tmpOtherLigand]
+                        && aSymmetryClasses[tmpOtherLigand] == aSymmetryClasses[tmpLigand]) {
+                    tmpQueue.add(tmpLigand);
+                    break;
+                }
+            }
+        }
+        if (tmpQueue.isEmpty()) {
+            //the stereocentre perception has another reason, keep the element
+            return true;
+        }
+        for (int tmpLigand : tmpQueue) {
+            tmpIsVisited[tmpLigand] = true;
+        }
+        while (!tmpQueue.isEmpty()) {
+            int tmpAtom = tmpQueue.poll();
+            if (anIsAtomOfOtherElementArray[tmpAtom]) {
+                return true;
+            }
+            for (int tmpNeighbour : anAdjacencyList[tmpAtom]) {
+                if (!tmpIsVisited[tmpNeighbour]) {
+                    tmpIsVisited[tmpNeighbour] = true;
+                    tmpQueue.add(tmpNeighbour);
+                }
+            }
+        }
+        return false;
     }
 
     /**

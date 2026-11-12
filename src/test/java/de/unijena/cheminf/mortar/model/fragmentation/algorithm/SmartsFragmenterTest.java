@@ -34,16 +34,19 @@ import javafx.beans.property.Property;
 
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.openscience.cdk.exception.CDKException;
 import org.openscience.cdk.graph.ConnectivityChecker;
 import org.openscience.cdk.interfaces.IAtom;
 import org.openscience.cdk.interfaces.IAtomContainer;
 import org.openscience.cdk.interfaces.IBond;
+import org.openscience.cdk.interfaces.IDoubleBondStereochemistry;
 import org.openscience.cdk.interfaces.IStereoElement;
 import org.openscience.cdk.silent.SilentChemObjectBuilder;
 import org.openscience.cdk.smarts.SmartsPattern;
 import org.openscience.cdk.smiles.SmiFlavor;
 import org.openscience.cdk.smiles.SmilesGenerator;
 import org.openscience.cdk.smiles.SmilesParser;
+import org.openscience.cdk.tools.manipulator.AtomContainerManipulator;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -324,14 +327,225 @@ public class SmartsFragmenterTest {
         Assertions.assertNotEquals(this.normalisedSmiles("C/C=C\\C", "OC=O"), tmpSmiles);
         tmpSmiles = this.fragmentSmiles(tmpFragmenter.fragmentMolecule(this.smilesParser.parseSmiles("C/C=C\\CC(=O)O")));
         Assertions.assertEquals(this.normalisedSmiles("C/C=C\\C", "OC=O"), tmpSmiles);
-        //stereocentre at the border of a fragment: one of its neighbours is cut, so the stereo element is dropped
-        tmpFragments = tmpFragmenter.fragmentMolecule(this.smilesParser.parseSmiles("C[C@](O)(CC)C(=O)O"));
-        for (IAtomContainer tmpFragment : tmpFragments) {
-            for (IStereoElement tmpStereoElement : tmpFragment.stereoElements()) {
-                Assertions.fail("Unexpected stereo element " + tmpStereoElement);
+        //stereocentre at the border of a fragment that lost one neighbour, see borderStereocentreTest()
+        Assertions.assertEquals(this.normalisedSmiles("C[C@](O)(CC)[H]", "OC=O"),
+                this.fragmentSmiles(tmpFragmenter.fragmentMolecule(this.smilesParser.parseSmiles("C[C@](O)(CC)C(=O)O"))));
+    }
+    //
+    /**
+     * Tests that a stereocentre at the border of a fragment keeps its configuration if it lost one neighbour and had no
+     * hydrogen atom, with the new hydrogen atom at the position of the cut neighbour, and that both enantiomers give
+     * different fragments. The expected fragment is the parent SMILES code with the cut neighbour replaced by an
+     * explicit hydrogen atom at the same position, i.e. the geometry is compared, not only the presence of a descriptor.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    public void borderStereocentreTest() throws Exception {
+        //cross-check of the expected SMILES codes: an explicit hydrogen atom at the position of the third ligand
+        Assertions.assertEquals(this.normalisedSmiles("C[C@H](O)CC"), this.normalisedSmiles("C[C@](O)(CC)[H]"));
+        SmartsFragmenter tmpFragmenter = new SmartsFragmenter();
+        tmpFragmenter.setPatternsSetting("C(=O)[OH] carboxylic acid");
+        //2-hydroxy-2-methylbutanoic acid, the remainder is butan-2-ol
+        List<String> tmpRemainderOfS = this.remainderSmiles(tmpFragmenter.fragmentMolecule(this.smilesParser.parseSmiles("C[C@](O)(CC)C(=O)O")));
+        List<String> tmpRemainderOfR = this.remainderSmiles(tmpFragmenter.fragmentMolecule(this.smilesParser.parseSmiles("C[C@@](O)(CC)C(=O)O")));
+        Assertions.assertEquals(this.normalisedSmiles("C[C@](O)(CC)[H]"), tmpRemainderOfS);
+        Assertions.assertEquals(this.normalisedSmiles("C[C@@](O)(CC)[H]"), tmpRemainderOfR);
+        Assertions.assertNotEquals(tmpRemainderOfS, tmpRemainderOfR);
+        Assertions.assertNotEquals(this.normalisedSmiles("CC(O)CC"), tmpRemainderOfS);
+        //the cut neighbour written at another position of the parent SMILES code
+        Assertions.assertEquals(this.normalisedSmiles("OC(=O)[C@@](O)(C)CC".replace("OC(=O)", "[H]")),
+                this.remainderSmiles(tmpFragmenter.fragmentMolecule(this.smilesParser.parseSmiles("OC(=O)[C@@](O)(C)CC"))));
+        //without saturation, the centre has an open valence and loses its configuration
+        tmpFragmenter.setFragmentSaturationSetting(IMoleculeFragmenter.FragmentSaturationOption.NO_SATURATION);
+        for (IAtomContainer tmpFragment : tmpFragmenter.fragmentMolecule(this.smilesParser.parseSmiles("C[C@](O)(CC)C(=O)O"))) {
+            Assertions.assertFalse(tmpFragment.stereoElements().iterator().hasNext());
+        }
+        //a completely contained stereocentre is kept without saturation
+        tmpFragmenter.setPatternsSetting("O[CX4](C)CC");
+        tmpFragmenter.setReturnedFragmentsSetting(SmartsFragmenter.SmartsFragmenterReturnedFragmentsOption.MATCHED_SUBSTRUCTURES);
+        List<IAtomContainer> tmpFragments = tmpFragmenter.fragmentMolecule(this.smilesParser.parseSmiles("C[C@H](O)CCC(=O)O"));
+        Assertions.assertEquals(1, tmpFragments.size());
+        Assertions.assertTrue(tmpFragments.getFirst().stereoElements().iterator().hasNext());
+        this.assertRoundTrip(tmpFragments);
+    }
+    //
+    /**
+     * Tests that stereo elements that are no longer stereogenic in the fragment are dropped, so that both enantiomers
+     * of the parent give the same fragment SMILES code without descriptor, while pseudo-asymmetric centres are kept.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    public void lostStereogenicityTest() throws Exception {
+        SmartsFragmenter tmpFragmenter = new SmartsFragmenter();
+        tmpFragmenter.setPatternsSetting("C(=O)[OH] carboxylic acid");
+        String[][] tmpEnantiomersAndRemainder = new String[][] {
+                //citramalic acid: border centre whose new hydrogen atom comes with two methyl groups
+                {"C[C@](O)(CC(=O)O)C(=O)O", "C[C@@](O)(CC(=O)O)C(=O)O", "CC(C)O"},
+                //completely contained centre that gets two methyl groups
+                {"C[C@](O)(CC)CC(=O)O", "C[C@@](O)(CC)CC(=O)O", "CCC(C)(C)O"},
+                //completely contained centre that gets two ethyl groups (constitutionally equivalent, not terminal)
+                {"CC[C@](C)(O)CCC(=O)O", "CC[C@@](C)(O)CCC(=O)O", "CCC(C)(O)CC"},
+                //border centre that gets a hydrogen atom and two ethyl groups
+                {"CC[C@](O)(CCC(=O)O)C(=O)O", "CC[C@@](O)(CCC(=O)O)C(=O)O", "CCC(O)CC"},
+                //double bond whose end gets two methyl groups
+                {"C/C(CC(=O)O)=C/C", "C/C(CC(=O)O)=C\\C", "CC(C)=CC"}
+        };
+        for (String[] tmpCase : tmpEnantiomersAndRemainder) {
+            List<IAtomContainer> tmpFragmentsOfFirst = tmpFragmenter.fragmentMolecule(this.smilesParser.parseSmiles(tmpCase[0]));
+            List<IAtomContainer> tmpFragmentsOfSecond = tmpFragmenter.fragmentMolecule(this.smilesParser.parseSmiles(tmpCase[1]));
+            Assertions.assertEquals(this.remainderSmiles(tmpFragmentsOfFirst), this.remainderSmiles(tmpFragmentsOfSecond), tmpCase[0]);
+            Assertions.assertEquals(this.normalisedSmiles(tmpCase[2]), this.remainderSmiles(tmpFragmentsOfFirst), tmpCase[0]);
+            for (IAtomContainer tmpFragment : tmpFragmentsOfFirst) {
+                Assertions.assertFalse(tmpFragment.stereoElements().iterator().hasNext(), tmpCase[0]);
             }
         }
-        Assertions.assertEquals(this.normalisedSmiles("CC(O)CC", "OC=O"), this.fragmentSmiles(tmpFragments));
+        //pentane-2,3,4-triol (no match, whole molecule): the pseudo-asymmetric middle carbon atom is kept, the two
+        // diastereomers that differ only in its configuration give different fragments
+        List<String> tmpFirst = this.fragmentSmiles(tmpFragmenter.fragmentMolecule(this.smilesParser.parseSmiles("C[C@H](O)[C@H](O)[C@H](O)C")));
+        List<String> tmpSecond = this.fragmentSmiles(tmpFragmenter.fragmentMolecule(this.smilesParser.parseSmiles("C[C@H](O)[C@@H](O)[C@H](O)C")));
+        Assertions.assertNotEquals(tmpFirst, tmpSecond);
+        Assertions.assertEquals(this.normalisedSmiles("C[C@H](O)[C@H](O)[C@H](O)C"), tmpFirst);
+        Assertions.assertEquals(this.normalisedSmiles("C[C@H](O)[C@@H](O)[C@H](O)C"), tmpSecond);
+        //the same with a cut: both outer carbon atoms are border centres, the middle one stays pseudo-asymmetric
+        tmpFirst = this.remainderSmiles(tmpFragmenter.fragmentMolecule(this.smilesParser.parseSmiles("C[C@](O)(C(=O)O)[C@H](O)[C@](O)(C(=O)O)C")));
+        tmpSecond = this.remainderSmiles(tmpFragmenter.fragmentMolecule(this.smilesParser.parseSmiles("C[C@](O)(C(=O)O)[C@@H](O)[C@](O)(C(=O)O)C")));
+        Assertions.assertNotEquals(tmpFirst, tmpSecond);
+        Assertions.assertEquals(this.normalisedSmiles("C[C@](O)([H])[C@H](O)[C@](O)([H])C"), tmpFirst);
+        Assertions.assertEquals(this.normalisedSmiles("C[C@](O)([H])[C@@H](O)[C@](O)([H])C"), tmpSecond);
+    }
+    //
+    /**
+     * Tests stereocentres with two cut neighbours and stereocentres that already had a hydrogen atom: they end up with
+     * at least two hydrogen atoms, so their elements are dropped without exception.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    public void droppedBorderStereocentreTest() throws Exception {
+        SmartsFragmenter tmpFragmenter = new SmartsFragmenter();
+        tmpFragmenter.setPatternsSetting("C(=O)[OH] carboxylic acid\n[NX3;H2] amine");
+        //isovaline: two neighbours of the centre are cut
+        List<IAtomContainer> tmpFragments = tmpFragmenter.fragmentMolecule(this.smilesParser.parseSmiles("N[C@@](CC)(C)C(=O)O"));
+        Assertions.assertEquals(this.normalisedSmiles("CCCC", "N", "OC=O"), this.fragmentSmiles(tmpFragments));
+        //alanine: the centre had a hydrogen atom
+        tmpFragmenter.setPatternsSetting("C(=O)[OH] carboxylic acid");
+        tmpFragments.addAll(tmpFragmenter.fragmentMolecule(this.smilesParser.parseSmiles("N[C@@H](C)C(=O)O")));
+        Assertions.assertEquals(this.normalisedSmiles("CCN", "OC=O"),
+                this.fragmentSmiles(tmpFragmenter.fragmentMolecule(this.smilesParser.parseSmiles("N[C@@H](C)C(=O)O"))));
+        for (IAtomContainer tmpFragment : tmpFragments) {
+            Assertions.assertFalse(tmpFragment.stereoElements().iterator().hasNext());
+        }
+    }
+    //
+    /**
+     * Tests stereo double bonds whose referenced substituent was cut: the configuration is kept via the other
+     * substituent on this end, or the element is dropped if this end carries only hydrogen atoms afterwards.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    public void borderDoubleBondTest() throws Exception {
+        SmartsFragmenter tmpFragmenter = new SmartsFragmenter();
+        tmpFragmenter.setPatternsSetting("C(=O)[OH] carboxylic acid");
+        //2-methylbut-2-enoic acids, the parsed element refers to the carboxyl group, which is cut
+        for (String tmpSmiles : new String[] {"C/C=C(/C(=O)O)C", "C/C=C(\\C(=O)O)C"}) {
+            IAtomContainer tmpMolecule = this.smilesParser.parseSmiles(tmpSmiles);
+            boolean tmpIsCarboxylReferenced = false;
+            for (IStereoElement tmpElement : tmpMolecule.stereoElements()) {
+                for (IBond tmpCarrier : ((IDoubleBondStereochemistry) tmpElement).getBonds()) {
+                    tmpIsCarboxylReferenced = tmpIsCarboxylReferenced || tmpCarrier.contains(tmpMolecule.getAtom(3));
+                }
+            }
+            Assertions.assertTrue(tmpIsCarboxylReferenced, "precondition: the carboxyl carbon atom is referenced");
+            List<String> tmpRemainder = this.remainderSmiles(tmpFragmenter.fragmentMolecule(tmpMolecule));
+            //the parent SMILES code with the carboxyl group replaced by a hydrogen atom at the same position
+            Assertions.assertEquals(this.normalisedSmiles(tmpSmiles.replace("C(=O)O", "[H]")), tmpRemainder, tmpSmiles);
+        }
+        //cross-check: the carboxyl group trans to the methyl group of the other end means cis-but-2-ene
+        Assertions.assertEquals(this.normalisedSmiles("C/C=C\\C"),
+                this.remainderSmiles(tmpFragmenter.fragmentMolecule(this.smilesParser.parseSmiles("C/C=C(/C(=O)O)C"))));
+        Assertions.assertEquals(this.normalisedSmiles("C/C=C/C"),
+                this.remainderSmiles(tmpFragmenter.fragmentMolecule(this.smilesParser.parseSmiles("C/C=C(\\C(=O)O)C"))));
+        //crotonic acid: the end becomes =CH2, the element is dropped
+        List<IAtomContainer> tmpFragments = tmpFragmenter.fragmentMolecule(this.smilesParser.parseSmiles("C/C=C/C(=O)O"));
+        Assertions.assertEquals(this.normalisedSmiles("C=CC", "OC=O"), this.fragmentSmiles(tmpFragments));
+        for (IAtomContainer tmpFragment : tmpFragments) {
+            Assertions.assertFalse(tmpFragment.stereoElements().iterator().hasNext());
+        }
+        //without saturation, the element at the border is dropped
+        tmpFragmenter.setFragmentSaturationSetting(IMoleculeFragmenter.FragmentSaturationOption.NO_SATURATION);
+        for (IAtomContainer tmpFragment : tmpFragmenter.fragmentMolecule(this.smilesParser.parseSmiles("C/C=C(/C(=O)O)C"))) {
+            Assertions.assertFalse(tmpFragment.stereoElements().iterator().hasNext());
+        }
+    }
+    //
+    /**
+     * Tests a stereocentre at the border of a matched fragment, with the overlap filter turned on and off.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    public void borderStereoInMatchedFragmentTest() throws Exception {
+        SmartsFragmenter tmpFragmenter = new SmartsFragmenter();
+        tmpFragmenter.setPatternsSetting("[CH3][CX4]([OH])[CH2][CH3] sec-butanol\n[CX4]C(=O)[OH] alpha carbon and acid");
+        for (boolean tmpIsFiltered : new boolean[] {true, false}) {
+            tmpFragmenter.setFilterOverlappingMatchesSetting(tmpIsFiltered);
+            for (String tmpSmiles : new String[] {"C[C@](O)(CC)C(=O)O", "C[C@@](O)(CC)C(=O)O"}) {
+                List<IAtomContainer> tmpFragments = tmpFragmenter.fragmentMolecule(this.smilesParser.parseSmiles(tmpSmiles));
+                List<String> tmpButanol = new ArrayList<>();
+                for (IAtomContainer tmpFragment : tmpFragments) {
+                    if ("sec-butanol".equals(tmpFragment.getProperty(IMoleculeFragmenter.FRAGMENT_CATEGORY_PROPERTY_KEY))) {
+                        tmpButanol.add(this.createSmiles(tmpFragment));
+                    }
+                }
+                Assertions.assertEquals(this.normalisedSmiles(tmpSmiles.replace("C(=O)O", "[H]")), tmpButanol);
+                //with the filter, the second pattern cannot match because its alpha carbon atom is taken, the rest of
+                // the acid is the remainder; without the filter, the alpha carbon atom of the acid loses three neighbours
+                Assertions.assertEquals(this.normalisedSmiles(tmpSmiles.replace("C(=O)O", "[H]"), tmpIsFiltered ? "OC=O" : "CC(=O)O"),
+                        this.fragmentSmiles(tmpFragments), tmpSmiles + ", overlap filter " + tmpIsFiltered);
+                this.assertRoundTrip(tmpFragments);
+            }
+        }
+    }
+    //
+    /**
+     * Tests that the configurations at the borders of fragments do not depend on the input atom order and that the
+     * fragment SMILES codes can be parsed again to the same SMILES codes, as in a pipeline.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    public void borderStereoAtomOrderIndependenceTest() throws Exception {
+        String[] tmpSmilesCodes = new String[] {
+                "C[C@](O)(CC)C(=O)O",
+                "C[C@](O)(CC(=O)O)C(=O)O",
+                "N[C@@](CC)(C)C(=O)O",
+                "C/C=C(/C(=O)O)C",
+                "CC/C(C(=O)O)=C(/C)CC(=O)O",
+                "C[C@](O)(C(=O)O)[C@H](O)[C@](O)(C(=O)O)C",
+                //morphine and a glucuronic acid
+                "CN1CC[C@]23[C@@H]4[C@H]1CC5=C2C(=C(C=C5)O)O[C@H]3[C@H](C=C4)O",
+                "O[C@@H]1O[C@H](C(=O)O)[C@@H](O)[C@H](O)[C@H]1O"
+        };
+        SmartsFragmenter tmpFragmenter = new SmartsFragmenter();
+        tmpFragmenter.setPatternsSetting("C(=O)[OH] carboxylic acid\n[NX3;H2] amine\nc1ccccc1 benzene ring\n[CX4]O[CX4] ether");
+        Random tmpRandom = new Random(7);
+        for (boolean tmpIsFiltered : new boolean[] {true, false}) {
+            tmpFragmenter.setFilterOverlappingMatchesSetting(tmpIsFiltered);
+            for (String tmpSmiles : tmpSmilesCodes) {
+                IAtomContainer tmpMolecule = this.smilesParser.parseSmiles(tmpSmiles);
+                List<IAtomContainer> tmpFragments = tmpFragmenter.fragmentMolecule(tmpMolecule);
+                this.assertRoundTrip(tmpFragments);
+                List<String> tmpExpected = this.fragmentSmiles(tmpFragments);
+                for (int i = 0; i < 20; i++) {
+                    IAtomContainer tmpPermutedMolecule = SmartsFragmenterTest.permuteAtoms(tmpMolecule, tmpRandom);
+                    Assertions.assertEquals(tmpExpected, this.fragmentSmiles(tmpFragmenter.fragmentMolecule(tmpPermutedMolecule)),
+                            "Permutation " + i + " of " + tmpSmiles + ", overlap filter " + tmpIsFiltered);
+                }
+            }
+        }
     }
     //
     /**
@@ -534,8 +748,46 @@ public class SmartsFragmenterTest {
     }
     //
     /**
-     * Parses the given SMILES codes, applies the Daylight aromaticity model as the fragmenter does, and returns their
-     * sorted unique SMILES codes.
+     * Returns the sorted unique SMILES codes of the remainder fragments among the given fragments.
+     *
+     * @param aFragmentList fragments
+     * @return sorted SMILES codes of the remainder fragments
+     */
+    private List<String> remainderSmiles(List<IAtomContainer> aFragmentList) {
+        List<IAtomContainer> tmpRemainderFragments = new ArrayList<>(aFragmentList.size());
+        for (IAtomContainer tmpFragment : aFragmentList) {
+            if (SmartsFragmenter.FRAGMENT_CATEGORY_REMAINDER_VALUE.equals(
+                    tmpFragment.getProperty(IMoleculeFragmenter.FRAGMENT_CATEGORY_PROPERTY_KEY))) {
+                tmpRemainderFragments.add(tmpFragment);
+            }
+        }
+        return this.fragmentSmiles(tmpRemainderFragments);
+    }
+    //
+    /**
+     * Asserts that the unique SMILES code of every given fragment is parsed again to an atom container with the same
+     * unique SMILES code, as the fragment data model does it in MORTAR, e.g. for the next step of a pipeline.
+     *
+     * @param aFragmentList fragments
+     * @throws Exception if a SMILES code cannot be parsed
+     */
+    private void assertRoundTrip(List<IAtomContainer> aFragmentList) throws Exception {
+        for (IAtomContainer tmpFragment : aFragmentList) {
+            String tmpSmiles = this.createSmiles(tmpFragment);
+            Assertions.assertNotNull(tmpSmiles);
+            IAtomContainer tmpParsedFragment;
+            try {
+                tmpParsedFragment = ChemUtil.parseSmilesToAtomContainer(tmpSmiles, true, true);
+            } catch (CDKException anException) {
+                tmpParsedFragment = ChemUtil.parseSmilesToAtomContainer(tmpSmiles, false, false);
+            }
+            Assertions.assertEquals(tmpSmiles, this.createSmiles(tmpParsedFragment), tmpSmiles);
+        }
+    }
+    //
+    /**
+     * Parses the given SMILES codes, makes explicit hydrogen atoms implicit, applies the Daylight aromaticity model as
+     * the fragmenter does, and returns their sorted unique SMILES codes.
      *
      * @param aSmilesCodes SMILES codes
      * @return sorted unique SMILES codes
@@ -544,7 +796,8 @@ public class SmartsFragmenterTest {
     private List<String> normalisedSmiles(String... aSmilesCodes) throws Exception {
         List<String> tmpSmilesList = new ArrayList<>(aSmilesCodes.length);
         for (String tmpSmiles : aSmilesCodes) {
-            IAtomContainer tmpMolecule = this.smilesParser.parseSmiles(tmpSmiles);
+            //explicit hydrogen atoms become implicit ones, the CDK adapts the stereo elements accordingly
+            IAtomContainer tmpMolecule = AtomContainerManipulator.suppressHydrogens(this.smilesParser.parseSmiles(tmpSmiles));
             SmartsPattern.prepare(tmpMolecule);
             tmpSmilesList.add(this.createSmiles(tmpMolecule));
         }
