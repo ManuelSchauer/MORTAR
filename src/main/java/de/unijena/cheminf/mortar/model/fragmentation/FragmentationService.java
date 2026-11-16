@@ -34,6 +34,7 @@ import de.unijena.cheminf.mortar.model.fragmentation.algorithm.CDKExhaustiveFrag
 import de.unijena.cheminf.mortar.model.fragmentation.algorithm.ErtlFunctionalGroupsFinderFragmenter;
 import de.unijena.cheminf.mortar.model.fragmentation.algorithm.IMoleculeFragmenter;
 import de.unijena.cheminf.mortar.model.fragmentation.algorithm.MolWURCSFragmenter;
+import de.unijena.cheminf.mortar.model.fragmentation.algorithm.RECAPFragmenter;
 import de.unijena.cheminf.mortar.model.fragmentation.algorithm.ScaffoldGeneratorFragmenter;
 import de.unijena.cheminf.mortar.model.fragmentation.algorithm.SugarRemovalUtilityFragmenter;
 import de.unijena.cheminf.mortar.model.util.BasicDefinitions;
@@ -212,6 +213,11 @@ public class FragmentationService {
     private final IMoleculeFragmenter cdkEF;
     //
     /**
+     * RECAP fragmenter.
+     */
+    private final IMoleculeFragmenter recapF;
+    //
+    /**
      * Property of display name of selected fragmenter.
      */
     private final SimpleStringProperty selectedFragmenterDisplayNameProperty;
@@ -223,7 +229,7 @@ public class FragmentationService {
      */
     public FragmentationService() {
         //Note: Every fragmenter class should only be added once to the array or there will be problems with setting persistence!
-        this.fragmenters = new IMoleculeFragmenter[6];
+        this.fragmenters = new IMoleculeFragmenter[7];
         this.ertlFGF = new ErtlFunctionalGroupsFinderFragmenter();
         this.fragmenters[0] = this.ertlFGF;
         this.sugarRUF = new SugarRemovalUtilityFragmenter();
@@ -236,6 +242,8 @@ public class FragmentationService {
         this.fragmenters[4] = this.cdkCircularF;
         this.cdkEF = new CDKExhaustiveFragmenter();
         this.fragmenters[5] = this.cdkEF;
+        this.recapF = new RECAPFragmenter();
+        this.fragmenters[6] = this.recapF;
         //
         this.selectedFragmenterDisplayNameProperty = new SimpleStringProperty();
         try {
