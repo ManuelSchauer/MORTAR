@@ -38,6 +38,8 @@ import org.openscience.cdk.smiles.SmiFlavor;
 import org.openscience.cdk.smiles.SmilesGenerator;
 import org.openscience.cdk.smiles.SmilesParser;
 
+import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -82,18 +84,31 @@ class BiosynfoniFragmenterTest {
             Assertions.assertTrue(tmpFragmenter.getSettingNameToTooltipTextMap().containsKey(tmpSetting.getName()));
             Assertions.assertTrue(tmpFragmenter.getSettingNameToDisplayNameMap().containsKey(tmpSetting.getName()));
         }
+        Assertions.assertEquals(BiosynfoniFragmenter.PATTERN_SET_OPTION_DEFAULT, tmpFragmenter.getPatternSetSetting());
         Assertions.assertEquals(BiosynfoniFragmenter.INTRA_SUBSTRUCTURE_OVERLAP_FILTER_SETTING_DEFAULT,
                 tmpFragmenter.getIntraSubstructureOverlapFilterSetting());
         Assertions.assertEquals(BiosynfoniFragmenter.INTER_SUBSTRUCTURE_OVERLAP_FILTER_SETTING_DEFAULT,
                 tmpFragmenter.getInterSubstructureOverlapFilterSetting());
+        tmpFragmenter.setPatternSetSetting(BiosynfoniFragmenter.BiosynfoniPatternSetOption.ORIGINAL);
         tmpFragmenter.setIntraSubstructureOverlapFilterSetting(!BiosynfoniFragmenter.INTRA_SUBSTRUCTURE_OVERLAP_FILTER_SETTING_DEFAULT);
         tmpFragmenter.setInterSubstructureOverlapFilterSetting(!BiosynfoniFragmenter.INTER_SUBSTRUCTURE_OVERLAP_FILTER_SETTING_DEFAULT);
         tmpFragmenter.setReturnedFragmentsSetting(BiosynfoniFragmenter.BiosynfoniReturnedFragmentsOption.MATCHED_SUBSTRUCTURES);
+        for (BiosynfoniFragmenter.BiosynfoniRevision tmpRevision : BiosynfoniFragmenter.BiosynfoniRevision.values()) {
+            Assertions.assertEquals(BiosynfoniFragmenter.REVISION_SETTING_DEFAULT, tmpFragmenter.getRevisionSetting(tmpRevision));
+        }
+        tmpFragmenter.setRevisionSetting(BiosynfoniFragmenter.BiosynfoniRevision.ETHER, !BiosynfoniFragmenter.REVISION_SETTING_DEFAULT);
         BiosynfoniFragmenter tmpCopy = (BiosynfoniFragmenter) tmpFragmenter.copy();
+        for (BiosynfoniFragmenter.BiosynfoniRevision tmpRevision : BiosynfoniFragmenter.BiosynfoniRevision.values()) {
+            Assertions.assertEquals(tmpFragmenter.getRevisionSetting(tmpRevision), tmpCopy.getRevisionSetting(tmpRevision));
+        }
+        Assertions.assertEquals(tmpFragmenter.getPatternSetSetting(), tmpCopy.getPatternSetSetting());
         Assertions.assertEquals(tmpFragmenter.getReturnedFragmentsSetting(), tmpCopy.getReturnedFragmentsSetting());
         Assertions.assertEquals(tmpFragmenter.getIntraSubstructureOverlapFilterSetting(), tmpCopy.getIntraSubstructureOverlapFilterSetting());
         Assertions.assertEquals(tmpFragmenter.getInterSubstructureOverlapFilterSetting(), tmpCopy.getInterSubstructureOverlapFilterSetting());
         tmpFragmenter.restoreDefaultSettings();
+        Assertions.assertEquals(BiosynfoniFragmenter.PATTERN_SET_OPTION_DEFAULT, tmpFragmenter.getPatternSetSetting());
+        Assertions.assertEquals(BiosynfoniFragmenter.REVISION_SETTING_DEFAULT,
+                tmpFragmenter.getRevisionSetting(BiosynfoniFragmenter.BiosynfoniRevision.ETHER));
         Assertions.assertEquals(BiosynfoniFragmenter.INTRA_SUBSTRUCTURE_OVERLAP_FILTER_SETTING_DEFAULT,
                 tmpFragmenter.getIntraSubstructureOverlapFilterSetting());
         Assertions.assertEquals(BiosynfoniFragmenter.INTER_SUBSTRUCTURE_OVERLAP_FILTER_SETTING_DEFAULT,
@@ -103,7 +118,9 @@ class BiosynfoniFragmenterTest {
     //
     /**
      * Tests that the stored representative structures are pairwise distinct, so that every key results in its own
-     * fragment, and that every representative structure is matched by the SMARTS pattern of its key.
+     * fragment, and that every representative structure is matched by the SMARTS pattern of its key. This is checked
+     * for no revisions, all revisions, every single revision, and all revisions but one, which covers all combinations
+     * of the two revisions of the phenyl unit and hydroxyl keys.
      *
      * @throws Exception if anything goes wrong
      */
@@ -111,16 +128,19 @@ class BiosynfoniFragmenterTest {
     void representativeStructuresTest() throws Exception {
         SmilesParser tmpSmiPar = new SmilesParser(SilentChemObjectBuilder.getInstance());
         SmilesGenerator tmpSmiGen = new SmilesGenerator(SmiFlavor.Unique);
-        Set<String> tmpUniqueSmilesSet = new HashSet<>();
-        Set<String> tmpDisplayNameSet = new HashSet<>();
-        for (BiosynfoniFragmenter.BiosynfoniKey tmpKey : BiosynfoniFragmenter.BiosynfoniKey.values()) {
-            IAtomContainer tmpRepresentative = tmpSmiPar.parseSmiles(tmpKey.getRepresentativeSmiles());
-            Assertions.assertTrue(tmpUniqueSmilesSet.add(tmpSmiGen.create(tmpRepresentative)),
-                    "Representative structure is not unique: " + tmpKey.getLabel());
-            Assertions.assertTrue(SmartsPattern.create(tmpKey.getSmarts()).matches(tmpRepresentative),
-                    "Representative structure is not matched by its own SMARTS: " + tmpKey.getLabel());
-            Assertions.assertTrue(tmpDisplayNameSet.add(tmpKey.getDisplayName()), "Display name is not unique: " + tmpKey.getLabel());
-            Assertions.assertFalse(tmpKey.getDisplayName().startsWith("Key '"), "Display name is missing: " + tmpKey.getLabel());
+        for (Set<BiosynfoniFragmenter.BiosynfoniRevision> tmpRevisions : BiosynfoniFragmenterTest.getTestRevisionSets()) {
+            Set<String> tmpUniqueSmilesSet = new HashSet<>();
+            Set<String> tmpDisplayNameSet = new HashSet<>();
+            for (BiosynfoniFragmenter.BiosynfoniKey tmpKey : BiosynfoniFragmenter.BiosynfoniKey.values()) {
+                String tmpMessage = tmpKey.getLabel() + ", " + tmpRevisions;
+                IAtomContainer tmpRepresentative = tmpSmiPar.parseSmiles(tmpKey.getRepresentativeSmiles(tmpRevisions));
+                Assertions.assertTrue(tmpUniqueSmilesSet.add(tmpSmiGen.create(tmpRepresentative)),
+                        "Representative structure is not unique: " + tmpMessage);
+                Assertions.assertTrue(SmartsPattern.create(tmpKey.getSmarts(tmpRevisions)).matches(tmpRepresentative),
+                        "Representative structure is not matched by its own SMARTS: " + tmpMessage);
+                Assertions.assertTrue(tmpDisplayNameSet.add(tmpKey.getDisplayName()), "Display name is not unique: " + tmpMessage);
+                Assertions.assertFalse(tmpKey.getDisplayName().startsWith("Key '"), "Display name is missing: " + tmpMessage);
+            }
         }
     }
     //
@@ -404,6 +424,235 @@ class BiosynfoniFragmenterTest {
             Assertions.assertNotNull(ChemUtil.createUniqueSmiles(tmpFragment, false),
                     (String) tmpFragment.getProperty(BiosynfoniFragmenter.BIOSYNFONI_LABEL_PROPERTY_KEY));
         }
+    }
+    //
+    /**
+     * Tests every revision of the revised pattern set against the original pattern set: for each case, the number of
+     * matches of the given key in the given molecule is checked in both pattern sets, without overlap filters. The
+     * cases cover the corrected errors (e.g. open-chain sugar patterns matching sugar rings, the phenethylamine pattern
+     * matching indoles, ring patterns matching the perimeter of fused ring systems) and the chemical decisions (e.g.
+     * aromatic phenyl rings, methylmalonyl units at branching points), as well as unchanged behaviour.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    void patternSetTest() throws Exception {
+        SmilesParser tmpSmiPar = new SmilesParser(SilentChemObjectBuilder.getInstance());
+        //key, SMILES code, number of matches with the original patterns, number of matches with the revised patterns
+        String[][] tmpCases = {
+                //NADH must not match NADPH
+                {"CO_NADH", "NC(=O)C1=CN(C=CC1)C1OC(COP(O)(=O)OP(O)(=O)OCC2OC(C(O)C2O)n2cnc3c(N)ncnc23)C(O)C1O", "1", "1"},
+                {"CO_NADH", "NC(=O)C1=CN(C=CC1)C1OC(COP(O)(=O)OP(O)(=O)OCC2OC(C(OP(O)(O)=O)C2O)n2cnc3c(N)ncnc23)C(O)C1O", "1", "0"},
+                //standard amino acids, also N-methylated and esterified
+                {"ALL_STD_AMINOS", "NCC(=O)NC(C)C(=O)O", "2", "2"},
+                {"ALL_STD_AMINOS", "COC(=O)C(C)N", "0", "1"},
+                {"ALL_STD_AMINOS", "CC(=O)N(C)C(C)C(N)=O", "0", "1"},
+                //non-standard amino acids: ornithine, 2-aminobutyric acid, 2-aminoisobutyric acid, alanine methyl ester
+                {"NON_STD_AMINOS", "NCCCC(N)C(=O)O", "0", "1"},
+                {"NON_STD_AMINOS", "CCC(N)C(=O)O", "0", "1"},
+                {"NON_STD_AMINOS", "CC(C)(N)C(=O)O", "0", "1"},
+                {"NON_STD_AMINOS", "COC(=O)C(C)N", "1", "0"},
+                {"NON_STD_AMINOS", "CC(N)C(=O)O", "0", "0"},
+                //open-chain sugars: sorbitol and ribitol, but not glucopyranose and ribofuranose
+                {"S_OPENPYR_C6O6", "OCC(O)C(O)C(O)C(O)CO", "1", "1"},
+                {"S_OPENPYR_C6O6", "OCC1OC(O)C(O)C(O)C1O", "1", "0"},
+                {"S_OPENFUR_C5O5", "OCC(O)C(O)C(O)CO", "1", "1"},
+                {"S_OPENFUR_C5O5", "OCC1OC(O)C(O)C1O", "1", "0"},
+                //phenethylamine units: phenethylamine and isoquinoline, but not indole and tryptamine
+                {"D_PHENYL_C2N", "NCCc1ccccc1", "1", "1"},
+                {"D_PHENYL_C2N", "c1ccc2cnccc2c1", "1", "1"},
+                {"D_PHENYL_C2N", "c1ccc2[nH]ccc2c1", "1", "0"},
+                {"D_PHENYL_C2N", "NCCc1c[nH]c2ccccc12", "1", "0"},
+                //phenyl units: aromatic rings only, side chain in no six-membered ring
+                {"D_PHENYL_C3", "CCCc1ccccc1", "1", "1"},
+                {"D_PHENYL_C3", "CCCC1CCCCC1", "1", "0"},
+                {"D_PHENYL_C3", "COc1cc(cc(OC)c1OC)C1C2C(COC2=O)Cc2cc3OCOc3cc12", "2", "0"},
+                {"D_PHENYL_C2", "CC(C)C1CCC(C)CC1O", "2", "0"},
+                {"D_PHENYL_C1", "Cc1ccccc1", "1", "1"},
+                {"D_PHENYL_C1", "CC(C)C1CCC(C)CC1O", "2", "0"},
+                //methylmalonyl units at branching points, not at chain ends, aromatic rings, or methyl ketones
+                {"D2_METHYLMALONYL", "CCC(C)C(=O)O", "3", "2"},
+                {"D2_METHYLMALONYL", "CCCCCCCCCCCCCCCC(=O)O", "1", "0"},
+                {"D2_METHYLMALONYL", "Cc1ccccc1", "2", "0"},
+                {"D2_METHYLMALONYL", "CC(C)=O", "1", "0"},
+                //one match per phosphorus and sulfur atom
+                {"PHOSPHATE", "OP(O)(=O)OP(O)(O)=O", "8", "2"},
+                {"SULFONATE", "COS(=O)(=O)O", "4", "1"},
+                //terminal nitrogen atoms with a single bond only
+                {"N_NITRATE", "CN", "1", "1"},
+                {"N_NITRATE", "CC#N", "1", "0"},
+                //no peroxides as ethers
+                {"O_ETHER", "CCOCC", "1", "1"},
+                {"O_ETHER", "COOC", "2", "0"},
+                //hemiacetal hydroxyl groups and nitro groups
+                {"O_HYDROXYL", "OCC1OC(O)C(O)C(O)C1O", "4", "5"},
+                {"O_HYDROXYL", "CC(=O)O", "0", "0"},
+                {"O_HYDROXYL", "C[N+](=O)[O-]", "1", "0"},
+                //rings in the chemical sense only, not the perimeter of fused or bridged ring systems
+                {"R_C6", "c1ccc2ccccc2c1", "2", "2"},
+                {"R_C10", "c1ccc2ccccc2c1", "1", "0"},
+                {"R_C10", "C1CCC2CCCCC2C1", "1", "0"},
+                {"R_C10", "C1CCCCCCCCC1", "1", "1"},
+                {"R_C9", "c1ccc2CCCc2c1", "1", "0"},
+                {"R_C6", "C1CC2CC2C1", "1", "0"},
+                {"R_C5", "C1CC2CC2C1", "1", "1"},
+                {"R_C3", "C1CC2CC2C1", "1", "1"},
+                //unchanged keys
+                {"S_PYRANOSE_C5O4", "OCC1OC(O)C(O)C(O)C1O", "1", "1"},
+                {"D_ISOPRENE", "C=CC(C)=C", "1", "1"}};
+        BiosynfoniFragmenter tmpFragmenter = new BiosynfoniFragmenter();
+        for (String[] tmpCase : tmpCases) {
+            String tmpLabel = BiosynfoniFragmenter.BiosynfoniKey.valueOf(tmpCase[0]).getLabel();
+            tmpFragmenter.setPatternSetSetting(BiosynfoniFragmenter.BiosynfoniPatternSetOption.ORIGINAL);
+            Map<String, Integer> tmpOriginalCounts = BiosynfoniFragmenterTest.countPerLabel(
+                    tmpFragmenter.fragmentMolecule(tmpSmiPar.parseSmiles(tmpCase[1])));
+            tmpFragmenter.setPatternSetSetting(BiosynfoniFragmenter.BiosynfoniPatternSetOption.REVISED);
+            Map<String, Integer> tmpRevisedCounts = BiosynfoniFragmenterTest.countPerLabel(
+                    tmpFragmenter.fragmentMolecule(tmpSmiPar.parseSmiles(tmpCase[1])));
+            Assertions.assertEquals(Integer.parseInt(tmpCase[2]), tmpOriginalCounts.getOrDefault(tmpLabel, 0),
+                    tmpCase[0] + ", original: " + tmpCase[1]);
+            Assertions.assertEquals(Integer.parseInt(tmpCase[3]), tmpRevisedCounts.getOrDefault(tmpLabel, 0),
+                    tmpCase[0] + ", revised: " + tmpCase[1]);
+        }
+    }
+    //
+    /**
+     * Tests that the pattern set setting changes the SMARTS pattern and the representative structure that are attached
+     * to the returned fragments, for the two keys whose representative structures differ between the pattern sets, and
+     * that the original pattern set uses the original patterns of the reference implementation for the phenyl-C3 and
+     * hydroxyl keys, which were revised first.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    void patternSetFragmentPropertiesTest() throws Exception {
+        Assertions.assertEquals("[#6;R1]~1~[#6;R1]~[#6;R1]~[#6;R1]~[#6;R1]~[#6;R1]~1~[#6]~[#6;!$([r6])]~[#6;!$([r6])]",
+                BiosynfoniFragmenter.BiosynfoniKey.D_PHENYL_C3.getSmarts(EnumSet.noneOf(BiosynfoniFragmenter.BiosynfoniRevision.class)));
+        Assertions.assertEquals("[#8;D1;h,!v2;$(*[#6,#7]);!$(*C~O);!$(P);!$(S)]",
+                BiosynfoniFragmenter.BiosynfoniKey.O_HYDROXYL.getSmarts(EnumSet.noneOf(BiosynfoniFragmenter.BiosynfoniRevision.class)));
+        SmilesParser tmpSmiPar = new SmilesParser(SilentChemObjectBuilder.getInstance());
+        SmilesGenerator tmpSmiGen = new SmilesGenerator(SmiFlavor.Unique);
+        BiosynfoniFragmenter tmpFragmenter = new BiosynfoniFragmenter();
+        //isovaleric acid for the methylmalonyl key, ornithyl-alanine methyl ester for the non-standard amino acid key,
+        // which is matched in both pattern sets, by the alanine methyl ester residue or by the ornithine residue
+        BiosynfoniFragmenter.BiosynfoniKey[] tmpKeys = {BiosynfoniFragmenter.BiosynfoniKey.D2_METHYLMALONYL,
+                BiosynfoniFragmenter.BiosynfoniKey.NON_STD_AMINOS};
+        String[] tmpSmilesArray = {"CC(C)CC(=O)O", "COC(=O)C(C)NC(=O)C(N)CCCN"};
+        for (BiosynfoniFragmenter.BiosynfoniPatternSetOption tmpPatternSet : BiosynfoniFragmenter.BiosynfoniPatternSetOption.values()) {
+            tmpFragmenter.setPatternSetSetting(tmpPatternSet);
+            Set<BiosynfoniFragmenter.BiosynfoniRevision> tmpRevisions = tmpFragmenter.getAppliedRevisions();
+            for (int i = 0; i < tmpKeys.length; i++) {
+                String tmpExpectedSmiles = tmpSmiGen.create(tmpSmiPar.parseSmiles(tmpKeys[i].getRepresentativeSmiles(tmpRevisions)));
+                int tmpCount = 0;
+                for (IAtomContainer tmpFragment : tmpFragmenter.fragmentMolecule(tmpSmiPar.parseSmiles(tmpSmilesArray[i]))) {
+                    if (tmpKeys[i].getLabel().equals(tmpFragment.getProperty(BiosynfoniFragmenter.BIOSYNFONI_LABEL_PROPERTY_KEY))) {
+                        Assertions.assertEquals(tmpKeys[i].getSmarts(tmpRevisions),
+                                tmpFragment.getProperty(BiosynfoniFragmenter.BIOSYNFONI_SMARTS_PROPERTY_KEY), tmpPatternSet.name());
+                        Assertions.assertEquals(tmpExpectedSmiles, tmpSmiGen.create(tmpFragment), tmpPatternSet.name());
+                        tmpCount++;
+                    }
+                }
+                Assertions.assertTrue(tmpCount > 0, tmpKeys[i].name() + ", " + tmpPatternSet.name());
+            }
+        }
+        Assertions.assertNotEquals(
+                BiosynfoniFragmenter.BiosynfoniKey.NON_STD_AMINOS.getRepresentativeSmiles(EnumSet.noneOf(BiosynfoniFragmenter.BiosynfoniRevision.class)),
+                BiosynfoniFragmenter.BiosynfoniKey.NON_STD_AMINOS.getRepresentativeSmiles(EnumSet.allOf(BiosynfoniFragmenter.BiosynfoniRevision.class)));
+    }
+    //
+    /**
+     * Tests the custom pattern set: with all revisions turned on, it gives the same fragments as the revised pattern
+     * set, and with all revisions turned off the same as the original one; every revision changes exactly the SMARTS
+     * patterns of the keys it is meant for; and the two revisions of the phenyl unit and hydroxyl keys as well as the
+     * ring perception work independently of each other.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    void customPatternSetTest() throws Exception {
+        //keys whose SMARTS pattern each revision changes; the ring perception does not change any SMARTS pattern
+        Map<BiosynfoniFragmenter.BiosynfoniRevision, Set<String>> tmpExpectedKeys = new HashMap<>();
+        tmpExpectedKeys.put(BiosynfoniFragmenter.BiosynfoniRevision.NADH, Set.of("CO_NADH"));
+        tmpExpectedKeys.put(BiosynfoniFragmenter.BiosynfoniRevision.AMINO_ACIDS, Set.of("ALL_STD_AMINOS", "NON_STD_AMINOS"));
+        tmpExpectedKeys.put(BiosynfoniFragmenter.BiosynfoniRevision.OPEN_CHAIN_SUGARS, Set.of("S_OPENPYR_C6O6", "S_OPENFUR_C5O5"));
+        tmpExpectedKeys.put(BiosynfoniFragmenter.BiosynfoniRevision.PHENETHYLAMINE, Set.of("D_PHENYL_C2N"));
+        tmpExpectedKeys.put(BiosynfoniFragmenter.BiosynfoniRevision.PHENYL_SIDE_CHAIN, Set.of("D_PHENYL_C3", "D_PHENYL_C2"));
+        tmpExpectedKeys.put(BiosynfoniFragmenter.BiosynfoniRevision.AROMATIC_PHENYL_RINGS, Set.of("D_PHENYL_C3", "D_PHENYL_C2", "D_PHENYL_C1"));
+        tmpExpectedKeys.put(BiosynfoniFragmenter.BiosynfoniRevision.METHYLMALONYL, Set.of("D2_METHYLMALONYL"));
+        tmpExpectedKeys.put(BiosynfoniFragmenter.BiosynfoniRevision.PHOSPHATE_SULFONATE, Set.of("PHOSPHATE", "SULFONATE"));
+        tmpExpectedKeys.put(BiosynfoniFragmenter.BiosynfoniRevision.TERMINAL_NITROGEN, Set.of("N_NITRATE"));
+        tmpExpectedKeys.put(BiosynfoniFragmenter.BiosynfoniRevision.ETHER, Set.of("O_ETHER"));
+        tmpExpectedKeys.put(BiosynfoniFragmenter.BiosynfoniRevision.HYDROXYL_HEMIACETAL, Set.of("O_HYDROXYL"));
+        tmpExpectedKeys.put(BiosynfoniFragmenter.BiosynfoniRevision.HYDROXYL_NITRO_N_OXIDE, Set.of("O_HYDROXYL"));
+        tmpExpectedKeys.put(BiosynfoniFragmenter.BiosynfoniRevision.RING_PERCEPTION, Set.of());
+        Set<BiosynfoniFragmenter.BiosynfoniRevision> tmpNoRevisions = EnumSet.noneOf(BiosynfoniFragmenter.BiosynfoniRevision.class);
+        for (BiosynfoniFragmenter.BiosynfoniRevision tmpRevision : BiosynfoniFragmenter.BiosynfoniRevision.values()) {
+            Set<String> tmpChangedKeys = new HashSet<>();
+            for (BiosynfoniFragmenter.BiosynfoniKey tmpKey : BiosynfoniFragmenter.BiosynfoniKey.values()) {
+                if (!tmpKey.getSmarts(tmpNoRevisions).equals(tmpKey.getSmarts(EnumSet.of(tmpRevision)))) {
+                    tmpChangedKeys.add(tmpKey.name());
+                }
+            }
+            Assertions.assertEquals(tmpExpectedKeys.get(tmpRevision), tmpChangedKeys, tmpRevision.name());
+        }
+        SmilesParser tmpSmiPar = new SmilesParser(SilentChemObjectBuilder.getInstance());
+        BiosynfoniFragmenter tmpPresetFragmenter = new BiosynfoniFragmenter();
+        BiosynfoniFragmenter tmpCustomFragmenter = new BiosynfoniFragmenter();
+        tmpCustomFragmenter.setPatternSetSetting(BiosynfoniFragmenter.BiosynfoniPatternSetOption.CUSTOM);
+        String[] tmpSmilesArray = {BiosynfoniFragmenterTest.TEST_MOLECULE_SMILES, "c1ccc2ccccc2c1",
+                "COc1cc(cc(OC)c1OC)C1C2C(COC2=O)Cc2cc3OCOc3cc12", "COC(=O)C(C)NC(=O)C(N)CCCN"};
+        for (boolean tmpIsApplied : new boolean[] {true, false}) {
+            tmpPresetFragmenter.setPatternSetSetting(tmpIsApplied
+                    ? BiosynfoniFragmenter.BiosynfoniPatternSetOption.REVISED : BiosynfoniFragmenter.BiosynfoniPatternSetOption.ORIGINAL);
+            for (BiosynfoniFragmenter.BiosynfoniRevision tmpRevision : BiosynfoniFragmenter.BiosynfoniRevision.values()) {
+                tmpCustomFragmenter.setRevisionSetting(tmpRevision, tmpIsApplied);
+            }
+            for (String tmpSmiles : tmpSmilesArray) {
+                Assertions.assertEquals(
+                        BiosynfoniFragmenterTest.countPerLabel(tmpPresetFragmenter.fragmentMolecule(tmpSmiPar.parseSmiles(tmpSmiles))),
+                        BiosynfoniFragmenterTest.countPerLabel(tmpCustomFragmenter.fragmentMolecule(tmpSmiPar.parseSmiles(tmpSmiles))),
+                        tmpIsApplied + ": " + tmpSmiles);
+            }
+        }
+        //single revisions: revision, key, SMILES code, number of matches
+        String[][] tmpCases = {
+                {"AROMATIC_PHENYL_RINGS", "D_PHENYL_C3", "CCCC1CCCCC1", "0"},
+                {"AROMATIC_PHENYL_RINGS", "D_PHENYL_C3", "COc1cc(cc(OC)c1OC)C1C2C(COC2=O)Cc2cc3OCOc3cc12", "2"},
+                {"PHENYL_SIDE_CHAIN", "D_PHENYL_C3", "CCCC1CCCCC1", "1"},
+                {"PHENYL_SIDE_CHAIN", "D_PHENYL_C3", "COc1cc(cc(OC)c1OC)C1C2C(COC2=O)Cc2cc3OCOc3cc12", "0"},
+                {"HYDROXYL_HEMIACETAL", "O_HYDROXYL", "OCC1OC(O)C(O)C(O)C1O", "5"},
+                {"HYDROXYL_HEMIACETAL", "O_HYDROXYL", "C[N+](=O)[O-]", "1"},
+                {"HYDROXYL_NITRO_N_OXIDE", "O_HYDROXYL", "OCC1OC(O)C(O)C(O)C1O", "4"},
+                {"HYDROXYL_NITRO_N_OXIDE", "O_HYDROXYL", "C[N+](=O)[O-]", "0"},
+                {"RING_PERCEPTION", "R_C10", "c1ccc2ccccc2c1", "0"},
+                {"ETHER", "R_C10", "c1ccc2ccccc2c1", "1"}};
+        for (String[] tmpCase : tmpCases) {
+            for (BiosynfoniFragmenter.BiosynfoniRevision tmpRevision : BiosynfoniFragmenter.BiosynfoniRevision.values()) {
+                tmpCustomFragmenter.setRevisionSetting(tmpRevision, tmpRevision.name().equals(tmpCase[0]));
+            }
+            Map<String, Integer> tmpCounts = BiosynfoniFragmenterTest.countPerLabel(
+                    tmpCustomFragmenter.fragmentMolecule(tmpSmiPar.parseSmiles(tmpCase[2])));
+            Assertions.assertEquals(Integer.parseInt(tmpCase[3]),
+                    tmpCounts.getOrDefault(BiosynfoniFragmenter.BiosynfoniKey.valueOf(tmpCase[1]).getLabel(), 0),
+                    tmpCase[0] + ", " + tmpCase[1] + ": " + tmpCase[2]);
+        }
+    }
+    //
+    /**
+     * Returns sets of revisions for testing: no revisions, all revisions, every single revision, and all revisions but
+     * one.
+     *
+     * @return list of revision sets
+     */
+    private static List<Set<BiosynfoniFragmenter.BiosynfoniRevision>> getTestRevisionSets() {
+        List<Set<BiosynfoniFragmenter.BiosynfoniRevision>> tmpRevisionSets = new ArrayList<>();
+        tmpRevisionSets.add(EnumSet.noneOf(BiosynfoniFragmenter.BiosynfoniRevision.class));
+        tmpRevisionSets.add(EnumSet.allOf(BiosynfoniFragmenter.BiosynfoniRevision.class));
+        for (BiosynfoniFragmenter.BiosynfoniRevision tmpRevision : BiosynfoniFragmenter.BiosynfoniRevision.values()) {
+            tmpRevisionSets.add(EnumSet.of(tmpRevision));
+            tmpRevisionSets.add(EnumSet.complementOf(EnumSet.of(tmpRevision)));
+        }
+        return tmpRevisionSets;
     }
     //
     /**
