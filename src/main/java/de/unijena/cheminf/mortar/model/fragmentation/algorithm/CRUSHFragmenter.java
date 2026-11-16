@@ -45,6 +45,7 @@ import org.openscience.cdk.graph.ConnectedComponents;
 import org.openscience.cdk.graph.ConnectivityChecker;
 import org.openscience.cdk.graph.Cycles;
 import org.openscience.cdk.graph.GraphUtil;
+import org.openscience.cdk.graph.invariant.Canon;
 import org.openscience.cdk.interfaces.IAtom;
 import org.openscience.cdk.interfaces.IAtomContainer;
 import org.openscience.cdk.interfaces.IAtomContainerSet;
@@ -73,6 +74,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.BitSet;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -87,22 +89,127 @@ import java.util.logging.Logger;
 
 /**
  * Implementation of the CRUSH fragmentation ("Cleavage Rules Using SMIRKS Heuristics") by López-López et al., see
- * the references below. CRUSH defines 33 bond cleavage rules as reaction SMIRKS (Table 1 of the publication), from
+ * the references below, with the published recursive algorithm and a single-pass variant.
+ *
+ * <p><b>(a) CRUSH.</b> CRUSH defines 33 bond cleavage rules as reaction SMIRKS (Table 1 of the publication), from
  * functional groups as in RECAP and BRICS (amides, esters, ureas, carbamates, ethers, amines, sulphonamides) to
  * aliphatic carbon-carbon and carbon-heteroatom bonds, aryl-alkyl, aryl-heteroatom and biaryl bonds, and sulfur-containing
- * groups. A molecule is fragmented recursively, until no rule can be applied anymore, under three constraints: every
- * fragment has at least three heavy atoms, atoms in fused ring systems (and their neighbours) are protected, and a rule
- * with a match on a protected atom is not applied at all (conservative mode). Among all fragmentation routes, the one
- * with the maximum number of fragments is selected.
+ * groups. In the publication, a molecule is fragmented recursively, until no rule can be applied anymore, under three
+ * constraints: every fragment has at least three heavy atoms, atoms in fused ring systems (and their neighbours) are
+ * protected, and a rule with a match on a protected atom is not applied at all (conservative mode). Among all
+ * fragmentation routes, the one with the maximum number of fragments is selected.
  *
- * <p><b>Rules.</b> The rules are numbered in the order of Table 1 of the publication (and of the rule file of the
+ * <p><b>(b) Variants.</b> The variant is chosen with the variant setting ({@link VariantOption}):
+ * <ul>
+ *     <li>Single pass (default, {@link VariantOption#SINGLE_PASS}): all cleavable bonds are determined once on the
+ *     intact molecule and cleaved simultaneously, as in the RECAP and BRICS fragmenters, selected by the priority of
+ *     the rule groups and by size limits for terminal fragments and linkers, see (d). <b>This variant is an adaptation
+ *     in MORTAR and not the published procedure.</b> It yields larger fragments that correspond to building blocks
+ *     (functional groups, ring systems with their substituents, sugars, acyl groups) and exactly one result per
+ *     molecule; use it to analyse and compare data sets in MORTAR.</li>
+ *     <li>Original ({@link VariantOption#ORIGINAL}): the recursive fragmentation of the publication with the route that
+ *     has the maximum number of final fragments, see (e). With a minimum fragment size of
+ *     {@value #PUBLISHED_MINIMUM_FRAGMENT_SIZE}, it reproduces the published procedure (apart from the deliberate
+ *     differences in (f)); use it to compare with the publication or the script of the authors, or to obtain the
+ *     intermediate fragments of the route.</li>
+ * </ul>
+ * The settings for the saturation of the open valences, the minimum fragment size, the protected atoms, and the return
+ * of unfragmented molecules apply to both variants; the minimum linker size and the switches of the three rule groups
+ * only to the single-pass variant; the conservative mode and the fragment output only to the original variant.
+ *
+ * <p><b>(c) Rules.</b> The rules are numbered in the order of Table 1 of the publication (and of the rule file of the
  * authors); the reactant side of each SMIRKS is used verbatim as SMARTS, and the bonds between mapped atoms that are
  * missing on the product side are cleaved (one bond per match; two bonds for rule 19, Carbamate_2). The attachment
  * points of the fragments are marked with link atoms that carry the number of the rule. Unspecified bonds of the SMARTS
  * match single and aromatic bonds and '!@' matches any acyclic bond, so rules 25 and 26 also cleave acyclic double and
- * triple bonds (e.g. the C=N bond of oximes), as the reaction SMIRKS of the authors do.
+ * triple bonds (e.g. the C=N bond of oximes), as the reaction SMIRKS of the authors do. The single-pass variant groups
+ * the rules by the kind of bond they cleave: functional group rules (bonds of amides, esters, amines, ureas, ethers,
+ * carbamates, sulphonamides, and sulphur-containing groups), aromatic ring bond rules (exocyclic bonds of aromatic
+ * rings), and aliphatic skeleton rules (generic carbon-carbon and carbon-heteroatom bonds, olefins and alkynes).
+ * <table>
+ *     <caption>CRUSH rules (Table 1 of the publication) with their group and priority in the single-pass
+ *     variant</caption>
+ *     <tr><th scope="col">Rule</th><th scope="col">Name (authors)</th><th scope="col">Group (priority)</th></tr>
+ *     <tr><td>1</td><td>Acyclic carbonyl-N cleavage</td><td>functional group (1)</td></tr>
+ *     <tr><td>2</td><td>Ester</td><td>functional group (1)</td></tr>
+ *     <tr><td>3</td><td>Tertiary/quaternary aliphatic amine C–N cleavage</td><td>functional group (1)</td></tr>
+ *     <tr><td>4</td><td>Ring tertiary amine substituent disconnect</td><td>functional group (1)</td></tr>
+ *     <tr><td>5</td><td>Urea</td><td>functional group (1)</td></tr>
+ *     <tr><td>6</td><td>Ether</td><td>functional group (1)</td></tr>
+ *     <tr><td>7</td><td>Hetero-substituted alkyl C–X cleavage</td><td>functional group (1)</td></tr>
+ *     <tr><td>8</td><td>Olefin</td><td>aliphatic skeleton (3)</td></tr>
+ *     <tr><td>9</td><td>Quaternary nitrogen</td><td>functional group (1)</td></tr>
+ *     <tr><td>10</td><td>Aromatic nitrogen – aliphatic carbon</td><td>aromatic ring bond (2)</td></tr>
+ *     <tr><td>11</td><td>Lactam nitrogen – aliphatic carbon</td><td>functional group (1)</td></tr>
+ *     <tr><td>12</td><td>Aromatic carbon – aromatic carbon</td><td>aromatic ring bond (2)</td></tr>
+ *     <tr><td>13</td><td>Sulphonamide</td><td>functional group (1)</td></tr>
+ *     <tr><td>14</td><td>Aromatic carbon – aliphatic carbon</td><td>aromatic ring bond (2)</td></tr>
+ *     <tr><td>15</td><td>Aromatic carbon – aliphatic amine</td><td>aromatic ring bond (2)</td></tr>
+ *     <tr><td>16</td><td>Alkyne</td><td>aliphatic skeleton (3)</td></tr>
+ *     <tr><td>17</td><td>Thioether</td><td>functional group (1)</td></tr>
+ *     <tr><td>18</td><td>Carbamate_1</td><td>functional group (1)</td></tr>
+ *     <tr><td>19</td><td>Carbamate_2</td><td>functional group (1)</td></tr>
+ *     <tr><td>20</td><td>Acyl-sulphamide</td><td>functional group (1)</td></tr>
+ *     <tr><td>21</td><td>Sulfacylation-O</td><td>functional group (1)</td></tr>
+ *     <tr><td>22</td><td>Aryl-C–N cleavage</td><td>aromatic ring bond (2)</td></tr>
+ *     <tr><td>23</td><td>Inter-Aryl-N–N cleavage</td><td>aromatic ring bond (2)</td></tr>
+ *     <tr><td>24</td><td>Ar–alkyl cleavage</td><td>aromatic ring bond (2)</td></tr>
+ *     <tr><td>25</td><td>C–C break (aliphatic)</td><td>aliphatic skeleton (3)</td></tr>
+ *     <tr><td>26</td><td>C–hetero (aliphatic)</td><td>aliphatic skeleton (3)</td></tr>
+ *     <tr><td>27</td><td>Sulfonate ester cleavage</td><td>functional group (1)</td></tr>
+ *     <tr><td>28</td><td>Disulfide bond cleavage</td><td>functional group (1)</td></tr>
+ *     <tr><td>29</td><td>Ar-vinyl-core cleavage</td><td>aromatic ring bond (2)</td></tr>
+ *     <tr><td>30</td><td>Ar-O cleavage</td><td>aromatic ring bond (2)</td></tr>
+ *     <tr><td>31</td><td>Ar–N exocyclic cleavage</td><td>aromatic ring bond (2)</td></tr>
+ *     <tr><td>32</td><td>Ar-S exocyclic cleavage</td><td>aromatic ring bond (2)</td></tr>
+ *     <tr><td>33</td><td>Ar–sp–sp C cleavage</td><td>aromatic ring bond (2)</td></tr>
+ * </table>
  *
- * <p><b>Algorithm.</b>
+ * <p><b>(d) Single-pass variant.</b> With the original variant and the minimum fragment size 3, the criterion "maximum
+ * number of fragments" drives every molecule towards pieces of the minimum size, the generic rules 25 and 26 cut almost
+ * any aliphatic bond, and the result is often one of several equally good decompositions: on BIOFACQUIM, 39 % of the
+ * fragments have three heavy atoms, half of the cuts are made by the aliphatic skeleton rules, 31 % of the fragments are
+ * acyclic pieces with two or more attachment points and at most six heavy atoms, and 46 % of the fragmented molecules
+ * (167 of 362) have more than one optimal decomposition; on 2,252 natural products from PubChem, 29 % and 27 % of the
+ * fragments, respectively. The single-pass variant therefore cleaves the
+ * bonds of the molecule in one pass, without route and search, preferring functional groups and balanced cleavages and
+ * keeping small pieces attached:
+ * <ol>
+ *     <li>The molecule is prepared as in the original variant (step 1 of (e)), and the protected atoms are determined
+ *     according to the ring protection setting.</li>
+ *     <li>Candidate bonds: the rules of the enabled rule groups (settings; by default the functional group and the
+ *     aromatic ring bond rules) are matched on the intact molecule. A match that contains a protected atom is dropped;
+ *     the conservative mode is not used. Every cleaved bond of every remaining match is a candidate unless it is a ring
+ *     bond; the two bonds of rule 19 are independent candidates. A bond that is a candidate of several rules is assigned
+ *     the rule that comes first by group priority and rule number, which is the label of its link atoms (e.g. rule 27,
+ *     not 26, for the C-O bond of a sulfonate ester).</li>
+ *     <li>Selection: the candidates are processed in a fixed order, by (1) the group priority of their rule, (2) the
+ *     rule number, (3) the number of heavy atoms of the smaller of the two parts that the cleavage of the bond alone
+ *     gives in the intact molecule, larger first (balanced cleavages first), and (4) a canonical rank of the bond that
+ *     does not depend on the order of the atoms and bonds of the input: the unique SMILES codes with stereochemistry of
+ *     the two parts of the cleavage of the bond alone (only determined for bonds that the first three keys do not
+ *     order; they distinguish constitutionally equivalent bonds with different configurations, e.g. in meso compounds),
+ *     then the canonical labels of its two atoms (CDK {@link Canon}, with invariants that include the bond orders). A
+ *     candidate is accepted if, together with the bonds accepted before, both parts of the fragment that it splits are
+ *     valid: a part with one attachment point needs at least the minimum fragment size of heavy atoms (setting,
+ *     default {@value #MINIMUM_FRAGMENT_SIZE_DEFAULT}), a part with two or more attachment points (a linker) at least
+ *     the larger of the minimum fragment size and the minimum linker size (setting, default
+ *     {@value #MINIMUM_LINKER_SIZE_DEFAULT}). The attachment points of a part are the accepted bonds at its atoms and
+ *     its pseudo atoms (attachment points of a preceding fragmentation); heavy atoms are counted without hydrogen and
+ *     pseudo atoms. Since an accepted bond splits only one fragment, all fragments stay valid; a linker that is too
+ *     small stays attached to one of its neighbours.</li>
+ *     <li>All accepted bonds are cleaved at once, with link atoms carrying the rule numbers (or hydrogen atoms) and
+ *     with the transfer of the stereo elements as in the original variant (steps 4 and 5 of (e)); connected components
+ *     without a cleaved bond, e.g. counter ions, are separate fragments. If no bond is accepted, the molecule is
+ *     returned unchanged or, depending on the respective setting, not at all.</li>
+ * </ol>
+ * The result does not depend on the order of the atoms and bonds of the input. The fourth sort key depends on the
+ * toolkit; it decides the result of only a few molecules, e.g. which of the two C-O bonds of the glycosidic oxygen atom
+ * of sucrose is cleaved (4 of the 583 molecules of BIOFACQUIM and 10 of the 2,252 natural products from PubChem have
+ * two possible results). For the route of this variant, see {@link #buildRoute(IAtomContainer)}.
+ *
+ * <p><b>(e) Original variant.</b> The recursive fragmentation of the publication, unchanged by the introduction of the
+ * single-pass variant:
  * <ol>
  *     <li>Explicit hydrogen atoms are suppressed, and ring membership and aromaticity are perceived with the Daylight
  *     model, on which the SMARTS semantics of the rules are based. Since the aromaticity perception needs the bond
@@ -118,7 +225,8 @@ import java.util.logging.Logger;
  *         <li>for every rule, all matches are determined; in conservative mode (setting, default), the rule yields no
  *         step if any match contains a protected atom, otherwise only the matches with protected atoms are dropped;</li>
  *         <li>a match yields a step if none of its cleaved bonds is a ring bond and all parts after the cleavage have at
- *         least the minimum number of heavy atoms (setting, default {@value #MINIMUM_FRAGMENT_SIZE_DEFAULT});</li>
+ *         least the minimum number of heavy atoms (setting, {@value #PUBLISHED_MINIMUM_FRAGMENT_SIZE} in the
+ *         publication);</li>
  *         <li>steps are unique per set of cleaved bonds; if several rules cleave the same bonds, the rule with the lowest
  *         number is assigned.</li>
  *     </ul></li>
@@ -153,7 +261,8 @@ import java.util.logging.Logger;
  *     fragment then depends on the configuration given for the atom.</li>
  * </ol>
  *
- * <p><b>Differences to the script of the authors.</b> The script applies the reaction SMIRKS with the RDKit and
+ * <p><b>(f) Differences to the script of the authors.</b> They concern the original variant; the single-pass variant
+ * differs from the published procedure by design, see (d). The script applies the reaction SMIRKS with the RDKit and
  * follows, in each recursion step, only one product further; the products of all steps of the best path are its
  * output. The single steps are reproduced exactly, except for the following deliberate differences:
  * <ul>
@@ -183,6 +292,27 @@ import java.util.logging.Logger;
  * </ul>
  * Because of the overlapping ring-opened products and the intermediate fragments in the output of the script, the
  * fragment statistics of the publication cannot be reproduced exactly with this class.
+ *
+ * <p><b>(g) Measured effect on BIOFACQUIM</b> (583 molecules imported as in MORTAR; fragments are the fragments with at
+ * least one link atom, run time of one thread on Apple Silicon):
+ * <table>
+ *     <caption>Original variant with minimum fragment size 3 compared with the single-pass variant with default
+ *     settings</caption>
+ *     <tr><th scope="col">Quantity</th><th scope="col">Original, minimum size 3</th>
+ *     <th scope="col">Single pass, defaults</th></tr>
+ *     <tr><td>Molecules fragmented</td><td>368 (63 %)</td><td>259 (44 %)</td></tr>
+ *     <tr><td>Fragments per fragmented molecule (mean)</td><td>3.77</td><td>2.78</td></tr>
+ *     <tr><td>Heavy atoms per fragment (median)</td><td>5</td><td>11</td></tr>
+ *     <tr><td>Fragments with the minimum number of heavy atoms</td><td>39 % (3)</td><td>6.5 % (5)</td></tr>
+ *     <tr><td>Acyclic fragments with two or more attachment points and at most six heavy atoms</td><td>31 %</td>
+ *     <td>0.6 %</td></tr>
+ *     <tr><td>Fragments with a ring</td><td>44 %</td><td>78 %</td></tr>
+ *     <tr><td>Cuts by the aliphatic skeleton rules</td><td>51 %</td><td>0 % (disabled)</td></tr>
+ *     <tr><td>Distinct fragments</td><td>415</td><td>330</td></tr>
+ *     <tr><td>Fragmented molecules with more than one result</td><td>167 of 362 with several optimal
+ *     decompositions</td><td>4 depending on the canonical rank</td></tr>
+ *     <tr><td>Run time (total, slowest molecule)</td><td>5.9 s, 0.9 s</td><td>0.5 s, 0.07 s</td></tr>
+ * </table>
  *
  * <p><b>Note on rule numbers in MORTAR.</b> MORTAR identifies fragments by their unique SMILES code without isotope
  * information, so link atoms are written as '*' and fragments that differ only in their rule numbers are counted as the
@@ -352,6 +482,55 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
     }
     //</editor-fold>
     //
+    //<editor-fold desc="Enum VariantOption">
+    /**
+     * Enumeration of the variants of the fragmentation algorithm, see the class documentation.
+     */
+    public enum VariantOption implements IDisplayEnum {
+        /**
+         * All cleavable bonds are determined once on the intact molecule and cleaved simultaneously, selected by rule
+         * priority and size limits for terminal fragments and linkers (an adaptation in MORTAR, not the published
+         * procedure).
+         */
+        SINGLE_PASS(Message.get("CRUSHFragmenter.VariantOption.singlePass.displayName"),
+                Message.get("CRUSHFragmenter.VariantOption.singlePass.tooltip")),
+        /**
+         * The recursive fragmentation of the publication: the route with the maximum number of final fragments; with a
+         * minimum fragment size of 3, the published procedure is reproduced.
+         */
+        ORIGINAL(Message.get("CRUSHFragmenter.VariantOption.original.displayName"),
+                Message.get("CRUSHFragmenter.VariantOption.original.tooltip"));
+        /**
+         * Language-specific name for display in GUI.
+         */
+        private final String displayName;
+        /**
+         * Language-specific tooltip text for display in GUI.
+         */
+        private final String tooltip;
+        /**
+         * Constructor setting the display name and tooltip.
+         *
+         * @param aDisplayName display name
+         * @param aTooltip tooltip text
+         */
+        private VariantOption(String aDisplayName, String aTooltip) {
+            this.displayName = aDisplayName;
+            this.tooltip = aTooltip;
+        }
+        //
+        @Override
+        public String getDisplayName() {
+            return this.displayName;
+        }
+        //
+        @Override
+        public String getTooltipText() {
+            return this.tooltip;
+        }
+    }
+    //</editor-fold>
+    //
     //<editor-fold desc="Public static nested class CRUSHRouteNode">
     /**
      * A node of the fragmentation route of a molecule, see {@link CRUSHFragmenter#buildRoute(IAtomContainer)}: a
@@ -376,8 +555,8 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
          */
         private final List<CRUSHRouteNode> children;
         /**
-         * Number of the rule of the cleavage step of this fragment, 0 for leaves and for the root of a molecule with
-         * several connected components.
+         * Number of the rule of the cleavage step of this fragment, 0 for leaves, for the root of a molecule with
+         * several connected components, and for the root of the single-pass variant.
          */
         private int ruleNumber;
         /**
@@ -436,7 +615,7 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
         /**
          * Returns the child nodes, i.e. the nodes of the parts that result from the cleavage step of this fragment (two
          * parts, three for rule 19). For the root of a molecule with several connected components, the children are the
-         * components.
+         * components. For the root of the single-pass variant, the children are the final fragments.
          *
          * @return unmodifiable list of the child nodes, empty for leaves
          */
@@ -447,7 +626,8 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
         /**
          * Returns the number of the rule of the cleavage step of this fragment.
          *
-         * @return rule number (1 to 33), 0 for leaves and for the root of a molecule with several connected components
+         * @return rule number (1 to 33), 0 for leaves, for the root of a molecule with several connected components,
+         *         and for the root of the single-pass variant
          */
         public int getRuleNumber() {
             return this.ruleNumber;
@@ -474,7 +654,8 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
         /**
          * Returns whether the route was determined by an exhaustive search, i.e. it has the maximum number of final
          * fragments. If the search exceeded {@link #MAXIMUM_SEARCH_FRAGMENT_COUNT} evaluated fragments, some fragments
-         * were decomposed greedily and the number of final fragments may be lower than the maximum.
+         * were decomposed greedily and the number of final fragments may be lower than the maximum. The single-pass
+         * variant has no search, its routes are always exhaustive.
          *
          * @return true if the search was exhaustive
          */
@@ -530,24 +711,50 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
      */
     public static final String ALGORITHM_NAME = "CRUSH";
     /**
+     * Default variant of the fragmentation algorithm: the single-pass variant.
+     */
+    public static final VariantOption VARIANT_OPTION_DEFAULT = VariantOption.SINGLE_PASS;
+    /**
      * Default option for the saturation of open valences.
      */
     public static final SaturationOption SATURATION_OPTION_DEFAULT = SaturationOption.LINK_ATOMS;
     /**
-     * Default minimum number of heavy atoms of a fragment, as in the publication.
+     * Default minimum number of heavy atoms of a fragment. The publication uses
+     * {@value #PUBLISHED_MINIMUM_FRAGMENT_SIZE}, which reproduces the published procedure with the original variant.
      */
-    public static final int MINIMUM_FRAGMENT_SIZE_DEFAULT = 3;
+    public static final int MINIMUM_FRAGMENT_SIZE_DEFAULT = 5;
+    /**
+     * Minimum number of heavy atoms of a fragment in the publication.
+     */
+    public static final int PUBLISHED_MINIMUM_FRAGMENT_SIZE = 3;
+    /**
+     * Default minimum number of heavy atoms of a fragment with two or more attachment points (linker) in the
+     * single-pass variant.
+     */
+    public static final int MINIMUM_LINKER_SIZE_DEFAULT = 6;
+    /**
+     * Default setting for the use of the functional group rules in the single-pass variant.
+     */
+    public static final boolean FUNCTIONAL_GROUP_RULES_OPTION_DEFAULT = true;
+    /**
+     * Default setting for the use of the aromatic ring bond rules in the single-pass variant.
+     */
+    public static final boolean AROMATIC_RING_BOND_RULES_OPTION_DEFAULT = true;
+    /**
+     * Default setting for the use of the aliphatic skeleton rules in the single-pass variant.
+     */
+    public static final boolean ALIPHATIC_SKELETON_RULES_OPTION_DEFAULT = false;
     /**
      * Default option for the protected atoms: atoms in fused ring systems and their neighbours, as used by the authors.
      */
     public static final RingProtectionOption RING_PROTECTION_OPTION_DEFAULT = RingProtectionOption.FUSED_RING_ATOMS_AND_NEIGHBOURS;
     /**
-     * Default setting for the conservative mode: a rule with a match on a protected atom is not applied at all, as in
-     * the publication.
+     * Default setting for the conservative mode of the original variant: a rule with a match on a protected atom is
+     * not applied at all, as in the publication.
      */
     public static final boolean CONSERVATIVE_MODE_OPTION_DEFAULT = true;
     /**
-     * Default option for the returned fragments: the final fragments of the route.
+     * Default option for the fragments returned by the original variant: the final fragments of the route.
      */
     public static final FragmentOutputOption FRAGMENT_OUTPUT_OPTION_DEFAULT = FragmentOutputOption.FINAL_FRAGMENTS;
     /**
@@ -576,6 +783,12 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
      * All CRUSH rules in the order of their numbers.
      */
     private static final List<CleavageRule> RULES = CRUSHFragmenter.createRules();
+    /**
+     * Rule groups of the single-pass variant by rule number minus one, given as their priorities: 1 for the functional
+     * group rules, 2 for the aromatic ring bond rules, 3 for the aliphatic skeleton rules.
+     */
+    private static final int[] RULE_GROUP_PRIORITIES = {1, 1, 1, 1, 1, 1, 1, 3, 1, 2, 1, 2, 1, 2, 2, 3, 1, 1, 1, 1, 1, 2,
+            2, 2, 3, 3, 1, 1, 2, 2, 2, 2, 2};
     //</editor-fold>
     //
     //<editor-fold desc="Package-private records">
@@ -955,10 +1168,20 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
      */
     private final CompiledRule[] compiledRules;
     //the settings are documented at their property methods (a Javadoc comment here would duplicate it for javadoc)
+    //setting for the variant of the fragmentation algorithm
+    private final SimpleIDisplayEnumConstantProperty variantSetting;
     //setting for the saturation of open valences
     private final SimpleIDisplayEnumConstantProperty saturationSetting;
     //setting for the minimum number of heavy atoms of a fragment
     private final SimpleIntegerProperty minimumFragmentSizeSetting;
+    //setting for the minimum number of heavy atoms of a fragment with two or more attachment points (single pass)
+    private final SimpleIntegerProperty minimumLinkerSizeSetting;
+    //setting for the use of the functional group rules (single pass)
+    private final SimpleBooleanProperty functionalGroupRulesSetting;
+    //setting for the use of the aromatic ring bond rules (single pass)
+    private final SimpleBooleanProperty aromaticRingBondRulesSetting;
+    //setting for the use of the aliphatic skeleton rules (single pass)
+    private final SimpleBooleanProperty aliphaticSkeletonRulesSetting;
     //setting for the protected atoms
     private final SimpleIDisplayEnumConstantProperty ringProtectionSetting;
     //setting for the conservative mode
@@ -1009,7 +1232,7 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
             }
             this.compiledRules[i] = new CompiledRule(tmpRule, DfPattern.findSubstructure(tmpQuery), tmpCleavedQueryAtomPairs);
         }
-        int tmpNumberOfSettings = 6;
+        int tmpNumberOfSettings = 11;
         int tmpInitialCapacityForSettingNameMaps = CollectionUtil.calculateInitialHashCollectionCapacity(
                 tmpNumberOfSettings,
                 BasicDefinitions.DEFAULT_HASH_COLLECTION_LOAD_FACTOR);
@@ -1017,6 +1240,30 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
                 BasicDefinitions.DEFAULT_HASH_COLLECTION_LOAD_FACTOR);
         this.settingNameDisplayNameMap = new HashMap<>(tmpInitialCapacityForSettingNameMaps,
                 BasicDefinitions.DEFAULT_HASH_COLLECTION_LOAD_FACTOR);
+        this.variantSetting = new SimpleIDisplayEnumConstantProperty(this,
+                "Algorithm variant setting",
+                CRUSHFragmenter.VARIANT_OPTION_DEFAULT,
+                CRUSHFragmenter.VariantOption.class) {
+            @Override
+            public void set(IDisplayEnum newValue) throws NullPointerException, IllegalArgumentException {
+                try {
+                    //call to super.set() for parameter checks
+                    super.set(newValue);
+                } catch (NullPointerException | IllegalArgumentException anException) {
+                    CRUSHFragmenter.LOGGER.log(Level.WARNING, anException.toString(), anException);
+                    GuiUtil.guiExceptionAlert(Message.get("Fragmenter.IllegalSettingValue.Title"),
+                            Message.get("Fragmenter.IllegalSettingValue.Header"),
+                            anException.toString(),
+                            anException);
+                    //re-throws the exception to properly reset the binding
+                    throw anException;
+                }
+            }
+        };
+        this.settingNameTooltipTextMap.put(this.variantSetting.getName(),
+                Message.get("CRUSHFragmenter.variantSetting.tooltip"));
+        this.settingNameDisplayNameMap.put(this.variantSetting.getName(),
+                Message.get("CRUSHFragmenter.variantSetting.displayName"));
         this.saturationSetting = new SimpleIDisplayEnumConstantProperty(this,
                 "Fragment saturation setting",
                 CRUSHFragmenter.SATURATION_OPTION_DEFAULT,
@@ -1065,6 +1312,51 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
                 Message.get("CRUSHFragmenter.minimumFragmentSizeSetting.tooltip"));
         this.settingNameDisplayNameMap.put(this.minimumFragmentSizeSetting.getName(),
                 Message.get("CRUSHFragmenter.minimumFragmentSizeSetting.displayName"));
+        this.minimumLinkerSizeSetting = new SimpleIntegerProperty(this,
+                "Minimum linker size setting",
+                CRUSHFragmenter.MINIMUM_LINKER_SIZE_DEFAULT) {
+            @Override
+            public void set(int newValue) {
+                if (newValue >= 1) {
+                    super.set(newValue);
+                } else {
+                    IllegalArgumentException tmpException = new IllegalArgumentException(
+                            "The minimum linker size must be at least 1.");
+                    CRUSHFragmenter.LOGGER.log(Level.WARNING, tmpException.toString(), tmpException);
+                    GuiUtil.guiExceptionAlert(Message.get("Fragmenter.IllegalSettingValue.Title"),
+                            Message.get("Fragmenter.IllegalSettingValue.Header"),
+                            tmpException.toString(),
+                            tmpException);
+                    //re-throws the exception to properly reset the binding
+                    throw tmpException;
+                }
+            }
+        };
+        this.settingNameTooltipTextMap.put(this.minimumLinkerSizeSetting.getName(),
+                Message.get("CRUSHFragmenter.minimumLinkerSizeSetting.tooltip"));
+        this.settingNameDisplayNameMap.put(this.minimumLinkerSizeSetting.getName(),
+                Message.get("CRUSHFragmenter.minimumLinkerSizeSetting.displayName"));
+        this.functionalGroupRulesSetting = new SimpleBooleanProperty(this,
+                "Functional group rules setting",
+                CRUSHFragmenter.FUNCTIONAL_GROUP_RULES_OPTION_DEFAULT);
+        this.settingNameTooltipTextMap.put(this.functionalGroupRulesSetting.getName(),
+                Message.get("CRUSHFragmenter.functionalGroupRulesSetting.tooltip"));
+        this.settingNameDisplayNameMap.put(this.functionalGroupRulesSetting.getName(),
+                Message.get("CRUSHFragmenter.functionalGroupRulesSetting.displayName"));
+        this.aromaticRingBondRulesSetting = new SimpleBooleanProperty(this,
+                "Aromatic ring bond rules setting",
+                CRUSHFragmenter.AROMATIC_RING_BOND_RULES_OPTION_DEFAULT);
+        this.settingNameTooltipTextMap.put(this.aromaticRingBondRulesSetting.getName(),
+                Message.get("CRUSHFragmenter.aromaticRingBondRulesSetting.tooltip"));
+        this.settingNameDisplayNameMap.put(this.aromaticRingBondRulesSetting.getName(),
+                Message.get("CRUSHFragmenter.aromaticRingBondRulesSetting.displayName"));
+        this.aliphaticSkeletonRulesSetting = new SimpleBooleanProperty(this,
+                "Aliphatic skeleton rules setting",
+                CRUSHFragmenter.ALIPHATIC_SKELETON_RULES_OPTION_DEFAULT);
+        this.settingNameTooltipTextMap.put(this.aliphaticSkeletonRulesSetting.getName(),
+                Message.get("CRUSHFragmenter.aliphaticSkeletonRulesSetting.tooltip"));
+        this.settingNameDisplayNameMap.put(this.aliphaticSkeletonRulesSetting.getName(),
+                Message.get("CRUSHFragmenter.aliphaticSkeletonRulesSetting.displayName"));
         this.ringProtectionSetting = new SimpleIDisplayEnumConstantProperty(this,
                 "Ring protection setting",
                 CRUSHFragmenter.RING_PROTECTION_OPTION_DEFAULT,
@@ -1128,8 +1420,13 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
         this.settingNameDisplayNameMap.put(this.returnUnfragmentedMoleculesSetting.getName(),
                 Message.get("CRUSHFragmenter.returnUnfragmentedMoleculesSetting.displayName"));
         this.settings = new ArrayList<>(tmpNumberOfSettings);
+        this.settings.add(this.variantSetting);
         this.settings.add(this.saturationSetting);
         this.settings.add(this.minimumFragmentSizeSetting);
+        this.settings.add(this.minimumLinkerSizeSetting);
+        this.settings.add(this.functionalGroupRulesSetting);
+        this.settings.add(this.aromaticRingBondRulesSetting);
+        this.settings.add(this.aliphaticSkeletonRulesSetting);
         this.settings.add(this.ringProtectionSetting);
         this.settings.add(this.conservativeModeSetting);
         this.settings.add(this.fragmentOutputSetting);
@@ -1138,6 +1435,24 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
     //</editor-fold>
     //
     //<editor-fold desc="Public properties get">
+    /**
+     * Returns the currently set variant of the fragmentation algorithm.
+     *
+     * @return variant option
+     */
+    public VariantOption getVariantSetting() {
+        return (VariantOption) this.variantSetting.get();
+    }
+    //
+    /**
+     * Returns the property object of the variant setting that can be used to configure this setting.
+     *
+     * @return property object of the variant setting
+     */
+    public SimpleIDisplayEnumConstantProperty variantSettingProperty() {
+        return this.variantSetting;
+    }
+    //
     /**
      * Returns the currently set option for the saturation of open valences.
      *
@@ -1172,6 +1487,79 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
      */
     public SimpleIntegerProperty minimumFragmentSizeSettingProperty() {
         return this.minimumFragmentSizeSetting;
+    }
+    //
+    /**
+     * Returns the minimum number of heavy atoms of a fragment with two or more attachment points (linker) in the
+     * single-pass variant.
+     *
+     * @return minimum linker size
+     */
+    public int getMinimumLinkerSizeSetting() {
+        return this.minimumLinkerSizeSetting.get();
+    }
+    //
+    /**
+     * Returns the property object of the setting for the minimum number of heavy atoms of a linker.
+     *
+     * @return property object of the setting
+     */
+    public SimpleIntegerProperty minimumLinkerSizeSettingProperty() {
+        return this.minimumLinkerSizeSetting;
+    }
+    //
+    /**
+     * Returns whether the functional group rules are used in the single-pass variant.
+     *
+     * @return true if the functional group rules are used
+     */
+    public boolean getFunctionalGroupRulesSetting() {
+        return this.functionalGroupRulesSetting.get();
+    }
+    //
+    /**
+     * Returns the property object of the setting for the use of the functional group rules.
+     *
+     * @return property object of the setting
+     */
+    public SimpleBooleanProperty functionalGroupRulesSettingProperty() {
+        return this.functionalGroupRulesSetting;
+    }
+    //
+    /**
+     * Returns whether the aromatic ring bond rules are used in the single-pass variant.
+     *
+     * @return true if the aromatic ring bond rules are used
+     */
+    public boolean getAromaticRingBondRulesSetting() {
+        return this.aromaticRingBondRulesSetting.get();
+    }
+    //
+    /**
+     * Returns the property object of the setting for the use of the aromatic ring bond rules.
+     *
+     * @return property object of the setting
+     */
+    public SimpleBooleanProperty aromaticRingBondRulesSettingProperty() {
+        return this.aromaticRingBondRulesSetting;
+    }
+    //
+    /**
+     * Returns whether the aliphatic skeleton rules are used in the single-pass variant.
+     *
+     * @return true if the aliphatic skeleton rules are used
+     */
+    public boolean getAliphaticSkeletonRulesSetting() {
+        return this.aliphaticSkeletonRulesSetting.get();
+    }
+    //
+    /**
+     * Returns the property object of the setting for the use of the aliphatic skeleton rules.
+     *
+     * @return property object of the setting
+     */
+    public SimpleBooleanProperty aliphaticSkeletonRulesSettingProperty() {
+        return this.aliphaticSkeletonRulesSetting;
     }
     //
     /**
@@ -1263,6 +1651,17 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
     //
     //<editor-fold desc="Public properties set">
     /**
+     * Sets the variant of the fragmentation algorithm, see the class documentation.
+     *
+     * @param anOption variant option
+     * @throws NullPointerException if the given option is null
+     */
+    public void setVariantSetting(VariantOption anOption) throws NullPointerException {
+        Objects.requireNonNull(anOption, "Given variant option is null.");
+        this.variantSetting.set(anOption);
+    }
+    //
+    /**
      * Sets the option for the saturation of open valences.
      *
      * @param anOption saturation option
@@ -1274,8 +1673,10 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
     }
     //
     /**
-     * Sets the minimum number of heavy atoms of a fragment; steps that yield a smaller part are not applied. With the
-     * default value 3, rule 19 (Carbamate_2) never applies, since it cuts off a carbonyl group with two heavy atoms.
+     * Sets the minimum number of heavy atoms of a fragment (both variants); steps or bonds whose cleavage yields a
+     * smaller part are not applied. The publication uses {@value #PUBLISHED_MINIMUM_FRAGMENT_SIZE}; with this value
+     * and the original variant, the published procedure is reproduced. With a value of 3 or more, rule 19
+     * (Carbamate_2) never applies in the original variant, since it cuts off a carbonyl group with two heavy atoms.
      *
      * @param aSize minimum fragment size, at least 1
      * @throws IllegalArgumentException if the given size is smaller than 1
@@ -1285,6 +1686,51 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
             throw new IllegalArgumentException("The minimum fragment size must be at least 1.");
         }
         this.minimumFragmentSizeSetting.set(aSize);
+    }
+    //
+    /**
+     * Sets the minimum number of heavy atoms of a fragment with two or more attachment points (linker) in the
+     * single-pass variant; the limit for such a fragment is the larger of this value and the minimum fragment size,
+     * so values up to the minimum fragment size impose no extra limit. The original variant ignores this setting.
+     *
+     * @param aSize minimum linker size, at least 1
+     * @throws IllegalArgumentException if the given size is smaller than 1
+     */
+    public void setMinimumLinkerSizeSetting(int aSize) throws IllegalArgumentException {
+        if (aSize < 1) {
+            throw new IllegalArgumentException("The minimum linker size must be at least 1.");
+        }
+        this.minimumLinkerSizeSetting.set(aSize);
+    }
+    //
+    /**
+     * Sets whether the functional group rules (rules 1 to 7, 9, 11, 13, 17 to 21, 27, and 28; highest priority) are
+     * used in the single-pass variant. The original variant ignores this setting.
+     *
+     * @param aBoolean true if the functional group rules should be used
+     */
+    public void setFunctionalGroupRulesSetting(boolean aBoolean) {
+        this.functionalGroupRulesSetting.set(aBoolean);
+    }
+    //
+    /**
+     * Sets whether the aromatic ring bond rules (rules 10, 12, 14, 15, 22 to 24, and 29 to 33; second priority) are
+     * used in the single-pass variant. The original variant ignores this setting.
+     *
+     * @param aBoolean true if the aromatic ring bond rules should be used
+     */
+    public void setAromaticRingBondRulesSetting(boolean aBoolean) {
+        this.aromaticRingBondRulesSetting.set(aBoolean);
+    }
+    //
+    /**
+     * Sets whether the aliphatic skeleton rules (rules 8, 16, 25, and 26; lowest priority) are used in the single-pass
+     * variant. The original variant ignores this setting.
+     *
+     * @param aBoolean true if the aliphatic skeleton rules should be used
+     */
+    public void setAliphaticSkeletonRulesSetting(boolean aBoolean) {
+        this.aliphaticSkeletonRulesSetting.set(aBoolean);
     }
     //
     /**
@@ -1299,8 +1745,9 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
     }
     //
     /**
-     * Sets whether the conservative mode is applied. If true (default), a rule with a match on a protected atom is not
-     * applied to the fragment at all; if false, only the matches on protected atoms are ignored.
+     * Sets whether the conservative mode is applied in the original variant. If true (default), a rule with a match on
+     * a protected atom is not applied to the fragment at all; if false, only the matches on protected atoms are
+     * ignored. The single-pass variant ignores this setting and always ignores only the matches on protected atoms.
      *
      * @param aBoolean true for the conservative mode
      */
@@ -1309,7 +1756,8 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
     }
     //
     /**
-     * Sets the option for the returned fragments.
+     * Sets the option for the fragments returned by the original variant. The single-pass variant ignores this setting
+     * and always returns the final fragments.
      *
      * @param anOption fragment output option
      * @throws NullPointerException if the given option is null
@@ -1359,8 +1807,13 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
     @Override
     public IMoleculeFragmenter copy() {
         CRUSHFragmenter tmpCopy = new CRUSHFragmenter();
+        tmpCopy.setVariantSetting(this.getVariantSetting());
         tmpCopy.setSaturationSetting(this.getSaturationSetting());
         tmpCopy.setMinimumFragmentSizeSetting(this.getMinimumFragmentSizeSetting());
+        tmpCopy.setMinimumLinkerSizeSetting(this.getMinimumLinkerSizeSetting());
+        tmpCopy.setFunctionalGroupRulesSetting(this.getFunctionalGroupRulesSetting());
+        tmpCopy.setAromaticRingBondRulesSetting(this.getAromaticRingBondRulesSetting());
+        tmpCopy.setAliphaticSkeletonRulesSetting(this.getAliphaticSkeletonRulesSetting());
         tmpCopy.setRingProtectionSetting(this.getRingProtectionSetting());
         tmpCopy.setConservativeModeSetting(this.getConservativeModeSetting());
         tmpCopy.setFragmentOutputSetting(this.getFragmentOutputSetting());
@@ -1370,8 +1823,13 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
     //
     @Override
     public void restoreDefaultSettings() {
+        this.variantSetting.set(CRUSHFragmenter.VARIANT_OPTION_DEFAULT);
         this.saturationSetting.set(CRUSHFragmenter.SATURATION_OPTION_DEFAULT);
         this.minimumFragmentSizeSetting.set(CRUSHFragmenter.MINIMUM_FRAGMENT_SIZE_DEFAULT);
+        this.minimumLinkerSizeSetting.set(CRUSHFragmenter.MINIMUM_LINKER_SIZE_DEFAULT);
+        this.functionalGroupRulesSetting.set(CRUSHFragmenter.FUNCTIONAL_GROUP_RULES_OPTION_DEFAULT);
+        this.aromaticRingBondRulesSetting.set(CRUSHFragmenter.AROMATIC_RING_BOND_RULES_OPTION_DEFAULT);
+        this.aliphaticSkeletonRulesSetting.set(CRUSHFragmenter.ALIPHATIC_SKELETON_RULES_OPTION_DEFAULT);
         this.ringProtectionSetting.set(CRUSHFragmenter.RING_PROTECTION_OPTION_DEFAULT);
         this.conservativeModeSetting.set(CRUSHFragmenter.CONSERVATIVE_MODE_OPTION_DEFAULT);
         this.fragmentOutputSetting.set(CRUSHFragmenter.FRAGMENT_OUTPUT_OPTION_DEFAULT);
@@ -1381,15 +1839,20 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
     /**
      * {@inheritDoc}
      *
-     * <p>The fragments are the final fragments of the route with the maximum number of fragments (see
+     * <p>Single-pass variant: the fragments are the disconnected parts of a clone of the given molecule in which all
+     * bonds selected as described in the class documentation have been cleaved and the open valences saturated
+     * according to the saturation setting; the fragment output setting is ignored.</p>
+     *
+     * <p>Original variant: the fragments are the final fragments of the route with the maximum number of fragments (see
      * {@link #buildRoute(IAtomContainer)}), i.e. the disconnected parts of a clone of the given molecule in which all
      * bonds cleaved on the route have been cleaved and the open valences saturated according to the saturation setting.
      * With the fragment output option {@link FragmentOutputOption#ALL_ROUTE_FRAGMENTS}, all fragments of the route
      * except its root (the molecule) are returned instead; for a molecule with several connected components, the
      * components that are cleaved (children of the root that are not leaves) are not returned either, so that e.g. a
-     * salt gives the same fragments as the free base, plus the counter ions. If no bond is cleaved, the clone (or its
-     * disconnected parts, e.g. counter ions, separately) is returned or, depending on the respective setting, no
-     * fragment is returned.</p>
+     * salt gives the same fragments as the free base, plus the counter ions.</p>
+     *
+     * <p>In both variants, if no bond is cleaved, the clone (or its disconnected parts, e.g. counter ions, separately)
+     * is returned or, depending on the respective setting, no fragment is returned.</p>
      */
     @Override
     public List<IAtomContainer> fragmentMolecule(IAtomContainer aMolecule)
@@ -1403,8 +1866,15 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
         IAtomContainer tmpMolecule = aMolecule.clone();
         try {
             this.prepareMolecule(tmpMolecule);
-            CRUSHRouteNode tmpRoot = this.createRoute(tmpMolecule);
-            int[] tmpBondLabels = tmpRoot.route.bondLabels();
+            boolean tmpIsSinglePass = this.variantSetting.get().equals(VariantOption.SINGLE_PASS);
+            CRUSHRouteNode tmpRoot = null;
+            int[] tmpBondLabels;
+            if (tmpIsSinglePass) {
+                tmpBondLabels = this.selectSinglePassBonds(tmpMolecule);
+            } else {
+                tmpRoot = this.createRoute(tmpMolecule);
+                tmpBondLabels = tmpRoot.route.bondLabels();
+            }
             boolean tmpIsCleaved = false;
             for (int tmpLabel : tmpBondLabels) {
                 if (tmpLabel != 0) {
@@ -1429,7 +1899,7 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
                 }
                 return tmpResult;
             }
-            if (this.fragmentOutputSetting.get().equals(FragmentOutputOption.ALL_ROUTE_FRAGMENTS)) {
+            if (!tmpIsSinglePass && this.fragmentOutputSetting.get().equals(FragmentOutputOption.ALL_ROUTE_FRAGMENTS)) {
                 List<CRUSHRouteNode> tmpNodes = tmpRoot.getAllDescendants();
                 List<IAtomContainer> tmpFragments = new ArrayList<>(tmpNodes.size());
                 //the root of a molecule with several connected components has no rule number, its children are the
@@ -1443,7 +1913,8 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
                 }
                 return tmpFragments;
             }
-            //all bonds of the route are cleaved at once, the molecule is not needed anymore
+            //all bonds of the route (or all bonds selected in the single pass) are cleaved at once, the molecule is not
+            //needed anymore
             List<CRUSHBond> tmpBondsToCleave = new ArrayList<>();
             for (IBond tmpBond : tmpMolecule.bonds()) {
                 int tmpLabel = tmpBondLabels[tmpBond.getIndex()];
@@ -1499,12 +1970,19 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
     //
     //<editor-fold desc="Public methods">
     /**
-     * Determines the fragmentation route of the given molecule with the current settings: the decomposition tree with
-     * the maximum number of final fragments, see the class documentation. The root of the route is the molecule; its
-     * children are the parts of the first cleavage step, or, for molecules with several connected components (e.g.
-     * salts), the components, whose children are the parts of their first cleavage steps. The leaves are the final
-     * fragments. The fragments of the nodes are created on request, with link atoms or hydrogen atoms according to the
-     * saturation setting.
+     * Determines the fragmentation route of the given molecule with the current settings. The root of the route is the
+     * molecule, the leaves are the final fragments. The fragments of the nodes are created on request, with link atoms
+     * or hydrogen atoms according to the saturation setting.
+     * <ul>
+     *     <li>Original variant: the decomposition tree with the maximum number of final fragments, see the class
+     *     documentation. The children of the root are the parts of the first cleavage step, or, for molecules with
+     *     several connected components (e.g. salts), the components, whose children are the parts of their first
+     *     cleavage steps.</li>
+     *     <li>Single-pass variant: there is no route, all selected bonds are cleaved at once. The children of the root
+     *     are the final fragments, i.e. the connected parts of the molecule after the cleavage (including connected
+     *     components without a cleaved bond, e.g. counter ions); they are leaves, and the rule number of the root is 0.
+     *     A connected molecule without a cleaved bond is a root without children. The route is always exhaustive.</li>
+     * </ul>
      *
      * @param aMolecule the molecule to fragment, it is not altered
      * @return the root node of the route, its fragment is the prepared clone of the molecule (explicit hydrogen atoms
@@ -1527,6 +2005,9 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
         } catch (CDKException anException) {
             throw new IllegalArgumentException(String.format("The molecule could not be prepared: %s", anException),
                     anException);
+        }
+        if (this.variantSetting.get().equals(VariantOption.SINGLE_PASS)) {
+            return this.createSinglePassRoute(tmpMolecule);
         }
         return this.createRoute(tmpMolecule);
     }
@@ -1655,6 +2136,178 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
         }
         throw new IllegalStateException("The fragment with the given atoms could not be determined.");
     }
+    //
+    /**
+     * Returns the priority of the rule group of the given rule in the single-pass variant: 1 for the functional group
+     * rules, 2 for the aromatic ring bond rules, 3 for the aliphatic skeleton rules (see the class documentation).
+     *
+     * @param aRuleNumber rule number, 1 to 33
+     * @return priority of the rule group, 1 to 3
+     * @throws IllegalArgumentException if there is no rule with the given number
+     */
+    static int getRuleGroupPriority(int aRuleNumber) throws IllegalArgumentException {
+        if (aRuleNumber < 1 || aRuleNumber > CRUSHFragmenter.RULE_GROUP_PRIORITIES.length) {
+            throw new IllegalArgumentException(String.format("There is no CRUSH rule with number %d.", aRuleNumber));
+        }
+        return CRUSHFragmenter.RULE_GROUP_PRIORITIES[aRuleNumber - 1];
+    }
+    //
+    /**
+     * Determines the candidate bonds of the single-pass variant in the given prepared molecule, see the class
+     * documentation: the rules of the enabled rule groups are matched on the intact molecule (on a copy, as for the
+     * first step of the original variant), matches that contain a protected atom (ring protection setting) are
+     * dropped, and every cleaved bond of every remaining match is a candidate unless it is a ring bond; the two bonds
+     * of rule 19 (Carbamate_2) are independent candidates. A bond that is a candidate of several rules is assigned the
+     * rule that comes first by group priority and rule number. The conservative mode is not used.
+     *
+     * @param aPreparedMolecule molecule prepared with {@link #prepareMolecule(IAtomContainer)}, it is not altered
+     * @return rule numbers of the candidate bonds by bond index, 0 for bonds that are no candidates
+     */
+    int[] findSinglePassCandidates(IAtomContainer aPreparedMolecule) {
+        int tmpAtomCount = aPreparedMolecule.getAtomCount();
+        int[] tmpRuleNumbers = new int[aPreparedMolecule.getBondCount()];
+        List<CompiledRule> tmpEnabledRules = new ArrayList<>(this.compiledRules.length);
+        for (CompiledRule tmpCompiledRule : this.compiledRules) {
+            int tmpPriority = CRUSHFragmenter.getRuleGroupPriority(tmpCompiledRule.rule().number());
+            if ((tmpPriority == 1 && this.functionalGroupRulesSetting.get())
+                    || (tmpPriority == 2 && this.aromaticRingBondRulesSetting.get())
+                    || (tmpPriority == 3 && this.aliphaticSkeletonRulesSetting.get())) {
+                tmpEnabledRules.add(tmpCompiledRule);
+            }
+        }
+        if (tmpEnabledRules.isEmpty() || tmpRuleNumbers.length == 0) {
+            return tmpRuleNumbers;
+        }
+        //the rules are matched in the order of their group priorities and numbers, the first rule that matches a bond
+        //is assigned to it
+        tmpEnabledRules.sort(Comparator.comparingInt((CompiledRule aCompiledRule)
+                -> CRUSHFragmenter.getRuleGroupPriority(aCompiledRule.rule().number()))
+                .thenComparingInt(aCompiledRule -> aCompiledRule.rule().number()));
+        BitSet tmpAllAtoms = new BitSet(tmpAtomCount);
+        tmpAllAtoms.set(0, tmpAtomCount);
+        int[] tmpCopyToMoleculeIndex = new int[tmpAtomCount];
+        IAtomContainer tmpCopy = CRUSHFragmenter.createSaturatedCopy(aPreparedMolecule, tmpAllAtoms,
+                tmpCopyToMoleculeIndex);
+        GraphUtil.EdgeToBondMap tmpEdgeToBondMap = GraphUtil.EdgeToBondMap.withSpaceFor(aPreparedMolecule);
+        int[][] tmpAdjacencyList = GraphUtil.toAdjList(aPreparedMolecule, tmpEdgeToBondMap);
+        BitSet tmpProtectedAtoms = this.findProtectedAtoms(tmpAllAtoms, tmpAdjacencyList,
+                CRUSHFragmenter.findFusedRingAtoms(aPreparedMolecule));
+        for (CompiledRule tmpCompiledRule : tmpEnabledRules) {
+            int tmpRuleNumber = tmpCompiledRule.rule().number();
+            for (int[] tmpMatch : tmpCompiledRule.pattern().matchAll(tmpCopy)) {
+                boolean tmpIsProtected = false;
+                for (int tmpCopyIndex : tmpMatch) {
+                    if (tmpProtectedAtoms.get(tmpCopyToMoleculeIndex[tmpCopyIndex])) {
+                        tmpIsProtected = true;
+                        break;
+                    }
+                }
+                if (tmpIsProtected) {
+                    continue;
+                }
+                for (int[] tmpPair : tmpCompiledRule.cleavedQueryAtomPairs()) {
+                    IBond tmpBond = tmpEdgeToBondMap.get(tmpCopyToMoleculeIndex[tmpMatch[tmpPair[0]]],
+                            tmpCopyToMoleculeIndex[tmpMatch[tmpPair[1]]]);
+                    if (!tmpBond.isInRing() && tmpRuleNumbers[tmpBond.getIndex()] == 0) {
+                        tmpRuleNumbers[tmpBond.getIndex()] = tmpRuleNumber;
+                    }
+                }
+            }
+        }
+        return tmpRuleNumbers;
+    }
+    //
+    /**
+     * Selects the bonds to cleave in the single-pass variant from the candidate bonds of the given prepared molecule
+     * (see {@link #findSinglePassCandidates(IAtomContainer)} and the class documentation). The candidates are
+     * processed in a fixed order: by the group priority of their rule, by the rule number, by the number of heavy atoms
+     * of the smaller of the two parts that the cleavage of the bond alone gives in the intact molecule (larger first),
+     * and by a canonical rank of the bond that does not depend on the order of the atoms and bonds of the input. The
+     * canonical rank consists of the unique SMILES codes with stereochemistry of the parts of the cleavage of the bond
+     * alone, only determined for bonds that are not ordered by the first three keys (see
+     * {@link #createSplitKey(IAtomContainer, int)}), and the canonical labels of the two atoms of the bond (see
+     * {@link #createCanonicalLabels(IAtomContainer, int[][])}). A candidate is accepted if both parts of the fragment
+     * that its cleavage splits, together with the bonds accepted before, are valid: a part with one attachment point
+     * needs at least the minimum fragment size of heavy atoms, a part with two or more attachment points at least the
+     * larger of the minimum fragment size and the minimum linker size. Attachment points are the accepted bonds at the
+     * atoms of the part and the pseudo atoms of the part (attachment points of a preceding fragmentation); heavy atoms
+     * are counted without hydrogen and pseudo atoms.
+     *
+     * @param aPreparedMolecule molecule prepared with {@link #prepareMolecule(IAtomContainer)}, it is not altered
+     * @return rule numbers of the bonds to cleave by bond index, 0 for bonds that are not cleaved
+     * @throws CloneNotSupportedException if the molecule cannot be cloned for the canonical rank
+     */
+    int[] selectSinglePassBonds(IAtomContainer aPreparedMolecule) throws CloneNotSupportedException {
+        int[] tmpCandidateRuleNumbers = this.findSinglePassCandidates(aPreparedMolecule);
+        int tmpBondCount = tmpCandidateRuleNumbers.length;
+        int[] tmpSelectedRuleNumbers = new int[tmpBondCount];
+        List<IBond> tmpCandidates = new ArrayList<>();
+        for (IBond tmpBond : aPreparedMolecule.bonds()) {
+            if (tmpCandidateRuleNumbers[tmpBond.getIndex()] != 0) {
+                tmpCandidates.add(tmpBond);
+            }
+        }
+        if (tmpCandidates.isEmpty()) {
+            return tmpSelectedRuleNumbers;
+        }
+        GraphUtil.EdgeToBondMap tmpEdgeToBondMap = GraphUtil.EdgeToBondMap.withSpaceFor(aPreparedMolecule);
+        int[][] tmpAdjacencyList = GraphUtil.toAdjList(aPreparedMolecule, tmpEdgeToBondMap);
+        long[] tmpCanonicalLabels = CRUSHFragmenter.createCanonicalLabels(aPreparedMolecule, tmpAdjacencyList);
+        boolean[] tmpIsCleaved = new boolean[tmpBondCount];
+        //size of the smaller part of the cleavage of each candidate alone; candidates are never ring bonds, so their
+        //cleavage always splits the molecule
+        int[] tmpSmallerPartSizes = new int[tmpBondCount];
+        for (IBond tmpCandidate : tmpCandidates) {
+            int tmpBondIndex = tmpCandidate.getIndex();
+            tmpIsCleaved[tmpBondIndex] = true;
+            int tmpBeginPartSize = CRUSHFragmenter.measurePart(aPreparedMolecule, tmpCandidate.getBegin().getIndex(),
+                    tmpAdjacencyList, tmpEdgeToBondMap, tmpIsCleaved, Integer.MAX_VALUE)[0];
+            int tmpEndPartSize = CRUSHFragmenter.measurePart(aPreparedMolecule, tmpCandidate.getEnd().getIndex(),
+                    tmpAdjacencyList, tmpEdgeToBondMap, tmpIsCleaved, Integer.MAX_VALUE)[0];
+            tmpIsCleaved[tmpBondIndex] = false;
+            tmpSmallerPartSizes[tmpBondIndex] = Math.min(tmpBeginPartSize, tmpEndPartSize);
+        }
+        //the canonical labels do not consider stereochemistry, so constitutionally equivalent bonds with different
+        //configurations (e.g. the two ester bonds of a meso diester) are first ordered by the unique SMILES codes with
+        //stereochemistry of the parts of their cleavage alone, which are only needed for bonds that the first three
+        //keys do not order
+        Map<List<Integer>, Integer> tmpKeyCounts = new HashMap<>();
+        for (IBond tmpCandidate : tmpCandidates) {
+            tmpKeyCounts.merge(CRUSHFragmenter.firstSortKeys(tmpCandidate, tmpCandidateRuleNumbers, tmpSmallerPartSizes),
+                    1, Integer::sum);
+        }
+        String[] tmpSplitKeys = new String[tmpBondCount];
+        for (IBond tmpCandidate : tmpCandidates) {
+            boolean tmpIsTied = tmpKeyCounts.get(CRUSHFragmenter.firstSortKeys(tmpCandidate, tmpCandidateRuleNumbers,
+                    tmpSmallerPartSizes)) > 1;
+            tmpSplitKeys[tmpCandidate.getIndex()] = tmpIsTied
+                    ? CRUSHFragmenter.createSplitKey(aPreparedMolecule, tmpCandidate.getIndex()) : "";
+        }
+        tmpCandidates.sort(Comparator.comparingInt((IBond aBond) -> CRUSHFragmenter.getRuleGroupPriority(
+                        tmpCandidateRuleNumbers[aBond.getIndex()]))
+                .thenComparingInt(aBond -> tmpCandidateRuleNumbers[aBond.getIndex()])
+                .thenComparingInt(aBond -> -tmpSmallerPartSizes[aBond.getIndex()])
+                .thenComparing(aBond -> tmpSplitKeys[aBond.getIndex()])
+                .thenComparingLong(aBond -> Math.min(tmpCanonicalLabels[aBond.getBegin().getIndex()],
+                        tmpCanonicalLabels[aBond.getEnd().getIndex()]))
+                .thenComparingLong(aBond -> Math.max(tmpCanonicalLabels[aBond.getBegin().getIndex()],
+                        tmpCanonicalLabels[aBond.getEnd().getIndex()])));
+        int tmpMinimumSize = this.minimumFragmentSizeSetting.get();
+        int tmpMinimumLinkerSize = Math.max(tmpMinimumSize, this.minimumLinkerSizeSetting.get());
+        for (IBond tmpCandidate : tmpCandidates) {
+            int tmpBondIndex = tmpCandidate.getIndex();
+            tmpIsCleaved[tmpBondIndex] = true;
+            if (CRUSHFragmenter.isValidPart(aPreparedMolecule, tmpCandidate.getBegin().getIndex(), tmpAdjacencyList,
+                    tmpEdgeToBondMap, tmpIsCleaved, tmpMinimumSize, tmpMinimumLinkerSize)
+                    && CRUSHFragmenter.isValidPart(aPreparedMolecule, tmpCandidate.getEnd().getIndex(), tmpAdjacencyList,
+                    tmpEdgeToBondMap, tmpIsCleaved, tmpMinimumSize, tmpMinimumLinkerSize)) {
+                tmpSelectedRuleNumbers[tmpBondIndex] = tmpCandidateRuleNumbers[tmpBondIndex];
+            } else {
+                tmpIsCleaved[tmpBondIndex] = false;
+            }
+        }
+        return tmpSelectedRuleNumbers;
+    }
     //</editor-fold>
     //
     //<editor-fold desc="Private methods">
@@ -1726,6 +2379,58 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
                 tmpRoot.children.add(tmpComponentNode);
                 tmpSearch.assemble(tmpComponentNode);
             }
+        }
+        return tmpRoot;
+    }
+    //
+    /**
+     * Creates the route of the given prepared molecule in the single-pass variant, see
+     * {@link #buildRoute(IAtomContainer)}: the children of the root are the connected parts of the molecule after the
+     * cleavage of all selected bonds, if there is more than one.
+     *
+     * @param aPreparedMolecule molecule prepared with {@link #prepareMolecule(IAtomContainer)}; it becomes the fragment
+     *                          of the root and must not be altered afterwards
+     * @return the root node of the route
+     * @throws CloneNotSupportedException if the molecule cannot be cloned for the canonical rank of the bonds
+     */
+    private CRUSHRouteNode createSinglePassRoute(IAtomContainer aPreparedMolecule) throws CloneNotSupportedException {
+        int[] tmpBondLabels = this.selectSinglePassBonds(aPreparedMolecule);
+        int tmpAtomCount = aPreparedMolecule.getAtomCount();
+        Route tmpRoute = new Route(aPreparedMolecule, tmpBondLabels,
+                this.saturationSetting.get().equals(SaturationOption.HYDROGEN_SATURATION), true);
+        BitSet tmpAllAtoms = new BitSet(tmpAtomCount);
+        tmpAllAtoms.set(0, tmpAtomCount);
+        CRUSHRouteNode tmpRoot = new CRUSHRouteNode(tmpRoute, tmpAllAtoms, null);
+        //the final fragments are the connected components of the molecule without the cleaved bonds
+        List<List<Integer>> tmpNeighbourLists = new ArrayList<>(tmpAtomCount);
+        for (int i = 0; i < tmpAtomCount; i++) {
+            tmpNeighbourLists.add(new ArrayList<>(4));
+        }
+        for (IBond tmpBond : aPreparedMolecule.bonds()) {
+            if (tmpBondLabels[tmpBond.getIndex()] == 0) {
+                int tmpBegin = tmpBond.getBegin().getIndex();
+                int tmpEnd = tmpBond.getEnd().getIndex();
+                tmpNeighbourLists.get(tmpBegin).add(tmpEnd);
+                tmpNeighbourLists.get(tmpEnd).add(tmpBegin);
+            }
+        }
+        int[][] tmpAdjacencyList = new int[tmpAtomCount][];
+        for (int i = 0; i < tmpAtomCount; i++) {
+            tmpAdjacencyList[i] = tmpNeighbourLists.get(i).stream().mapToInt(Integer::intValue).toArray();
+        }
+        ConnectedComponents tmpConnectedComponents = new ConnectedComponents(tmpAdjacencyList);
+        if (tmpConnectedComponents.nComponents() < 2) {
+            return tmpRoot;
+        }
+        int[] tmpComponentLabels = tmpConnectedComponents.components();
+        for (int tmpComponent = 1; tmpComponent <= tmpConnectedComponents.nComponents(); tmpComponent++) {
+            BitSet tmpAtomSet = new BitSet(tmpAtomCount);
+            for (int i = 0; i < tmpAtomCount; i++) {
+                if (tmpComponentLabels[i] == tmpComponent) {
+                    tmpAtomSet.set(i);
+                }
+            }
+            tmpRoot.children.add(new CRUSHRouteNode(tmpRoute, tmpAtomSet, tmpRoot));
         }
         return tmpRoot;
     }
@@ -2038,6 +2743,173 @@ public class CRUSHFragmenter implements IMoleculeFragmenter {
             }
         }
         return tmpCount;
+    }
+    //
+    /**
+     * Determines the number of heavy atoms (no hydrogen and pseudo atoms) and of attachment points of the part of the
+     * molecule that contains the given atom when the marked bonds are cleaved. The attachment points are the cleaved
+     * bonds at the atoms of the part and the pseudo atoms of the part. The search stops as soon as the given number of
+     * heavy atoms is reached; the number of attachment points is then incomplete.
+     *
+     * @param aMolecule the molecule
+     * @param aStartIndex index of an atom of the part
+     * @param anAdjacencyList adjacency list of the molecule
+     * @param anEdgeToBondMap map of the edges of the adjacency list to the bonds
+     * @param anIsCleavedArray cleaved bonds by bond index
+     * @param aHeavyAtomLimit number of heavy atoms at which the search stops
+     * @return the number of heavy atoms (at most the limit) and the number of attachment points
+     */
+    private static int[] measurePart(IAtomContainer aMolecule, int aStartIndex, int[][] anAdjacencyList,
+                                     GraphUtil.EdgeToBondMap anEdgeToBondMap, boolean[] anIsCleavedArray,
+                                     int aHeavyAtomLimit) {
+        boolean[] tmpIsVisited = new boolean[anAdjacencyList.length];
+        Deque<Integer> tmpQueue = new ArrayDeque<>();
+        tmpQueue.add(aStartIndex);
+        tmpIsVisited[aStartIndex] = true;
+        int tmpHeavyAtoms = 0;
+        int tmpAttachmentPoints = 0;
+        while (!tmpQueue.isEmpty()) {
+            int tmpAtomIndex = tmpQueue.poll();
+            IAtom tmpAtom = aMolecule.getAtom(tmpAtomIndex);
+            if (tmpAtom instanceof IPseudoAtom) {
+                tmpAttachmentPoints++;
+            } else if (tmpAtom.getAtomicNumber() != null && tmpAtom.getAtomicNumber() > 1) {
+                tmpHeavyAtoms++;
+                if (tmpHeavyAtoms >= aHeavyAtomLimit) {
+                    break;
+                }
+            }
+            for (int tmpNeighbour : anAdjacencyList[tmpAtomIndex]) {
+                if (anIsCleavedArray[anEdgeToBondMap.get(tmpAtomIndex, tmpNeighbour).getIndex()]) {
+                    tmpAttachmentPoints++;
+                } else if (!tmpIsVisited[tmpNeighbour]) {
+                    tmpIsVisited[tmpNeighbour] = true;
+                    tmpQueue.add(tmpNeighbour);
+                }
+            }
+        }
+        return new int[] {tmpHeavyAtoms, tmpAttachmentPoints};
+    }
+    //
+    /**
+     * Checks whether the part of the molecule that contains the given atom is a valid fragment of the single-pass
+     * variant when the marked bonds are cleaved: a part with one attachment point needs at least the minimum fragment
+     * size of heavy atoms, a part with two or more attachment points at least the minimum linker size, see
+     * {@link #measurePart(IAtomContainer, int, int[][], GraphUtil.EdgeToBondMap, boolean[], int)}.
+     *
+     * @param aMolecule the molecule
+     * @param aStartIndex index of an atom of the part
+     * @param anAdjacencyList adjacency list of the molecule
+     * @param anEdgeToBondMap map of the edges of the adjacency list to the bonds
+     * @param anIsCleavedArray cleaved bonds by bond index
+     * @param aMinimumSize minimum number of heavy atoms of a part with one attachment point
+     * @param aMinimumLinkerSize minimum number of heavy atoms of a part with two or more attachment points, at least the
+     *                           minimum size
+     * @return true if the part is valid
+     */
+    private static boolean isValidPart(IAtomContainer aMolecule, int aStartIndex, int[][] anAdjacencyList,
+                                       GraphUtil.EdgeToBondMap anEdgeToBondMap, boolean[] anIsCleavedArray,
+                                       int aMinimumSize, int aMinimumLinkerSize) {
+        int[] tmpMeasures = CRUSHFragmenter.measurePart(aMolecule, aStartIndex, anAdjacencyList, anEdgeToBondMap,
+                anIsCleavedArray, aMinimumLinkerSize);
+        //a part with at least the minimum linker size is valid with any number of attachment points
+        return tmpMeasures[0] >= aMinimumLinkerSize || (tmpMeasures[1] <= 1 && tmpMeasures[0] >= aMinimumSize);
+    }
+    //
+    /**
+     * Returns canonical labels of the atoms of the given prepared molecule, which do not depend on the order of its
+     * atoms and bonds (CDK class {@link Canon}). The initial invariants are the element, formal charge, implicit
+     * hydrogen count, number of neighbours, mass number, aromaticity, number of radical electrons, the numbers of
+     * double, triple, and aromatic bonds, and whether the atom is a pseudo atom; unlike the basic invariants of the
+     * CDK, they distinguish atoms that differ only in the orders of their bonds. Stereochemistry is not considered.
+     *
+     * @param aMolecule the prepared molecule
+     * @param anAdjacencyList adjacency list of the molecule
+     * @return canonical labels by atom index
+     */
+    private static long[] createCanonicalLabels(IAtomContainer aMolecule, int[][] anAdjacencyList) {
+        int tmpAtomCount = aMolecule.getAtomCount();
+        int[] tmpDoubleBonds = new int[tmpAtomCount];
+        int[] tmpTripleBonds = new int[tmpAtomCount];
+        int[] tmpAromaticBonds = new int[tmpAtomCount];
+        for (IBond tmpBond : aMolecule.bonds()) {
+            int[] tmpCounts;
+            if (tmpBond.isAromatic()) {
+                tmpCounts = tmpAromaticBonds;
+            } else if (tmpBond.getOrder() == IBond.Order.DOUBLE) {
+                tmpCounts = tmpDoubleBonds;
+            } else if (tmpBond.getOrder() == IBond.Order.TRIPLE) {
+                tmpCounts = tmpTripleBonds;
+            } else {
+                continue;
+            }
+            tmpCounts[tmpBond.getBegin().getIndex()]++;
+            tmpCounts[tmpBond.getEnd().getIndex()]++;
+        }
+        int[] tmpRadicalElectrons = new int[tmpAtomCount];
+        for (ISingleElectron tmpSingleElectron : aMolecule.singleElectrons()) {
+            tmpRadicalElectrons[tmpSingleElectron.getAtom().getIndex()]++;
+        }
+        long[] tmpInvariants = new long[tmpAtomCount];
+        for (int i = 0; i < tmpAtomCount; i++) {
+            IAtom tmpAtom = aMolecule.getAtom(i);
+            int tmpCharge = Objects.requireNonNullElse(tmpAtom.getFormalCharge(), 0);
+            int tmpHydrogenCount = Objects.requireNonNullElse(tmpAtom.getImplicitHydrogenCount(), 0);
+            int tmpMassNumber = Objects.requireNonNullElse(tmpAtom.getMassNumber(), 0);
+            long tmpInvariant = Objects.requireNonNullElse(tmpAtom.getAtomicNumber(), 0) & 0xFF;
+            tmpInvariant = (tmpInvariant << 6) | ((tmpCharge + 32) & 0x3F);
+            tmpInvariant = (tmpInvariant << 4) | Math.min(tmpHydrogenCount, 15);
+            tmpInvariant = (tmpInvariant << 6) | Math.min(anAdjacencyList[i].length, 63);
+            tmpInvariant = (tmpInvariant << 10) | Math.min(tmpMassNumber, 1023);
+            tmpInvariant = (tmpInvariant << 1) | (tmpAtom.isAromatic() ? 1 : 0);
+            tmpInvariant = (tmpInvariant << 2) | Math.min(tmpRadicalElectrons[i], 3);
+            tmpInvariant = (tmpInvariant << 3) | Math.min(tmpDoubleBonds[i], 7);
+            tmpInvariant = (tmpInvariant << 2) | Math.min(tmpTripleBonds[i], 3);
+            tmpInvariant = (tmpInvariant << 3) | Math.min(tmpAromaticBonds[i], 7);
+            tmpInvariant = (tmpInvariant << 1) | (tmpAtom instanceof IPseudoAtom ? 1 : 0);
+            tmpInvariants[i] = tmpInvariant;
+        }
+        return Canon.label(aMolecule, anAdjacencyList, tmpInvariants);
+    }
+    //
+    /**
+     * Returns the first three sort keys of the processing order of the single-pass variant for the given candidate bond:
+     * the group priority and number of its rule and the negated size of the smaller part of its cleavage alone.
+     *
+     * @param aBond candidate bond
+     * @param aRuleNumberArray rule numbers of the candidate bonds by bond index
+     * @param aSmallerPartSizeArray sizes of the smaller parts of the cleavages of the candidate bonds alone, by bond
+     *                              index
+     * @return the three keys
+     */
+    private static List<Integer> firstSortKeys(IBond aBond, int[] aRuleNumberArray, int[] aSmallerPartSizeArray) {
+        int tmpRuleNumber = aRuleNumberArray[aBond.getIndex()];
+        return List.of(CRUSHFragmenter.getRuleGroupPriority(tmpRuleNumber), tmpRuleNumber,
+                -aSmallerPartSizeArray[aBond.getIndex()]);
+    }
+    //
+    /**
+     * Returns a key of the given bond of the prepared molecule that does not depend on the order of its atoms and bonds
+     * and considers stereochemistry: the sorted unique SMILES codes with stereochemistry (as MORTAR creates them) of the
+     * fragments that result from the cleavage of the bond alone, with link atoms without rule numbers. Constitutionally
+     * equivalent bonds with different configurations, e.g. the two ester bonds of a meso diester, have different keys.
+     *
+     * @param aPreparedMolecule the prepared molecule, it is not altered
+     * @param aBondIndex index of the bond
+     * @return the key
+     * @throws CloneNotSupportedException if the molecule cannot be cloned
+     */
+    private static String createSplitKey(IAtomContainer aPreparedMolecule, int aBondIndex)
+            throws CloneNotSupportedException {
+        IAtomContainer tmpClone = aPreparedMolecule.clone();
+        List<CRUSHBond> tmpBonds = new ArrayList<>(1);
+        tmpBonds.add(new CRUSHBond(tmpClone.getBond(aBondIndex), 0));
+        List<String> tmpKeys = new ArrayList<>(2);
+        for (IAtomContainer tmpFragment : CRUSHFragmenter.cleaveBonds(tmpClone, tmpBonds, false)) {
+            tmpKeys.add(Objects.requireNonNullElse(ChemUtil.createUniqueSmiles(tmpFragment, true), ""));
+        }
+        Collections.sort(tmpKeys);
+        return String.join(" ", tmpKeys);
     }
     //
     /**

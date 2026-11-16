@@ -23,9 +23,24 @@ is independent code that uses the RDKit; it does not contain or run code of the 
    atoms (e.g. O=[PH](O)C gives O=PO), whereas CRUSHFragmenter adds one hydrogen atom per order of a cleaved bond.
 3. mortar_route: the exact search for the decomposition with the maximum number of final fragments (memoised per atom
    set, at most a given number of evaluated fragments), with the list of all optimal final fragment multisets.
+4. single_pass: the single-pass variant of CRUSHFragmenter (an adaptation in MORTAR, not the published procedure),
+   written independently of the Java code from its definition: the rules of the enabled rule groups are matched on the
+   intact molecule, matches with a protected atom are dropped, every cleaved bond of a remaining match that is not a
+   ring bond is a candidate with the rule that comes first by group priority (functional group rules 1, aromatic ring
+   bond rules 2, aliphatic skeleton rules 3) and rule number. The candidates are processed in the order of group
+   priority, rule number, and size of the smaller part of their cleavage alone (larger first); a candidate is accepted
+   if both parts of the fragment it splits are valid (one attachment point: at least the minimum fragment size of heavy
+   atoms; two or more: at least the larger of the minimum fragment size and the minimum linker size; attachment points
+   are the accepted bonds and the pseudo atoms of the part). The fourth sort key of CRUSHFragmenter, a canonical rank of
+   the bond, depends on the toolkit, so every result that the first three keys allow is listed: the candidates with
+   equal keys form a group, and processing a group in any order from a given set of accepted bonds yields exactly the
+   maximal valid extensions of that set by bonds of the group (validity cannot be gained by cleaving more bonds and is
+   kept when valid parts are joined), which are enumerated. The fragments are written with link atoms that carry the
+   rule number as isotope.
 
 Usage: python -I CRUSH_Reference_Generator.py steps <input> <output .tsv> [options]
        python -I CRUSH_Reference_Generator.py routes <input> <output .tsv> [options]
+       python -I CRUSH_Reference_Generator.py singlepass <input> <output .tsv> [options]
   input                  .sdf, .smi (SMILES and name per line), or .tsv (rule cases: name, SMILES, rule, expectation,
                          description; lines starting with '#' are ignored)
   --every N              use only every N-th molecule of the input
@@ -33,6 +48,11 @@ Usage: python -I CRUSH_Reference_Generator.py steps <input> <output .tsv> [optio
   --intermediates N      (steps) add up to N intermediate fragments of the route search per molecule (default 0)
   --budget N             maximum number of evaluated fragments per molecule in the route search (default 3000)
   --rules PATH           rule file (default: CRUSH_SMIRKS_Rules.txt next to this script)
+  --minimum-size N       (singlepass) minimum fragment size (default 5)
+  --minimum-linker-size N
+                         (singlepass) minimum size of fragments with two or more attachment points (default 6)
+  --rule-groups LIST     (singlepass) priorities of the enabled rule groups, e.g. 1,2,3 (default 1,2: functional group
+                         and aromatic ring bond rules)
   --comment TEXT         add a comment line to the header of the output, e.g. source and licence of the input data
   --allow-rdkit-version  run with another RDKit version than REFERENCE_RDKIT_VERSION
 
@@ -47,6 +67,8 @@ The reference files in the MORTAR test resources were generated with RDKit 2026.
       --intermediates 20 --comment "..."
   python -I CRUSH_Reference_Generator.py routes Tutorial/biofacquim-06-2025.sdf CRUSH_Reference_Fragments_BIOFACQUIM.tsv
       --comment "..."
+  python -I CRUSH_Reference_Generator.py singlepass Tutorial/biofacquim-06-2025.sdf
+      CRUSH_Reference_SinglePass_BIOFACQUIM.tsv --comment "..."
 """
 import ast
 import hashlib
@@ -68,6 +90,18 @@ MINIMUM_FRAGMENT_SIZE = 3
 DEFAULT_BUDGET = 3000
 MAXIMUM_OPTIMAL_SETS = 50
 MAXIMUM_OPTIMAL_CUT_SETS = 2000
+# rule groups of the single-pass variant (specification of CRUSHFragmenter) and their priorities
+FUNCTIONAL_GROUP_RULES = (1, 2, 3, 4, 5, 6, 7, 9, 11, 13, 17, 18, 19, 20, 21, 27, 28)
+AROMATIC_RING_BOND_RULES = (10, 12, 14, 15, 22, 23, 24, 29, 30, 31, 32, 33)
+ALIPHATIC_SKELETON_RULES = (8, 16, 25, 26)
+RULE_GROUP_PRIORITY = {**{number: 1 for number in FUNCTIONAL_GROUP_RULES},
+                       **{number: 2 for number in AROMATIC_RING_BOND_RULES},
+                       **{number: 3 for number in ALIPHATIC_SKELETON_RULES}}
+SINGLE_PASS_MINIMUM_FRAGMENT_SIZE = 5
+SINGLE_PASS_MINIMUM_LINKER_SIZE = 6
+SINGLE_PASS_RULE_GROUPS = (1, 2)
+MAXIMUM_SINGLE_PASS_RESULTS = 50
+MAXIMUM_SINGLE_PASS_CUT_SETS = 2000
 
 
 class Rule:
@@ -416,6 +450,161 @@ def mortar_route(mol, rules, budget=DEFAULT_BUDGET):
 
 
 # ----------------------------------------------------------------------------------------------------------------------
+# part 4: single-pass variant, all results that the toolkit-independent processing order allows
+# ----------------------------------------------------------------------------------------------------------------------
+
+class SinglePass:
+    """the single-pass variant of CRUSHFragmenter for one (sanitised) molecule"""
+
+    def __init__(self, mol, rules, minimum_size, minimum_linker_size, groups):
+        self.mol = mol
+        self.minimum_size = minimum_size
+        self.linker_limit = max(minimum_size, minimum_linker_size)
+        self.is_heavy = [atom.GetAtomicNum() > 1 for atom in mol.GetAtoms()]
+        self.is_dummy = [atom.GetAtomicNum() == 0 for atom in mol.GetAtoms()]
+        self.neighbours = [[(bond.GetOtherAtomIdx(atom.GetIdx()), bond.GetIdx()) for bond in atom.GetBonds()]
+                           for atom in mol.GetAtoms()]
+        self.candidates = self.find_candidates(rules, groups)
+
+    def find_candidates(self, rules, groups):
+        """{bond index: rule number} of the candidate bonds: cleaved bonds of the matches of the enabled rules without
+        protected atoms that are not ring bonds, with the rule that comes first by group priority and rule number"""
+        protected = protected_atoms(self.mol)
+        enabled = sorted((rule for rule in rules if RULE_GROUP_PRIORITY[rule.number] in groups),
+                         key=lambda rule: (RULE_GROUP_PRIORITY[rule.number], rule.number))
+        candidates = {}
+        for rule in enabled:
+            for match in self.mol.GetSubstructMatches(rule.query, uniquify=False, useChirality=False,
+                                                      maxMatches=10000000):
+                if any(index in protected for index in match):
+                    continue
+                for a, b in rule.cleaved_query_pairs:
+                    bond = self.mol.GetBondBetweenAtoms(match[a], match[b])
+                    if not bond.IsInRing() and bond.GetIdx() not in candidates:
+                        candidates[bond.GetIdx()] = rule.number
+        return candidates
+
+    def part(self, start, cut):
+        """(heavy atoms, attachment points) of the part that contains the given atom if the given bonds are cleaved;
+        attachment points are the cleaved bonds at the atoms of the part and its dummy (pseudo) atoms"""
+        seen = {start}
+        stack = [start]
+        heavy = 0
+        attachments = 0
+        while stack:
+            current = stack.pop()
+            heavy += self.is_heavy[current]
+            attachments += self.is_dummy[current]
+            for neighbour, bond in self.neighbours[current]:
+                if bond in cut:
+                    attachments += 1
+                elif neighbour not in seen:
+                    seen.add(neighbour)
+                    stack.append(neighbour)
+        return heavy, attachments
+
+    def is_valid(self, cut, bond):
+        """whether both parts of the fragment that the bond splits are valid if the bond and the given bonds are
+        cleaved"""
+        extended = cut | {bond}
+        cleaved = self.mol.GetBondWithIdx(bond)
+        for start in (cleaved.GetBeginAtomIdx(), cleaved.GetEndAtomIdx()):
+            heavy, attachments = self.part(start, extended)
+            if heavy < (self.linker_limit if attachments >= 2 else self.minimum_size):
+                return False
+        return True
+
+    def ordered_groups(self):
+        """the candidates grouped by the toolkit-independent sort keys (group priority, rule number, size of the smaller
+        part of the cleavage of the bond alone, larger first), in the processing order"""
+        keyed = {}
+        for bond, number in self.candidates.items():
+            cleaved = self.mol.GetBondWithIdx(bond)
+            smaller = min(self.part(cleaved.GetBeginAtomIdx(), {bond})[0], self.part(cleaved.GetEndAtomIdx(), {bond})[0])
+            keyed.setdefault((RULE_GROUP_PRIORITY[number], number, -smaller), []).append(bond)
+        return [sorted(keyed[key]) for key in sorted(keyed)]
+
+    def maximal_extensions(self, cut, group, limit):
+        """all maximal sets of accepted bonds after processing the bonds of the group in any order, starting from the
+        given accepted bonds; None if there are more than the limit. An excluded bond must be invalid at the end; since
+        cleaving more bonds never makes a bond valid again, a branch is pruned as soon as an excluded bond stays valid
+        even if all undecided bonds of the group are cleaved."""
+        results = set()
+
+        def search(index, current, excluded):
+            if len(results) > limit:
+                return
+            undecided = frozenset(group[index:])
+            if any(self.is_valid(current | undecided, bond) for bond in excluded):
+                return
+            if index == len(group):
+                results.add(current)
+                return
+            bond = group[index]
+            if self.is_valid(current, bond):
+                search(index + 1, current | {bond}, excluded)
+                search(index + 1, current, excluded + [bond])
+            else:
+                search(index + 1, current, excluded)
+
+        search(0, frozenset(cut), [])
+        return None if len(results) > limit else results
+
+    def cut_sets(self, limit):
+        """all sets of cleaved bonds that the processing order allows, None if there are more than the limit"""
+        states = {frozenset()}
+        for group in self.ordered_groups():
+            extended = set()
+            for state in states:
+                extensions = self.maximal_extensions(state, group, limit)
+                if extensions is None:
+                    return None
+                extended |= extensions
+                if len(extended) > limit:
+                    return None
+            states = extended
+        return states
+
+
+def link_atom_fragments(mol, labels):
+    """sorted canonical SMILES (with stereochemistry) of the fragments after the cleavage of the given bonds ({bond
+    index: rule number}), with link atoms (dummy atoms) that carry the rule number as isotope; the hydrogen counts of
+    the atoms are kept"""
+    frozen = Chem.RWMol(mol)
+    for atom in frozen.GetAtoms():
+        hydrogens = atom.GetTotalNumHs()
+        atom.SetNoImplicit(True)
+        atom.SetNumExplicitHs(hydrogens)
+    frozen = frozen.GetMol()
+    if labels:
+        indices = sorted(labels)
+        fragmented = Chem.FragmentOnBonds(frozen, indices, addDummies=True,
+                                          dummyLabels=[(labels[index], labels[index]) for index in indices])
+    else:
+        fragmented = Chem.Mol(frozen)
+    Chem.SanitizeMol(fragmented)
+    Chem.AssignStereochemistry(fragmented, cleanIt=True, force=True)
+    return tuple(sorted(Chem.MolToSmiles(fragment) for fragment in Chem.GetMolFrags(fragmented, asMols=True,
+                                                                                     sanitizeFrags=False)))
+
+
+def single_pass(mol, rules, minimum_size, minimum_linker_size, groups):
+    """returns (number of candidate bonds, number of allowed cut sets or None, fragment sets or None if there are more
+    than MAXIMUM_SINGLE_PASS_RESULTS or more than MAXIMUM_SINGLE_PASS_CUT_SETS cut sets) for the (sanitised)
+    molecule"""
+    variant = SinglePass(mol, rules, minimum_size, minimum_linker_size, groups)
+    cut_sets = variant.cut_sets(MAXIMUM_SINGLE_PASS_CUT_SETS)
+    if cut_sets is None:
+        return len(variant.candidates), None, None
+    results = set()
+    for cut_set in cut_sets:
+        results.add(link_atom_fragments(mol, {bond: variant.candidates[bond] for bond in cut_set}))
+        if len(results) > MAXIMUM_SINGLE_PASS_RESULTS:
+            return len(variant.candidates), len(cut_sets), None
+    return len(variant.candidates), len(cut_sets), sorted(results)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 # input and output
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -607,9 +796,21 @@ def header(out, mode, args, rules, extra):
         out.write('# %s\n' % line)
 
 
+def single_pass_header(out, args, minimum_size, minimum_linker_size, groups, extra):
+    out.write('# CRUSH reference single pass (single-pass variant of CRUSHFragmenter of MORTAR, 33 rules of'
+              ' CRUSH_SMIRKS_Rules.txt, rule groups %s, minimum fragment size %d, minimum linker size %d, fused ring'
+              ' atoms and their neighbours protected) generated by CRUSH_Reference_Generator.py with RDKit %s from %s\n'
+              % (','.join(map(str, groups)), minimum_size, minimum_linker_size, rdBase.rdkitVersion,
+                 os.path.basename(args[1])))
+    if '--comment' in args:
+        out.write('# %s\n' % args[args.index('--comment') + 1])
+    for line in extra:
+        out.write('# %s\n' % line)
+
+
 def main():
     args = sys.argv[1:]
-    if len(args) < 3 or args[0] not in ('steps', 'routes'):
+    if len(args) < 3 or args[0] not in ('steps', 'routes', 'singlepass'):
         print(__doc__)
         sys.exit(1)
     if rdBase.rdkitVersion != REFERENCE_RDKIT_VERSION and '--allow-rdkit-version' not in args:
@@ -661,6 +862,46 @@ def main():
         with open(args[2], 'w', encoding='utf-8') as out:
             header(out, 'steps', args, rules, extra)
             out.write('# name\tSMILES\trecord\trule\tcategory\tatoms\tproducts\n')
+            out.write(body.getvalue())
+    elif args[0] == 'singlepass':
+        import time
+        minimum_size = int(args[args.index('--minimum-size') + 1]) if '--minimum-size' in args \
+            else SINGLE_PASS_MINIMUM_FRAGMENT_SIZE
+        minimum_linker_size = int(args[args.index('--minimum-linker-size') + 1]) if '--minimum-linker-size' in args \
+            else SINGLE_PASS_MINIMUM_LINKER_SIZE
+        groups = tuple(int(group) for group in args[args.index('--rule-groups') + 1].split(',')) \
+            if '--rule-groups' in args else SINGLE_PASS_RULE_GROUPS
+        body = io.StringIO()
+        start = time.time()
+        for name, smiles, case in molecules(args[1], every, maximum):
+            mol = Chem.MolFromSmiles(smiles)
+            if mol is None:
+                continue
+            smiles = Chem.MolToSmiles(mol)
+            mol = Chem.MolFromSmiles(smiles)
+            molecule_count += 1
+            candidate_count, cut_set_count, results = single_pass(mol, rules, minimum_size, minimum_linker_size, groups)
+            if results is None:
+                counts['above the cap'] += 1
+            elif len(results) > 1:
+                counts['several results'] += 1
+            elif cut_set_count > 1:
+                counts['several cut sets, one result'] += 1
+            body.write('\t'.join([name, smiles, str(candidate_count), str(len(results)) if results is not None else '-',
+                                  ' '.join('.'.join(result) for result in results) if results is not None else ''])
+                       + '\n')
+        print('%.0f s' % (time.time() - start))
+        extra = ['molecules: %d, with more than one possible result: %d, with more than %d results or %d sets of cleaved'
+                 ' bonds (not listed): %d, with several sets of cleaved bonds that give the same fragments: %d'
+                 % (molecule_count, counts['several results'], MAXIMUM_SINGLE_PASS_RESULTS,
+                    MAXIMUM_SINGLE_PASS_CUT_SETS, counts['above the cap'], counts['several cut sets, one result']),
+                 'the fourth sort key of CRUSHFragmenter (canonical rank of the bond) depends on the toolkit, so all'
+                 ' results that the first three keys (group priority, rule number, size of the smaller part, larger'
+                 ' first) allow are listed']
+        with open(args[2], 'w', encoding='utf-8') as out:
+            single_pass_header(out, args, minimum_size, minimum_linker_size, groups, extra)
+            out.write('# name\tSMILES\tnumber of candidate bonds\tnumber of possible results\tpossible results (fragments'
+                      ' with link atoms carrying the rule number as isotope, results separated by spaces)\n')
             out.write(body.getvalue())
     else:
         import time

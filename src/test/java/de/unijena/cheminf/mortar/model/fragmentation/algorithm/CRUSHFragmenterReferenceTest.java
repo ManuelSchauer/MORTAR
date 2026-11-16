@@ -25,6 +25,8 @@
 
 package de.unijena.cheminf.mortar.model.fragmentation.algorithm;
 
+import de.unijena.cheminf.mortar.model.util.ChemUtil;
+
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
@@ -34,6 +36,7 @@ import org.openscience.cdk.graph.GraphUtil;
 import org.openscience.cdk.interfaces.IAtom;
 import org.openscience.cdk.interfaces.IAtomContainer;
 import org.openscience.cdk.interfaces.IBond;
+import org.openscience.cdk.interfaces.IPseudoAtom;
 import org.openscience.cdk.isomorphism.AtomMatcher;
 import org.openscience.cdk.isomorphism.BondMatcher;
 import org.openscience.cdk.isomorphism.Pattern;
@@ -51,6 +54,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.BitSet;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -69,9 +73,14 @@ import java.util.Objects;
  *     <li>routes (file CRUSH_Reference_Fragments_BIOFACQUIM.tsv): for every molecule whose search is exhaustive in both
  *     implementations, the number of final fragments must be the maximum found by the exact search of the RDKit
  *     implementation, and the final fragments (hydrogen saturation) must be one of the optimal fragment sets.</li>
+ *     <li>single pass (file CRUSH_Reference_SinglePass_BIOFACQUIM.tsv): for every molecule, the fragments of the
+ *     single-pass variant with default settings (with link atoms carrying the rule numbers) must be one of the results
+ *     that the toolkit-independent part of its processing order allows, as determined by an independent RDKit
+ *     implementation.</li>
  * </ul>
- * For the comparison with stereochemistry, stereo elements of atoms that are not stereogenic according to the CDK are
- * removed on both sides, because the RDKit keeps some of them.
+ * The steps, routes, and rule cases refer to the original variant with the minimum fragment size 3 of the
+ * publication. For the comparison with stereochemistry, stereo elements of atoms that are not stereogenic according to
+ * the CDK are removed on both sides, because the RDKit keeps some of them.
  *
  * <p>The BIOFACQUIM data set (natural products from Mexico, CC BY 4.0, see Tutorial/BIOFACQUIM-description-licence.txt)
  * is part of the test resources. A further steps reference file, e.g. for a sample of ChEMBL, can be given with the
@@ -90,6 +99,10 @@ public class CRUSHFragmenterReferenceTest {
      * Name of the routes reference file of the BIOFACQUIM data set in the test resources.
      */
     private static final String BIOFACQUIM_ROUTES_FILE = "CRUSH_Reference_Fragments_BIOFACQUIM.tsv";
+    /**
+     * Name of the single-pass reference file of the BIOFACQUIM data set in the test resources.
+     */
+    private static final String BIOFACQUIM_SINGLE_PASS_FILE = "CRUSH_Reference_SinglePass_BIOFACQUIM.tsv";
     /**
      * Environment variable with the path of an additional steps reference file.
      */
@@ -167,6 +180,29 @@ public class CRUSHFragmenterReferenceTest {
     record RouteComparisonResult(int molecules, int bothExhaustive, int referenceExhaustive, int fragmenterExhaustive,
                                  int mismatches, int stereoMismatches, int uncheckedSets, int isomorphismMatches,
                                  long milliseconds, long slowestMilliseconds, String slowestMolecule, String report) {
+    }
+    //
+    /**
+     * Result of the comparison of a single-pass reference file.
+     *
+     * @param molecules number of compared molecules
+     * @param severalResults number of molecules for which the reference lists more than one possible result, i.e. whose
+     *                       result depends on the canonical rank of the bonds (fourth sort key of the processing order)
+     * @param uncheckedMolecules number of molecules with more possible results than listed, which are not compared
+     * @param mismatches number of molecules whose fragments are not one of the possible results (without
+     *                   stereochemistry, with the rule numbers of the link atoms)
+     * @param stereoMismatches number of molecules whose fragments differ from the possible results only in
+     *                         stereochemistry
+     * @param paraStereocentreDifferences number of molecules whose fragments differ from a possible result only in the
+     *                                    configuration of potential (para) stereocentres (reported, not asserted)
+     * @param isomorphismMatches number of molecules whose fragments have different unique SMILES codes in the CDK than
+     *                           the possible result they are isomorphic to
+     * @param milliseconds time spent in the fragmentation of all molecules
+     * @param report description of the first mismatches
+     */
+    record SinglePassComparisonResult(int molecules, int severalResults, int uncheckedMolecules, int mismatches,
+                                      int stereoMismatches, int paraStereocentreDifferences, int isomorphismMatches,
+                                      long milliseconds, String report) {
     }
     //
     /**
@@ -249,7 +285,8 @@ public class CRUSHFragmenterReferenceTest {
                 CRUSHFragmenterReferenceTest.BIOFACQUIM_STEPS_FILE)) {
             Objects.requireNonNull(tmpStream, "Reference file not found.");
             tmpResult = CRUSHFragmenterReferenceTest.compareSteps(new BufferedReader(new InputStreamReader(tmpStream,
-                    StandardCharsets.UTF_8)), new CRUSHFragmenter(), CRUSHFragmenterReferenceTest.MAXIMUM_REPORTED_MISMATCHES);
+                    StandardCharsets.UTF_8)), CRUSHFragmenterTest.createOriginalFragmenter(),
+                    CRUSHFragmenterReferenceTest.MAXIMUM_REPORTED_MISMATCHES);
         }
         System.out.println(tmpResult.summary());
         Assertions.assertTrue(tmpResult.molecules() > 3500);
@@ -276,7 +313,7 @@ public class CRUSHFragmenterReferenceTest {
                 CRUSHFragmenterReferenceTest.BIOFACQUIM_ROUTES_FILE)) {
             Objects.requireNonNull(tmpStream, "Reference file not found.");
             tmpResult = CRUSHFragmenterReferenceTest.compareRoutes(new BufferedReader(new InputStreamReader(tmpStream,
-                    StandardCharsets.UTF_8)), new CRUSHFragmenter());
+                    StandardCharsets.UTF_8)), CRUSHFragmenterTest.createOriginalFragmenter());
         }
         System.out.println(tmpResult);
         Assertions.assertTrue(tmpResult.molecules() > 550);
@@ -286,19 +323,19 @@ public class CRUSHFragmenterReferenceTest {
     }
     //
     /**
-     * Checks the consistency of the routes and fragments of all molecules of the BIOFACQUIM data set with default
-     * settings (link atoms): every heavy atom of the molecule is contained in exactly one final fragment, there are two
-     * link atoms per cleaved bond carrying the rule number of the step, the final fragments are the leaves of the route,
-     * and all route fragments are the fragments of all nodes of the route except the root and the cleaved components of
-     * molecules with several connected components. For every tenth molecule whose search is exhaustive, the fragments
-     * must not depend on the order of the atoms and bonds of the input.
+     * Checks the consistency of the routes and fragments of the original variant for all molecules of the BIOFACQUIM
+     * data set, with link atoms: every heavy atom of the molecule is contained in exactly one final fragment, there are
+     * two link atoms per cleaved bond carrying the rule number of the step, the final fragments are the leaves of the
+     * route, and all route fragments are the fragments of all nodes of the route except the root and the cleaved
+     * components of molecules with several connected components. For every tenth molecule whose search is exhaustive,
+     * the fragments must not depend on the order of the atoms and bonds of the input.
      *
      * @throws Exception if anything goes wrong
      */
     @Test
     public void biofacquimRouteConsistencyTest() throws Exception {
-        CRUSHFragmenter tmpFragmenter = new CRUSHFragmenter();
-        CRUSHFragmenter tmpRouteFragmenter = new CRUSHFragmenter();
+        CRUSHFragmenter tmpFragmenter = CRUSHFragmenterTest.createOriginalFragmenter();
+        CRUSHFragmenter tmpRouteFragmenter = CRUSHFragmenterTest.createOriginalFragmenter();
         tmpRouteFragmenter.setFragmentOutputSetting(CRUSHFragmenter.FragmentOutputOption.ALL_ROUTE_FRAGMENTS);
         java.util.Random tmpRandom = new java.util.Random(42);
         int tmpMolecules = 0;
@@ -378,6 +415,98 @@ public class CRUSHFragmenterReferenceTest {
     }
     //
     /**
+     * Compares the fragments of the single-pass variant with default settings for all molecules of the BIOFACQUIM data
+     * set with the single-pass reference: the fragments (with link atoms carrying the rule numbers, and with
+     * stereochemistry) must be one of the results that the toolkit-independent sort keys of the processing order allow.
+     * For 4 molecules, the reference lists two possible results, i.e. their result depends on the canonical rank of the
+     * bonds. Toolkit differences are handled as in {@link #biofacquimStepReferenceTest()}.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    public void biofacquimSinglePassReferenceTest() throws Exception {
+        SinglePassComparisonResult tmpResult;
+        try (InputStream tmpStream = CRUSHFragmenterReferenceTest.class.getResourceAsStream(
+                CRUSHFragmenterReferenceTest.BIOFACQUIM_SINGLE_PASS_FILE)) {
+            Objects.requireNonNull(tmpStream, "Reference file not found.");
+            tmpResult = CRUSHFragmenterReferenceTest.compareSinglePassResults(new BufferedReader(new InputStreamReader(
+                    tmpStream, StandardCharsets.UTF_8)), new CRUSHFragmenter());
+        }
+        System.out.println(tmpResult);
+        Assertions.assertEquals(583, tmpResult.molecules());
+        Assertions.assertEquals(0, tmpResult.uncheckedMolecules(), tmpResult.toString());
+        Assertions.assertEquals(0, tmpResult.mismatches(), tmpResult.report());
+        Assertions.assertEquals(0, tmpResult.stereoMismatches(), tmpResult.report());
+        Assertions.assertEquals(4, tmpResult.severalResults(), tmpResult.toString());
+    }
+    //
+    /**
+     * Checks the fragments of the single-pass variant with default settings for all molecules of the BIOFACQUIM data
+     * set: every heavy atom of the molecule is contained in exactly one fragment; there are two link atoms per cleaved
+     * bond, carrying the rule number; every fragment with a link atom has at least the minimum fragment size of heavy
+     * atoms, and at least the minimum linker size if it has two or more attachment points; the fragments are the leaves
+     * of the route; and the fragments (unique SMILES codes with stereochemistry as MORTAR creates them, and with the rule
+     * numbers) do not depend on the order of the atoms and bonds of the input. The same is checked with hydrogen
+     * saturation (without link atoms) and with the aliphatic skeleton rules. With default settings, 259 of the 583
+     * molecules are fragmented.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    public void biofacquimSinglePassConsistencyTest() throws Exception {
+        CRUSHFragmenter tmpAliphaticFragmenter = new CRUSHFragmenter();
+        tmpAliphaticFragmenter.setAliphaticSkeletonRulesSetting(true);
+        CRUSHFragmenter tmpHydrogenFragmenter = new CRUSHFragmenter();
+        tmpHydrogenFragmenter.setSaturationSetting(CRUSHFragmenter.SaturationOption.HYDROGEN_SATURATION);
+        java.util.Random tmpRandom = new java.util.Random(42);
+        int tmpMolecules = 0;
+        int tmpFragmentedMolecules = 0;
+        int tmpIsomorphismMatches = 0;
+        try (InputStream tmpStream = CRUSHFragmenterReferenceTest.class.getResourceAsStream(
+                CRUSHFragmenterReferenceTest.BIOFACQUIM_SINGLE_PASS_FILE)) {
+            Objects.requireNonNull(tmpStream, "Reference file not found.");
+            BufferedReader tmpReader = new BufferedReader(new InputStreamReader(tmpStream, StandardCharsets.UTF_8));
+            String tmpLine;
+            while ((tmpLine = tmpReader.readLine()) != null) {
+                if (tmpLine.isBlank() || tmpLine.startsWith("#")) {
+                    continue;
+                }
+                String[] tmpColumns = tmpLine.split("\t", -1);
+                IAtomContainer tmpMolecule = CRUSHFragmenterTest.parse(tmpColumns[1]);
+                tmpMolecules++;
+                for (CRUSHFragmenter tmpFragmenter : new CRUSHFragmenter[] {new CRUSHFragmenter(), tmpAliphaticFragmenter,
+                        tmpHydrogenFragmenter}) {
+                    boolean tmpIsDefault = tmpFragmenter.getSaturationSetting() == CRUSHFragmenter.SaturationOption.LINK_ATOMS
+                            && !tmpFragmenter.getAliphaticSkeletonRulesSetting();
+                    int tmpCleavedBonds = CRUSHFragmenterReferenceTest.checkSinglePassFragments(tmpFragmenter, tmpMolecule,
+                            tmpColumns[0]);
+                    if (tmpIsDefault && tmpCleavedBonds > 0) {
+                        tmpFragmentedMolecules++;
+                    }
+                    List<IAtomContainer> tmpFragments = tmpFragmenter.fragmentMolecule(tmpMolecule);
+                    List<IAtomContainer> tmpShuffledFragments = tmpFragmenter.fragmentMolecule(
+                            CRUSHFragmenterTest.shuffle(tmpMolecule, tmpRandom));
+                    Assertions.assertEquals(CRUSHFragmenterTest.toCanonicalSmiles(tmpFragments, false),
+                            CRUSHFragmenterTest.toCanonicalSmiles(tmpShuffledFragments, false), tmpColumns[0]);
+                    if (!CRUSHFragmenterReferenceTest.createUniqueSmilesList(tmpFragments).equals(
+                            CRUSHFragmenterReferenceTest.createUniqueSmilesList(tmpShuffledFragments))) {
+                        //the unique SMILES codes of the CDK are not canonical for some fragments, see
+                        //CRUSHFragmenterTest.atomOrderInvarianceTest(), these are compared by isomorphism
+                        tmpIsomorphismMatches++;
+                        Assertions.assertTrue(CRUSHFragmenterTest.isIsomorphicWithStereo(tmpFragments, tmpShuffledFragments)
+                                && CRUSHFragmenterTest.isIsomorphicWithStereo(tmpShuffledFragments, tmpFragments),
+                                tmpColumns[0]);
+                    }
+                }
+            }
+        }
+        System.out.printf("%d molecules, %d fragmented with default settings, %d fragment lists of shuffled molecules"
+                + " matched by isomorphism%n", tmpMolecules, tmpFragmentedMolecules, tmpIsomorphismMatches);
+        Assertions.assertEquals(583, tmpMolecules);
+        Assertions.assertEquals(259, tmpFragmentedMolecules);
+    }
+    //
+    /**
      * Compares the steps with the steps reference file given by the environment variable
      * {@value #REFERENCE_FILE_ENVIRONMENT_VARIABLE}; skipped if it is not set. Large and diverse data sets contain a
      * few molecules for which the toolkits differ (e.g. in the aromaticity perception), so up to one mismatch per
@@ -405,7 +534,7 @@ public class CRUSHFragmenterReferenceTest {
         Assumptions.assumeTrue(tmpPath != null && !tmpPath.isBlank(), "No additional reference file given.");
         StepComparisonResult tmpResult;
         try (BufferedReader tmpReader = Files.newBufferedReader(Path.of(tmpPath), StandardCharsets.UTF_8)) {
-            tmpResult = CRUSHFragmenterReferenceTest.compareSteps(tmpReader, new CRUSHFragmenter(),
+            tmpResult = CRUSHFragmenterReferenceTest.compareSteps(tmpReader, CRUSHFragmenterTest.createOriginalFragmenter(),
                     CRUSHFragmenterReferenceTest.MAXIMUM_REPORTED_MISMATCHES);
         }
         System.out.println(tmpResult.summary());
@@ -433,7 +562,7 @@ public class CRUSHFragmenterReferenceTest {
         Assumptions.assumeTrue(tmpPath != null && !tmpPath.isBlank(), "No additional route reference file given.");
         RouteComparisonResult tmpResult;
         try (BufferedReader tmpReader = Files.newBufferedReader(Path.of(tmpPath), StandardCharsets.UTF_8)) {
-            tmpResult = CRUSHFragmenterReferenceTest.compareRoutes(tmpReader, new CRUSHFragmenter());
+            tmpResult = CRUSHFragmenterReferenceTest.compareRoutes(tmpReader, CRUSHFragmenterTest.createOriginalFragmenter());
         }
         System.out.println(tmpResult);
         Assertions.assertTrue(tmpResult.mismatches() + tmpResult.stereoMismatches() <= tmpResult.molecules() / 1000,
@@ -445,7 +574,7 @@ public class CRUSHFragmenterReferenceTest {
      * mode "steps") with the steps of the given fragmenter.
      *
      * @param aReader reader of the reference file
-     * @param aFragmenter fragmenter with the default settings of the reference
+     * @param aFragmenter fragmenter with the settings of the reference (original variant, minimum fragment size 3)
      * @param aMaximumReportedCount maximum number of reported mismatches
      * @return comparison result
      * @throws IOException if the file cannot be read
@@ -789,8 +918,8 @@ public class CRUSHFragmenterReferenceTest {
      * such molecules are counted separately.
      *
      * @param aReader reader of the reference file
-     * @param aFragmenter fragmenter with the default settings of the reference; its saturation setting is changed to
-     *                    hydrogen saturation
+     * @param aFragmenter fragmenter with the settings of the reference (original variant, minimum fragment size 3);
+     *                    its saturation setting is changed to hydrogen saturation
      * @return comparison result
      * @throws IOException if the file cannot be read
      */
@@ -903,6 +1032,223 @@ public class CRUSHFragmenterReferenceTest {
         return new RouteComparisonResult(tmpMolecules, tmpBothExhaustive, tmpReferenceExhaustive, tmpFragmenterExhaustive,
                 tmpMismatches, tmpStereoMismatches, tmpUncheckedSets, tmpIsomorphismMatches, tmpNanoseconds / 1_000_000L,
                 tmpSlowestNanoseconds / 1_000_000L, tmpSlowestMolecule, tmpReport.toString());
+    }
+    //
+    /**
+     * Compares the fragments of all molecules of the given single-pass reference file (format of
+     * CRUSH_Reference_Generator.py, mode "singlepass") with the fragments of the given fragmenter: they must be one of
+     * the listed possible results, compared by canonical SMILES codes with the rule numbers of the link atoms and by
+     * unique SMILES codes with stereochemistry (link atoms without rule numbers, stereo elements of atoms that are not
+     * stereogenic according to the CDK removed on both sides). As in the step comparison, fragments whose canonical
+     * SMILES codes differ are compared by graph isomorphism (non-canonical unique SMILES codes of the CDK), and
+     * differences only in the configuration of potential (para) stereocentres are counted separately.
+     *
+     * @param aReader reader of the reference file
+     * @param aFragmenter fragmenter with the settings of the reference (single-pass variant, link atoms)
+     * @return comparison result
+     * @throws IOException if the file cannot be read
+     */
+    static SinglePassComparisonResult compareSinglePassResults(BufferedReader aReader, CRUSHFragmenter aFragmenter)
+            throws IOException {
+        int tmpMolecules = 0;
+        int tmpSeveralResults = 0;
+        int tmpUncheckedMolecules = 0;
+        int tmpMismatches = 0;
+        int tmpStereoMismatches = 0;
+        int tmpParaStereocentreDifferences = 0;
+        int tmpIsomorphismMatches = 0;
+        long tmpNanoseconds = 0;
+        StringBuilder tmpReport = new StringBuilder();
+        String tmpLine;
+        while ((tmpLine = aReader.readLine()) != null) {
+            if (tmpLine.isBlank() || tmpLine.startsWith("#")) {
+                continue;
+            }
+            String[] tmpColumns = tmpLine.split("\t", -1);
+            tmpMolecules++;
+            if (tmpColumns[3].equals("-")) {
+                tmpUncheckedMolecules++;
+                continue;
+            }
+            if (Integer.parseInt(tmpColumns[3]) > 1) {
+                tmpSeveralResults++;
+            }
+            try {
+                IAtomContainer tmpMolecule = CRUSHFragmenterTest.parse(tmpColumns[1]);
+                long tmpStart = System.nanoTime();
+                List<IAtomContainer> tmpFragments = aFragmenter.fragmentMolecule(tmpMolecule);
+                tmpNanoseconds += System.nanoTime() - tmpStart;
+                List<String> tmpActual = CRUSHFragmenterTest.toCanonicalSmiles(tmpFragments, false);
+                List<String> tmpActualStereo = CRUSHFragmenterTest.toStereoSmilesOfFragments(tmpFragments, true);
+                boolean tmpIsFound = false;
+                boolean tmpIsStereoFound = false;
+                boolean tmpIsParaDifference = false;
+                boolean tmpIsIsomorphismMatch = false;
+                for (String tmpSet : tmpColumns[4].split(" ")) {
+                    List<String> tmpSmilesList = Arrays.asList(tmpSet.split("\\."));
+                    if (CRUSHFragmenterTest.canonical(tmpSmilesList, false).equals(tmpActual)) {
+                        tmpIsFound = true;
+                        if (CRUSHFragmenterTest.toStereoSmiles(tmpSmilesList, true).equals(tmpActualStereo)) {
+                            tmpIsStereoFound = true;
+                            break;
+                        }
+                        if (CRUSHFragmenterReferenceTest.isEqualWithoutParaStereocentres(tmpSet, tmpFragments)) {
+                            tmpIsParaDifference = true;
+                        }
+                    } else if (CRUSHFragmenterReferenceTest.isIsomorphic(tmpSet, tmpFragments)) {
+                        tmpIsFound = true;
+                        tmpIsIsomorphismMatch = true;
+                        List<IAtomContainer> tmpReferenceFragments = new ArrayList<>(tmpSmilesList.size());
+                        for (String tmpSmiles : tmpSmilesList) {
+                            tmpReferenceFragments.add(CRUSHFragmenterTest.parse(tmpSmiles));
+                        }
+                        if (CRUSHFragmenterTest.isIsomorphicWithStereo(tmpReferenceFragments, tmpFragments)
+                                && CRUSHFragmenterTest.isIsomorphicWithStereo(tmpFragments, tmpReferenceFragments)) {
+                            tmpIsStereoFound = true;
+                            break;
+                        }
+                    }
+                }
+                if (tmpIsIsomorphismMatch) {
+                    tmpIsomorphismMatches++;
+                }
+                if (!tmpIsFound) {
+                    tmpMismatches++;
+                    CRUSHFragmenterReferenceTest.report(tmpReport, tmpMismatches + tmpStereoMismatches,
+                            String.format("%s %s: fragments not among the %s possible results%n  actual: %s%n  "
+                                    + "reference: %s%n", tmpColumns[0], tmpColumns[1], tmpColumns[3], tmpActual,
+                                    tmpColumns[4]));
+                } else if (!tmpIsStereoFound && tmpIsParaDifference) {
+                    tmpParaStereocentreDifferences++;
+                } else if (!tmpIsStereoFound) {
+                    tmpStereoMismatches++;
+                    CRUSHFragmenterReferenceTest.report(tmpReport, tmpMismatches + tmpStereoMismatches,
+                            String.format("%s %s (stereo): fragments not among the %s possible results%n  actual: "
+                                    + "%s%n  reference: %s%n", tmpColumns[0], tmpColumns[1], tmpColumns[3],
+                                    tmpActualStereo, tmpColumns[4]));
+                }
+            } catch (CDKException | CloneNotSupportedException | IllegalArgumentException anException) {
+                tmpMismatches++;
+                CRUSHFragmenterReferenceTest.report(tmpReport, tmpMismatches + tmpStereoMismatches,
+                        String.format("%s %s: error, %s%n", tmpColumns[0], tmpColumns[1], anException));
+            }
+        }
+        return new SinglePassComparisonResult(tmpMolecules, tmpSeveralResults, tmpUncheckedMolecules, tmpMismatches,
+                tmpStereoMismatches, tmpParaStereocentreDifferences, tmpIsomorphismMatches, tmpNanoseconds / 1_000_000L,
+                tmpReport.toString());
+    }
+    //
+    /**
+     * Checks the fragments of the given molecule of the given fragmenter (single-pass variant): the fragments are the
+     * leaves of the route, every heavy atom of the molecule is contained in exactly one fragment, there are two link
+     * atoms per cleaved bond carrying a rule number (none with hydrogen saturation), and every fragment with a cleaved
+     * bond has at least the minimum fragment size of heavy atoms, and at least the minimum linker size if it has two or
+     * more attachment points (cleaved bonds and pseudo atoms of the input). Connected components without a cleaved bond
+     * are not checked for their size.
+     *
+     * @param aFragmenter fragmenter with the single-pass variant
+     * @param aMolecule molecule, it is not altered
+     * @param aName name of the molecule for the messages
+     * @return number of cleaved bonds
+     * @throws Exception if anything goes wrong
+     */
+    static int checkSinglePassFragments(CRUSHFragmenter aFragmenter, IAtomContainer aMolecule, String aName)
+            throws Exception {
+        Assertions.assertEquals(CRUSHFragmenter.VariantOption.SINGLE_PASS, aFragmenter.getVariantSetting());
+        List<IAtomContainer> tmpFragments = aFragmenter.fragmentMolecule(aMolecule);
+        CRUSHFragmenter.CRUSHRouteNode tmpRoot = aFragmenter.buildRoute(aMolecule);
+        Assertions.assertTrue(tmpRoot.isExhaustive(), aName);
+        Assertions.assertEquals(0, tmpRoot.getRuleNumber(), aName);
+        IAtomContainer tmpPreparedMolecule = tmpRoot.getFragment();
+        List<CRUSHFragmenter.CRUSHRouteNode> tmpLeaves = tmpRoot.isLeaf() ? List.of(tmpRoot) : tmpRoot.getChildren();
+        for (CRUSHFragmenter.CRUSHRouteNode tmpLeaf : tmpLeaves) {
+            Assertions.assertTrue(tmpLeaf.isLeaf(), aName);
+        }
+        Assertions.assertEquals(CRUSHFragmenterTest.toCanonicalSmiles(tmpFragments, false),
+                CRUSHFragmenterTest.toCanonicalSmiles(CRUSHFragmenterTest.fragmentsOf(tmpLeaves), false), aName);
+        int[] tmpLeafOfAtom = new int[tmpPreparedMolecule.getAtomCount()];
+        Arrays.fill(tmpLeafOfAtom, -1);
+        for (int i = 0; i < tmpLeaves.size(); i++) {
+            BitSet tmpAtomSet = tmpLeaves.get(i).getAtomSet();
+            for (int j = tmpAtomSet.nextSetBit(0); j >= 0; j = tmpAtomSet.nextSetBit(j + 1)) {
+                Assertions.assertEquals(-1, tmpLeafOfAtom[j], aName);
+                tmpLeafOfAtom[j] = i;
+            }
+        }
+        int[] tmpAttachmentPoints = new int[tmpLeaves.size()];
+        int[] tmpCleavedBondsOfLeaf = new int[tmpLeaves.size()];
+        int[] tmpHeavyAtoms = new int[tmpLeaves.size()];
+        int tmpCleavedBonds = 0;
+        for (IBond tmpBond : tmpPreparedMolecule.bonds()) {
+            int tmpBeginLeaf = tmpLeafOfAtom[tmpBond.getBegin().getIndex()];
+            int tmpEndLeaf = tmpLeafOfAtom[tmpBond.getEnd().getIndex()];
+            Assertions.assertTrue(tmpBeginLeaf >= 0 && tmpEndLeaf >= 0, aName);
+            if (tmpBeginLeaf != tmpEndLeaf) {
+                tmpCleavedBonds++;
+                Assertions.assertFalse(tmpBond.isInRing(), aName);
+                for (int tmpLeaf : new int[] {tmpBeginLeaf, tmpEndLeaf}) {
+                    tmpAttachmentPoints[tmpLeaf]++;
+                    tmpCleavedBondsOfLeaf[tmpLeaf]++;
+                }
+            }
+        }
+        int tmpMoleculeHeavyAtoms = 0;
+        for (IAtom tmpAtom : tmpPreparedMolecule.atoms()) {
+            int tmpLeaf = tmpLeafOfAtom[tmpAtom.getIndex()];
+            if (tmpAtom instanceof IPseudoAtom) {
+                tmpAttachmentPoints[tmpLeaf]++;
+            } else if (tmpAtom.getAtomicNumber() != null && tmpAtom.getAtomicNumber() > 1) {
+                tmpHeavyAtoms[tmpLeaf]++;
+                tmpMoleculeHeavyAtoms++;
+            }
+        }
+        int tmpMinimumSize = aFragmenter.getMinimumFragmentSizeSetting();
+        int tmpMinimumLinkerSize = Math.max(tmpMinimumSize, aFragmenter.getMinimumLinkerSizeSetting());
+        for (int i = 0; i < tmpLeaves.size(); i++) {
+            if (tmpCleavedBondsOfLeaf[i] == 0) {
+                continue;
+            }
+            Assertions.assertTrue(tmpHeavyAtoms[i] >= (tmpAttachmentPoints[i] >= 2 ? tmpMinimumLinkerSize : tmpMinimumSize),
+                    String.format("%s: fragment with %d heavy atoms and %d attachment points", aName, tmpHeavyAtoms[i],
+                            tmpAttachmentPoints[i]));
+        }
+        int tmpFragmentHeavyAtoms = 0;
+        int tmpLinkAtoms = 0;
+        for (IAtomContainer tmpFragment : tmpFragments) {
+            for (IAtom tmpAtom : tmpFragment.atoms()) {
+                Integer tmpRuleNumber = tmpAtom.getProperty(CRUSHFragmenter.RULE_NUMBER_PROPERTY_KEY);
+                if (tmpRuleNumber != null) {
+                    tmpLinkAtoms++;
+                    Assertions.assertTrue(tmpRuleNumber >= 1 && tmpRuleNumber <= 33, aName);
+                    Assertions.assertEquals(tmpRuleNumber, tmpAtom.getMassNumber(), aName);
+                } else if (!(tmpAtom instanceof IPseudoAtom) && tmpAtom.getAtomicNumber() != null
+                        && tmpAtom.getAtomicNumber() > 1) {
+                    tmpFragmentHeavyAtoms++;
+                }
+            }
+        }
+        Assertions.assertEquals(tmpMoleculeHeavyAtoms, tmpFragmentHeavyAtoms, aName);
+        boolean tmpIsHydrogenSaturation = aFragmenter.getSaturationSetting()
+                == CRUSHFragmenter.SaturationOption.HYDROGEN_SATURATION;
+        Assertions.assertEquals(tmpIsHydrogenSaturation ? 0 : 2 * tmpCleavedBonds, tmpLinkAtoms, aName);
+        return tmpCleavedBonds;
+    }
+    //
+    /**
+     * Returns the sorted unique SMILES codes with stereochemistry of the given fragments as MORTAR creates them
+     * ({@link ChemUtil#createUniqueSmiles(IAtomContainer, boolean)}), with null for fragments whose SMILES code cannot be
+     * created.
+     *
+     * @param aFragmentList fragments
+     * @return sorted list of unique SMILES codes, null values first
+     */
+    static List<String> createUniqueSmilesList(List<IAtomContainer> aFragmentList) {
+        List<String> tmpSmilesList = new ArrayList<>(aFragmentList.size());
+        for (IAtomContainer tmpFragment : aFragmentList) {
+            tmpSmilesList.add(ChemUtil.createUniqueSmiles(tmpFragment, true));
+        }
+        tmpSmilesList.sort(Comparator.nullsFirst(Comparator.naturalOrder()));
+        return tmpSmilesList;
     }
     //
     /**

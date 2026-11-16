@@ -81,8 +81,8 @@ public class CRUSHFragmenterRuleCaseTest {
                 CRUSHFragmenterRuleCaseTest.RULE_CASES_FILE)) {
             Objects.requireNonNull(tmpStream, "Rule cases file not found.");
             tmpResult = CRUSHFragmenterReferenceTest.compareSteps(
-                    new BufferedReader(new InputStreamReader(tmpStream, StandardCharsets.UTF_8)), new CRUSHFragmenter(),
-                    Integer.MAX_VALUE);
+                    new BufferedReader(new InputStreamReader(tmpStream, StandardCharsets.UTF_8)),
+                    CRUSHFragmenterTest.createOriginalFragmenter(), Integer.MAX_VALUE);
         }
         System.out.println(tmpResult.summary());
         Assertions.assertEquals(CRUSHFragmenterRuleCaseTest.RULE_CASES_COUNT, tmpResult.molecules());

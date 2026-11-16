@@ -26,6 +26,7 @@
 package de.unijena.cheminf.mortar.model.fragmentation.algorithm;
 
 import de.unijena.cheminf.mortar.model.util.ChemUtil;
+import de.unijena.cheminf.mortar.preference.PreferenceUtil;
 
 import javafx.beans.property.Property;
 
@@ -71,7 +72,9 @@ import java.util.Set;
 import java.util.regex.Matcher;
 
 /**
- * Tests the {@link CRUSHFragmenter}. The expected fragments were derived by hand from the CRUSH rules; the rule that
+ * Tests the settings and the original variant of the {@link CRUSHFragmenter}, with the minimum fragment size 3 of the
+ * publication (see {@link #createOriginalFragmenter()}); the single-pass variant is tested in
+ * {@link CRUSHFragmenterSinglePassTest}. The expected fragments were derived by hand from the CRUSH rules; the rule that
  * cleaves a bond is given in the comments. Fragments are compared as canonical SMILES with the rule numbers encoded as
  * mass numbers of the link atoms, e.g. [26*]OCCC.
  *
@@ -88,8 +91,22 @@ public class CRUSHFragmenterTest {
     }
     //
     /**
-     * Tests the settings, their persistence names, copying, the restoration of the default settings, and the parameter
-     * checks.
+     * Returns a fragmenter with the original variant and the minimum fragment size of the publication (3), on which the
+     * tests of the original variant and the reference files of the steps, routes, and rule cases are based; all other
+     * settings have their default values.
+     *
+     * @return fragmenter
+     */
+    static CRUSHFragmenter createOriginalFragmenter() {
+        CRUSHFragmenter tmpFragmenter = new CRUSHFragmenter();
+        tmpFragmenter.setVariantSetting(CRUSHFragmenter.VariantOption.ORIGINAL);
+        tmpFragmenter.setMinimumFragmentSizeSetting(CRUSHFragmenter.PUBLISHED_MINIMUM_FRAGMENT_SIZE);
+        return tmpFragmenter;
+    }
+    //
+    /**
+     * Tests the settings, their order and persistence names, copying, the restoration of the default settings, the
+     * preference restrictions, and the parameter checks.
      */
     @Test
     public void basicSettingsTest() {
@@ -103,33 +120,78 @@ public class CRUSHFragmenterTest {
             Assertions.assertTrue(tmpFragmenter.getSettingNameToDisplayNameMap().containsKey(tmpSetting.getName()));
             Assertions.assertTrue(tmpFragmenter.getSettingNameToTooltipTextMap().containsKey(tmpSetting.getName()));
             Assertions.assertFalse(tmpFragmenter.getSettingNameToTooltipTextMap().get(tmpSetting.getName()).startsWith("!"));
+            //Message returns "Key ... not found." for missing keys
+            Assertions.assertFalse(tmpFragmenter.getSettingNameToTooltipTextMap().get(tmpSetting.getName()).startsWith(
+                    "Key"));
+            Assertions.assertFalse(tmpFragmenter.getSettingNameToDisplayNameMap().get(tmpSetting.getName()).startsWith(
+                    "Key"));
         }
-        Assertions.assertEquals(List.of("Fragment saturation setting", "Minimum fragment size setting",
-                "Ring protection setting", "Conservative mode setting", "Fragment output setting",
-                "Return unfragmented molecules setting"), tmpNames);
+        Assertions.assertEquals(List.of("Algorithm variant setting", "Fragment saturation setting",
+                "Minimum fragment size setting", "Minimum linker size setting", "Functional group rules setting",
+                "Aromatic ring bond rules setting", "Aliphatic skeleton rules setting", "Ring protection setting",
+                "Conservative mode setting", "Fragment output setting", "Return unfragmented molecules setting"), tmpNames);
+        Assertions.assertEquals(11, tmpFragmenter.getSettingNameToDisplayNameMap().size());
+        Assertions.assertEquals(11, tmpFragmenter.getSettingNameToTooltipTextMap().size());
+        for (CRUSHFragmenter.VariantOption tmpOption : CRUSHFragmenter.VariantOption.values()) {
+            Assertions.assertFalse(tmpOption.getDisplayName().startsWith("Key"));
+            Assertions.assertFalse(tmpOption.getTooltipText().startsWith("Key"));
+        }
+        //the published procedure is reproduced with the original variant and the minimum fragment size 3, as stated in
+        //the tooltips
+        Assertions.assertTrue(CRUSHFragmenter.VariantOption.ORIGINAL.getTooltipText().contains(
+                "minimum fragment size of 3"));
+        Assertions.assertTrue(tmpFragmenter.getSettingNameToTooltipTextMap().get("Minimum fragment size setting")
+                .contains("variant original and a minimum fragment size of 3"));
+        Assertions.assertEquals(CRUSHFragmenter.VariantOption.SINGLE_PASS, tmpFragmenter.getVariantSetting());
         Assertions.assertEquals(CRUSHFragmenter.SaturationOption.LINK_ATOMS, tmpFragmenter.getSaturationSetting());
-        Assertions.assertEquals(3, tmpFragmenter.getMinimumFragmentSizeSetting());
+        Assertions.assertEquals(5, tmpFragmenter.getMinimumFragmentSizeSetting());
+        Assertions.assertEquals(6, tmpFragmenter.getMinimumLinkerSizeSetting());
+        Assertions.assertTrue(tmpFragmenter.getFunctionalGroupRulesSetting());
+        Assertions.assertTrue(tmpFragmenter.getAromaticRingBondRulesSetting());
+        Assertions.assertFalse(tmpFragmenter.getAliphaticSkeletonRulesSetting());
         Assertions.assertEquals(CRUSHFragmenter.RingProtectionOption.FUSED_RING_ATOMS_AND_NEIGHBOURS,
                 tmpFragmenter.getRingProtectionSetting());
         Assertions.assertTrue(tmpFragmenter.getConservativeModeSetting());
         Assertions.assertEquals(CRUSHFragmenter.FragmentOutputOption.FINAL_FRAGMENTS, tmpFragmenter.getFragmentOutputSetting());
         Assertions.assertTrue(tmpFragmenter.getReturnUnfragmentedMoleculesSetting());
+        Assertions.assertDoesNotThrow(() -> PreferenceUtil.checkPropertiesForPreferenceRestrictions(
+                tmpFragmenter.settingsProperties()));
+        tmpFragmenter.setVariantSetting(CRUSHFragmenter.VariantOption.ORIGINAL);
         tmpFragmenter.setSaturationSetting(CRUSHFragmenter.SaturationOption.HYDROGEN_SATURATION);
         tmpFragmenter.setMinimumFragmentSizeSetting(2);
+        tmpFragmenter.setMinimumLinkerSizeSetting(9);
+        tmpFragmenter.setFunctionalGroupRulesSetting(false);
+        tmpFragmenter.setAromaticRingBondRulesSetting(false);
+        tmpFragmenter.setAliphaticSkeletonRulesSetting(true);
         tmpFragmenter.setRingProtectionSetting(CRUSHFragmenter.RingProtectionOption.NONE);
         tmpFragmenter.setConservativeModeSetting(false);
         tmpFragmenter.setFragmentOutputSetting(CRUSHFragmenter.FragmentOutputOption.ALL_ROUTE_FRAGMENTS);
         tmpFragmenter.setReturnUnfragmentedMoleculesSetting(false);
+        Assertions.assertDoesNotThrow(() -> PreferenceUtil.checkPropertiesForPreferenceRestrictions(
+                tmpFragmenter.settingsProperties()));
         CRUSHFragmenter tmpCopy = (CRUSHFragmenter) tmpFragmenter.copy();
+        Assertions.assertEquals(CRUSHFragmenter.VariantOption.ORIGINAL, tmpCopy.getVariantSetting());
         Assertions.assertEquals(CRUSHFragmenter.SaturationOption.HYDROGEN_SATURATION, tmpCopy.getSaturationSetting());
         Assertions.assertEquals(2, tmpCopy.getMinimumFragmentSizeSetting());
+        Assertions.assertEquals(9, tmpCopy.getMinimumLinkerSizeSetting());
+        Assertions.assertFalse(tmpCopy.getFunctionalGroupRulesSetting());
+        Assertions.assertFalse(tmpCopy.getAromaticRingBondRulesSetting());
+        Assertions.assertTrue(tmpCopy.getAliphaticSkeletonRulesSetting());
         Assertions.assertEquals(CRUSHFragmenter.RingProtectionOption.NONE, tmpCopy.getRingProtectionSetting());
         Assertions.assertFalse(tmpCopy.getConservativeModeSetting());
         Assertions.assertEquals(CRUSHFragmenter.FragmentOutputOption.ALL_ROUTE_FRAGMENTS, tmpCopy.getFragmentOutputSetting());
         Assertions.assertFalse(tmpCopy.getReturnUnfragmentedMoleculesSetting());
         tmpFragmenter.restoreDefaultSettings();
+        Assertions.assertEquals(CRUSHFragmenter.VARIANT_OPTION_DEFAULT, tmpFragmenter.getVariantSetting());
         Assertions.assertEquals(CRUSHFragmenter.SATURATION_OPTION_DEFAULT, tmpFragmenter.getSaturationSetting());
         Assertions.assertEquals(CRUSHFragmenter.MINIMUM_FRAGMENT_SIZE_DEFAULT, tmpFragmenter.getMinimumFragmentSizeSetting());
+        Assertions.assertEquals(CRUSHFragmenter.MINIMUM_LINKER_SIZE_DEFAULT, tmpFragmenter.getMinimumLinkerSizeSetting());
+        Assertions.assertEquals(CRUSHFragmenter.FUNCTIONAL_GROUP_RULES_OPTION_DEFAULT,
+                tmpFragmenter.getFunctionalGroupRulesSetting());
+        Assertions.assertEquals(CRUSHFragmenter.AROMATIC_RING_BOND_RULES_OPTION_DEFAULT,
+                tmpFragmenter.getAromaticRingBondRulesSetting());
+        Assertions.assertEquals(CRUSHFragmenter.ALIPHATIC_SKELETON_RULES_OPTION_DEFAULT,
+                tmpFragmenter.getAliphaticSkeletonRulesSetting());
         Assertions.assertEquals(CRUSHFragmenter.RING_PROTECTION_OPTION_DEFAULT, tmpFragmenter.getRingProtectionSetting());
         Assertions.assertEquals(CRUSHFragmenter.CONSERVATIVE_MODE_OPTION_DEFAULT, tmpFragmenter.getConservativeModeSetting());
         Assertions.assertEquals(CRUSHFragmenter.FRAGMENT_OUTPUT_OPTION_DEFAULT, tmpFragmenter.getFragmentOutputSetting());
@@ -137,10 +199,15 @@ public class CRUSHFragmenterTest {
                 tmpFragmenter.getReturnUnfragmentedMoleculesSetting());
         //the copy is independent of the original
         Assertions.assertEquals(2, tmpCopy.getMinimumFragmentSizeSetting());
+        Assertions.assertEquals(CRUSHFragmenter.VariantOption.ORIGINAL, tmpCopy.getVariantSetting());
+        Assertions.assertThrows(NullPointerException.class, () -> tmpFragmenter.setVariantSetting(null));
         Assertions.assertThrows(NullPointerException.class, () -> tmpFragmenter.setSaturationSetting(null));
         Assertions.assertThrows(NullPointerException.class, () -> tmpFragmenter.setRingProtectionSetting(null));
         Assertions.assertThrows(NullPointerException.class, () -> tmpFragmenter.setFragmentOutputSetting(null));
         Assertions.assertThrows(IllegalArgumentException.class, () -> tmpFragmenter.setMinimumFragmentSizeSetting(0));
+        Assertions.assertThrows(IllegalArgumentException.class, () -> tmpFragmenter.setMinimumLinkerSizeSetting(0));
+        Assertions.assertThrows(IllegalArgumentException.class, () -> tmpFragmenter.setMinimumLinkerSizeSetting(-1));
+        Assertions.assertEquals(CRUSHFragmenter.MINIMUM_LINKER_SIZE_DEFAULT, tmpFragmenter.getMinimumLinkerSizeSetting());
         Assertions.assertTrue(tmpFragmenter.shouldBeFiltered(null));
         Assertions.assertTrue(tmpFragmenter.shouldBeFiltered(SilentChemObjectBuilder.getInstance().newAtomContainer()));
         Assertions.assertThrows(NullPointerException.class, () -> tmpFragmenter.fragmentMolecule(null));
@@ -251,7 +318,7 @@ public class CRUSHFragmenterTest {
                 {"31", "CCCNc1ccccc1", "[31*]c1ccccc1.[31*]NCCC", "c1ccccc1.NCCC"},
                 {"32", "CCCSc1ccccc1", "[32*]c1ccccc1.[32*]SCCC", "c1ccccc1.SCCC"},
                 {"33", "CCCC#Cc1ccccc1", "[33*]c1ccccc1.[33*]C#CCCC", "c1ccccc1.C#CCCC"}};
-        CRUSHFragmenter tmpFragmenter = new CRUSHFragmenter();
+        CRUSHFragmenter tmpFragmenter = CRUSHFragmenterTest.createOriginalFragmenter();
         Set<Integer> tmpTestedRules = new HashSet<>();
         for (String[] tmpCase : tmpCases) {
             int tmpRule = Integer.parseInt(tmpCase[0]);
@@ -263,7 +330,7 @@ public class CRUSHFragmenterTest {
             tmpTestedRules.add(tmpRule);
         }
         //rule 19 (Carbamate_2) cleaves two bonds and cuts off a carbonyl group with two heavy atoms, so it never
-        //applies with the default minimum fragment size of 3, but with 2
+        //applies with the minimum fragment size of 3 of the publication, but with 2
         Assertions.assertTrue(CRUSHFragmenterTest.stepProducts(tmpFragmenter, "CCCOC(=O)NCCC", 19, false).isEmpty());
         tmpFragmenter.setMinimumFragmentSizeSetting(2);
         Assertions.assertEquals(List.of(CRUSHFragmenterTest.canonical(List.of("[19*]OCCC", "[19*]C([19*])=O",
@@ -283,7 +350,7 @@ public class CRUSHFragmenterTest {
      */
     @Test
     public void bondOrderTest() throws Exception {
-        CRUSHFragmenter tmpFragmenter = new CRUSHFragmenter();
+        CRUSHFragmenter tmpFragmenter = CRUSHFragmenterTest.createOriginalFragmenter();
         this.assertFragments(tmpFragmenter, "CCCC=CCCC", "[8*]=CCCC", "[8*]=CCCC");
         this.assertFragments(tmpFragmenter, "CCCC#CCCC", "[16*]#CCCC", "[16*]#CCCC");
         Assertions.assertTrue(CRUSHFragmenterTest.stepProducts(tmpFragmenter, "CCCC=NOCCC", 26, false).contains(
@@ -293,7 +360,8 @@ public class CRUSHFragmenterTest {
         this.assertFragments(tmpFragmenter, "CCCC#CCCC", "CCCC", "CCCC");
         Assertions.assertTrue(CRUSHFragmenterTest.stepProducts(tmpFragmenter, "CCCC=NOCCC", 26, true).contains(
                 CRUSHFragmenterTest.canonical(List.of("CCCC", "NOCCC"), false)));
-        for (IAtomContainer tmpFragment : new CRUSHFragmenter().fragmentMolecule(CRUSHFragmenterTest.parse("CCCC=CCCC"))) {
+        for (IAtomContainer tmpFragment : CRUSHFragmenterTest.createOriginalFragmenter().fragmentMolecule(
+                CRUSHFragmenterTest.parse("CCCC=CCCC"))) {
             for (IBond tmpBond : tmpFragment.bonds()) {
                 if (tmpBond.getBegin() instanceof IPseudoAtom || tmpBond.getEnd() instanceof IPseudoAtom) {
                     Assertions.assertEquals(IBond.Order.DOUBLE, tmpBond.getOrder());
@@ -310,7 +378,7 @@ public class CRUSHFragmenterTest {
      */
     @Test
     public void routeTest() throws Exception {
-        CRUSHFragmenter tmpFragmenter = new CRUSHFragmenter();
+        CRUSHFragmenter tmpFragmenter = CRUSHFragmenterTest.createOriginalFragmenter();
         //two steps with two fragments each: rule 1 (amide bond, also matched by rule 26) wins against rule 26 (N-propyl)
         this.assertFragments(tmpFragmenter, "CCCC(=O)NCCC", "[1*]C(=O)CCC", "[1*]NCCC");
         //only the central bond of hexane yields two fragments with three heavy atoms
@@ -350,8 +418,8 @@ public class CRUSHFragmenterTest {
     public void outputOptionTest() throws Exception {
         String[] tmpMolecules = {"Cc1ccc([C@H](C)CCC(O)C(C)(C)O)cc1O", "CC(C)NCC(O)COc1cccc2ccccc12",
                 "CCCCCCCC(=O)OCCCC.[K+].[Br-]", "CCCOC(=O)NCCC"};
-        CRUSHFragmenter tmpFragmenter = new CRUSHFragmenter();
-        CRUSHFragmenter tmpRouteFragmenter = new CRUSHFragmenter();
+        CRUSHFragmenter tmpFragmenter = CRUSHFragmenterTest.createOriginalFragmenter();
+        CRUSHFragmenter tmpRouteFragmenter = CRUSHFragmenterTest.createOriginalFragmenter();
         tmpRouteFragmenter.setFragmentOutputSetting(CRUSHFragmenter.FragmentOutputOption.ALL_ROUTE_FRAGMENTS);
         for (String tmpSmiles : tmpMolecules) {
             IAtomContainer tmpMolecule = CRUSHFragmenterTest.parse(tmpSmiles);
@@ -422,7 +490,7 @@ public class CRUSHFragmenterTest {
      */
     @Test
     public void protectionTest() throws Exception {
-        CRUSHFragmenter tmpFragmenter = new CRUSHFragmenter();
+        CRUSHFragmenter tmpFragmenter = CRUSHFragmenterTest.createOriginalFragmenter();
         //1-butyl naphthalene: fused ring atoms 8 and 13, their neighbours 4, 7, 9, 12
         IAtomContainer tmpMolecule = CRUSHFragmenterTest.parse("CCCCc1cccc2ccccc12");
         tmpFragmenter.prepareMolecule(tmpMolecule);
@@ -448,12 +516,12 @@ public class CRUSHFragmenterTest {
         //conservative mode: every match of the ether rule (6) on the benzylic ether contains the protected naphthyl
         //carbon atom (as atom 1 or 5), so the rule is skipped for the whole molecule, also for the propyl ether
         String tmpEther = "CCCOCCOCc1cccc2ccccc12";
-        CRUSHFragmenter tmpConservativeFragmenter = new CRUSHFragmenter();
+        CRUSHFragmenter tmpConservativeFragmenter = CRUSHFragmenterTest.createOriginalFragmenter();
         Assertions.assertTrue(CRUSHFragmenterTest.stepProducts(tmpConservativeFragmenter, tmpEther, 6, false).isEmpty());
         Assertions.assertFalse(CRUSHFragmenterTest.stepProducts(tmpConservativeFragmenter, tmpEther, 26, false).isEmpty());
         //without conservative mode, only the matches on protected atoms are dropped: both bonds of the propyl ether
         //oxygen atom are cleaved by rule 6
-        CRUSHFragmenter tmpNonConservativeFragmenter = new CRUSHFragmenter();
+        CRUSHFragmenter tmpNonConservativeFragmenter = CRUSHFragmenterTest.createOriginalFragmenter();
         tmpNonConservativeFragmenter.setConservativeModeSetting(false);
         List<List<String>> tmpProducts = CRUSHFragmenterTest.stepProducts(tmpNonConservativeFragmenter, tmpEther, 6, false);
         Assertions.assertEquals(2, tmpProducts.size());
@@ -483,7 +551,7 @@ public class CRUSHFragmenterTest {
     public void ringBondTest() throws Exception {
         String[] tmpMolecules = {"CCCCC1CCCO1", "CCCCN1CCCCC1", "OC(=O)CCCCC1CCSS1",
                 "CCCO[C@@H]1O[C@H](CO)[C@@H](O)[C@H](O)[C@H]1O", "c1ccc2c(c1)NCC2", "c1ccc2c(c1)OCO2", "C1CCSC1"};
-        CRUSHFragmenter tmpFragmenter = new CRUSHFragmenter();
+        CRUSHFragmenter tmpFragmenter = CRUSHFragmenterTest.createOriginalFragmenter();
         tmpFragmenter.setRingProtectionSetting(CRUSHFragmenter.RingProtectionOption.NONE);
         tmpFragmenter.setMinimumFragmentSizeSetting(1);
         for (String tmpSmiles : tmpMolecules) {
@@ -510,9 +578,10 @@ public class CRUSHFragmenterTest {
             Assertions.assertEquals(tmpRingBonds, tmpFragmentRingBonds, tmpSmiles);
         }
         //the bonds of ring carbon atoms next to the ring heteroatom to substituents are cleaved by rule 7
-        this.assertFragments(new CRUSHFragmenter(), "CCCCC1CCCO1", "[7*]C1CCCO1", "[7*]CCCC");
+        this.assertFragments(CRUSHFragmenterTest.createOriginalFragmenter(), "CCCCC1CCCO1", "[7*]C1CCCO1", "[7*]CCCC");
         //lipoic acid: the only decomposition into three fragments (the carboxy group cannot be cleaved off)
-        this.assertFragments(new CRUSHFragmenter(), "OC(=O)CCCCC1CCSS1", "[7*]C1CCSS1", "[7*]CCC[25*]", "[25*]CC(=O)O");
+        this.assertFragments(CRUSHFragmenterTest.createOriginalFragmenter(), "OC(=O)CCCCC1CCSS1", "[7*]C1CCSS1",
+                "[7*]CCC[25*]", "[25*]CC(=O)O");
     }
     //
     /**
@@ -524,7 +593,7 @@ public class CRUSHFragmenterTest {
      */
     @Test
     public void aromaticNitrogenTest() throws Exception {
-        CRUSHFragmenter tmpFragmenter = new CRUSHFragmenter();
+        CRUSHFragmenter tmpFragmenter = CRUSHFragmenterTest.createOriginalFragmenter();
         this.assertFragments(tmpFragmenter, "CCCCn1ccnc1", "[10*]n1ccnc1", "[10*]CCCC");
         this.assertFragments(tmpFragmenter, "CCCC[n+]1ccccc1", "[10*][n+]1ccccc1", "[10*]CCCC");
         this.assertFragments(tmpFragmenter, "c1ccc(-n2cccc2)cc1", "[22*]c1ccccc1", "[22*]n1cccc1");
@@ -548,7 +617,7 @@ public class CRUSHFragmenterTest {
      */
     @Test
     public void stereoTest() throws Exception {
-        CRUSHFragmenter tmpFragmenter = new CRUSHFragmenter();
+        CRUSHFragmenter tmpFragmenter = CRUSHFragmenterTest.createOriginalFragmenter();
         //the ether oxygen atom of the quaternary stereocentre is replaced by the link atom at the same position
         Assertions.assertTrue(CRUSHFragmenterTest.stereoStepProducts(tmpFragmenter, "CCCC[C@](C)(CC)OCCC", 6, false)
                 .contains(CRUSHFragmenterTest.toStereoSmiles(List.of("CCCC[C@](C)(CC)*", "*OCCC"), false)));
@@ -598,7 +667,7 @@ public class CRUSHFragmenterTest {
      */
     @Test
     public void inputHandlingTest() throws Exception {
-        CRUSHFragmenter tmpFragmenter = new CRUSHFragmenter();
+        CRUSHFragmenter tmpFragmenter = CRUSHFragmenterTest.createOriginalFragmenter();
         //counter ions are kept as fragments
         this.assertFragments(tmpFragmenter, "CCCCCC.[Na+].[Cl-]", "[25*]CCC", "[25*]CCC", "[Na+]", "[Cl-]");
         this.assertFragments(tmpFragmenter, "Cc1ccccc1.[Na+]", "Cc1ccccc1", "[Na+]");
@@ -621,12 +690,12 @@ public class CRUSHFragmenterTest {
         //explicit hydrogen atoms do not change the result
         IAtomContainer tmpMolecule = CRUSHFragmenterTest.parse("Cc1ccc([C@H](C)CCC(O)C(C)(C)O)cc1O");
         AtomContainerManipulator.convertImplicitToExplicitHydrogens(tmpMolecule);
-        this.assertFragments(new CRUSHFragmenter(), tmpMolecule, "[14*]c1ccc(C)c(O)c1", "[14*]C(C)C[25*]",
-                "[25*]CC(O)[25*]", "[25*]C(C)(C)O");
+        this.assertFragments(CRUSHFragmenterTest.createOriginalFragmenter(), tmpMolecule, "[14*]c1ccc(C)c(O)c1",
+                "[14*]C(C)C[25*]", "[25*]CC(O)[25*]", "[25*]C(C)(C)O");
         //the input molecule is not altered
         IAtomContainer tmpInput = CRUSHFragmenterTest.parse("CCCCCC");
-        new CRUSHFragmenter().fragmentMolecule(tmpInput);
-        new CRUSHFragmenter().buildRoute(tmpInput);
+        CRUSHFragmenterTest.createOriginalFragmenter().fragmentMolecule(tmpInput);
+        CRUSHFragmenterTest.createOriginalFragmenter().buildRoute(tmpInput);
         Assertions.assertEquals(6, tmpInput.getAtomCount());
         Assertions.assertEquals(5, tmpInput.getBondCount());
         //molecules given with aromatic bonds without bond orders are kekulized
@@ -636,14 +705,15 @@ public class CRUSHFragmenterTest {
                 tmpBond.setOrder(IBond.Order.UNSET);
             }
         }
-        Assertions.assertEquals(2, new CRUSHFragmenter().fragmentMolecule(tmpAromatic).size());
+        Assertions.assertEquals(2, CRUSHFragmenterTest.createOriginalFragmenter().fragmentMolecule(tmpAromatic).size());
         //a molecule whose aromatic ring cannot be kekulized is not fragmented as a non-aromatic molecule but rejected
         SmilesParser tmpNonKekulizingParser = new SmilesParser(SilentChemObjectBuilder.getInstance());
         tmpNonKekulizingParser.kekulise(false);
         IAtomContainer tmpNonKekulizable = tmpNonKekulizingParser.parseSmiles("c1cccc1CCCCCOCCCCCC");
-        Assertions.assertThrows(IllegalArgumentException.class, () -> new CRUSHFragmenter().fragmentMolecule(
-                tmpNonKekulizable));
-        Assertions.assertThrows(IllegalArgumentException.class, () -> new CRUSHFragmenter().buildRoute(tmpNonKekulizable));
+        Assertions.assertThrows(IllegalArgumentException.class,
+                () -> CRUSHFragmenterTest.createOriginalFragmenter().fragmentMolecule(tmpNonKekulizable));
+        Assertions.assertThrows(IllegalArgumentException.class,
+                () -> CRUSHFragmenterTest.createOriginalFragmenter().buildRoute(tmpNonKekulizable));
     }
     //
     /**
@@ -656,7 +726,7 @@ public class CRUSHFragmenterTest {
      */
     @Test
     public void unresolvableBondOrderTest() throws Exception {
-        CRUSHFragmenter tmpFragmenter = new CRUSHFragmenter();
+        CRUSHFragmenter tmpFragmenter = CRUSHFragmenterTest.createOriginalFragmenter();
         //unset bond orders that can be resolved, also in a molecule with an amide and a biaryl bond
         for (String tmpSmiles : new String[] {"CCCc1ccccc1OCCCC", "CCCCC(=O)Nc1ccc(cc1)-c1ccccc1"}) {
             IAtomContainer tmpMolecule = ChemUtil.parseSmilesToAtomContainer(tmpSmiles, false, false);
@@ -714,7 +784,7 @@ public class CRUSHFragmenterTest {
                 "COC1=CC=CC2=C1C(=O)C1=C(O)C3=C(C[C@@](O)(C(=O)CO)C[C@@H]3O[C@H]3C[C@H](N)C[C@H](C)O3)C(O)=C1C2=O",
                 "NC1=NC(N)=C2N=C(CNC3=CC=C(C(=O)N[C@@H](CCCNC(=O)C4=CC=CC=C4C(=O)O)C(=O)O)C=C3)C=NC2=N1",
                 "CO/N=C(\\C(=O)N[C@@H]1C(=O)N2C(C(=O)[O-])=C(COC(N)=O)CS[C@H]12)C1=CC=CO1.[Na+]"};
-        CRUSHFragmenter tmpFragmenter = new CRUSHFragmenter();
+        CRUSHFragmenter tmpFragmenter = CRUSHFragmenterTest.createOriginalFragmenter();
         Random tmpRandom = new Random(42);
         for (String tmpSmiles : tmpMolecules) {
             IAtomContainer tmpMolecule = CRUSHFragmenterTest.parse(tmpSmiles);
@@ -752,7 +822,7 @@ public class CRUSHFragmenterTest {
                 + "[C@@H]8O[C@H](C)[C@H](O)[C@H](O)[C@H]8O[C@@H]7O[C@H]6C)[C@@H]5OC(=O)CCCCCCCCCCC)O[C@@H]4CO)O[C@H](C)"
                 + "[C@H](O)[C@@H]3O)O[C@H]2C)O[C@@H](C)[C@H](O[C@@H]2O[C@@H](C)[C@H](OC(=O)[C@@H](C)CC)[C@@H](OC(=O)/C=C/"
                 + "c3ccccc3)[C@H]2O)[C@H]1O[C@@H]1O[C@H](CO)[C@@H](O)[C@H](O)[C@H]1O";
-        CRUSHFragmenter tmpFragmenter = new CRUSHFragmenter();
+        CRUSHFragmenter tmpFragmenter = CRUSHFragmenterTest.createOriginalFragmenter();
         IAtomContainer tmpMolecule = CRUSHFragmenterTest.parse(tmpSmiles);
         CRUSHFragmenter.CRUSHRouteNode tmpRoot = tmpFragmenter.buildRoute(tmpMolecule);
         Assertions.assertFalse(tmpRoot.isExhaustive());
