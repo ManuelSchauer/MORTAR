@@ -1,0 +1,9 @@
+CC1=CC=CC=C1	toluene_kekule
+CC1C=CC=CC=1	toluene_kekule_shifted
+Cc1ccccc1	toluene_aromatic
+c1ccncc1	pyridine_aromatic
+C1=CC=NC=C1	pyridine_kekule
+C1=CC=C2C=CC=CC2=C1	naphthalene_kekule
+c1ccc2ccccc2c1	naphthalene_aromatic
+C[C@H](N)C(=O)O	L-alanine
+C[C@@H](N)C(=O)O	D-alanine

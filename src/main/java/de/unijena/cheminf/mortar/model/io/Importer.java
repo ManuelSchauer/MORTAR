@@ -28,6 +28,12 @@ package de.unijena.cheminf.mortar.model.io;
 import de.unijena.cheminf.mortar.gui.util.GuiUtil;
 import de.unijena.cheminf.mortar.message.Message;
 import de.unijena.cheminf.mortar.model.data.MoleculeDataModel;
+import de.unijena.cheminf.mortar.model.filter.MoleculeFilterReason;
+import de.unijena.cheminf.mortar.model.filter.MoleculeFilterResult;
+import de.unijena.cheminf.mortar.model.filter.MoleculeFilterRun;
+import de.unijena.cheminf.mortar.model.filter.MoleculeFilterSettingsSnapshot;
+import de.unijena.cheminf.mortar.model.filter.MoleculeFilterSummary;
+import de.unijena.cheminf.mortar.model.filter.MoleculeFilterUtil;
 import de.unijena.cheminf.mortar.model.settings.SettingsContainer;
 import de.unijena.cheminf.mortar.model.util.BasicDefinitions;
 import de.unijena.cheminf.mortar.model.util.ChemUtil;
@@ -148,6 +154,13 @@ public class Importer {
      */
     public static final String MOLECULE_NAME_PROPERTY_KEY = "MORTAR_IMPORTER_NAME";
     /**
+     * Maximum number of molecules removed at import (by the molecule filters, or without SMILES string if a filter is
+     * active) that are logged individually per import; further removals are only counted in one log line and in the
+     * filter summary, so that large imports do not exceed the space limit of the log files
+     * ({@link BasicDefinitions#LIMIT_OF_BYTES_USED_BY_LOG_FILES}).
+     */
+    public static final int MAXIMUM_NUMBER_OF_INDIVIDUALLY_LOGGED_REMOVALS = 1000;
+    /**
      * Unmodifiable Set of valid files extensions for file import.
      */
     public static final Set<String> VALID_IMPORT_FILE_EXTENSIONS_SET;
@@ -173,6 +186,10 @@ public class Importer {
      */
     private String fileName;
     /**
+     * Summary of the molecule filters of the last import.
+     */
+    private MoleculeFilterSummary moleculeFilterSummary;
+    /**
      * Container of general MORTAR settings, providing the recent directory path and other import-related settings.
      */
     private final SettingsContainer settingsContainer;
@@ -195,6 +212,7 @@ public class Importer {
             Importer.LOGGER.log(Level.INFO, "Recent directory could not be read, resetting to default.");
         }
         this.fileName = null;
+        this.moleculeFilterSummary = null;
     }
     //</editor-fold>
     //
@@ -205,6 +223,8 @@ public class Importer {
      * as a SMILES file. If the respective setting is activated, incomplete valences of the imported atoms are filled
      * with implicit hydrogen atoms. If no molecule name or ID is given in the input file, the file name with an appended
      * counter is used as such and added to the returned atom containers as a property.
+     * <br>No molecule filters are applied, i.e. the default (inactive) molecule filter settings are used, see
+     * {@link #importMoleculeFile(File, boolean, boolean, boolean, MoleculeFilterSettingsSnapshot)}.
      *
      * @param aFile File to import
      * @param isRegardStereo whether stereochemistry should be encoded in the SMILES strings
@@ -219,7 +239,47 @@ public class Importer {
      */
     public List<MoleculeDataModel> importMoleculeFile(File aFile, boolean isRegardStereo, boolean isFillOpenValencesWithImplH, boolean isKekulizationEnforced)
             throws NullPointerException, IOException, CDKException {
+        return this.importMoleculeFile(aFile, isRegardStereo, isFillOpenValencesWithImplH, isKekulizationEnforced,
+                MoleculeFilterSettingsSnapshot.createDefault());
+    }
+    //
+    /**
+     * Imports a molecule file, user can choose between three types - mol, sdf, and smi. A text file (.txt) and a
+     * CSV/TSV/DSV file will be treated
+     * as a SMILES file. If the respective setting is activated, incomplete valences of the imported atoms are filled
+     * with implicit hydrogen atoms. If no molecule name or ID is given in the input file, the file name with an appended
+     * counter is used as such and added to the returned atom containers as a property.
+     * <br>After the preprocessing, the molecule filters described by the given settings snapshot are applied in the
+     * order disconnected structures, elements, heavy atom count, (SMILES generation), duplicates (see
+     * {@link MoleculeFilterRun}); molecules removed by them are not part of the returned list, and a molecule reduced to
+     * its largest component is taken over in its reduced form, keeping its name and properties. The duplicate filter
+     * compares the structures independently of the atom order and of the aromatic or Kekule notation (see
+     * {@link MoleculeFilterUtil#createDuplicateKey(IAtomContainer, boolean, String, boolean)}); the SMILES strings
+     * stored in the returned data models are not affected by this. Removed molecules are logged at level INFO with
+     * their name, their position among the read molecules, and the reason (for duplicates also name and position of the
+     * first occurrence), at most {@link #MAXIMUM_NUMBER_OF_INDIVIDUALLY_LOGGED_REMOVALS} per import; a summary of the
+     * filters is logged after the import and can be retrieved via {@link #getMoleculeFilterSummary()}. With the default
+     * snapshot ({@link MoleculeFilterSettingsSnapshot#createDefault()}), the result is the same as without molecule
+     * filters.
+     *
+     * @param aFile File to import
+     * @param isRegardStereo whether stereochemistry should be encoded in the SMILES strings
+     * @param isFillOpenValencesWithImplH whether open valences in the imported molecules should be filled with implicit hydrogen atoms
+     * @param isKekulizationEnforced whether imported molecules should always be kekulized, which means aromaticity
+     *                               will not(!) be encoded in the internal SMILES strings
+     * @param aFilterSettingsSnapshot settings of the molecule filters to apply, taken before the import started
+     * @return List of MoleculeDataModels which contains the imported molecules or null if the file chooser was
+     * closed by the user or a not importable file type was chosen
+     * @throws CDKException if the given file cannot be parsed
+     * @throws IOException if the given file cannot be found or read
+     * @throws NullPointerException if the given file or settings snapshot is null
+     */
+    public List<MoleculeDataModel> importMoleculeFile(File aFile, boolean isRegardStereo, boolean isFillOpenValencesWithImplH, boolean isKekulizationEnforced,
+                                                      MoleculeFilterSettingsSnapshot aFilterSettingsSnapshot)
+            throws NullPointerException, IOException, CDKException {
         Objects.requireNonNull(aFile, "aFile is null");
+        Objects.requireNonNull(aFilterSettingsSnapshot, "aFilterSettingsSnapshot is null");
+        this.moleculeFilterSummary = null;
         String tmpRecentDirFromContainer = this.settingsContainer.getRecentDirectoryPathSetting();
         if (tmpRecentDirFromContainer == null || tmpRecentDirFromContainer.isEmpty()) {
             this.settingsContainer.setRecentDirectoryPathSetting(SettingsContainer.RECENT_DIRECTORY_PATH_SETTING_DEFAULT);
@@ -260,7 +320,8 @@ public class Importer {
         }
         this.preprocessMoleculeSet(tmpImportedMoleculesSet, isFillOpenValencesWithImplH);
         this.fileName = aFile.getName();
-        List<MoleculeDataModel> tmpReturnList = this.parse(tmpImportedMoleculesSet, isRegardStereo, isKekulizationEnforced);
+        List<MoleculeDataModel> tmpReturnList = this.parse(tmpImportedMoleculesSet, isRegardStereo, isKekulizationEnforced,
+                aFilterSettingsSnapshot);
         return tmpReturnList;
     }
     //
@@ -269,40 +330,87 @@ public class Importer {
      * list is returned. Most time-consuming step is the SMILES generation, especially if stereochemistry is regarded because
      * then, the InChI numbering algorithm is used. Logs the size of the input data set and the number of exceptions that occurred during
      * SMILES generation (leads to molecule not being parsed into MoleculeDataModel).
+     * <br>The molecule filters of the given settings snapshot are applied to every molecule (see {@link MoleculeFilterRun}
+     * for the order); removed molecules are logged at level INFO (up to
+     * {@link #MAXIMUM_NUMBER_OF_INDIVIDUALLY_LOGGED_REMOVALS}), the molecules for which no SMILES string could be
+     * generated only if at least one filter is active (otherwise, the log stays as without molecule filters). The
+     * summary of the filters is logged and stored for {@link #getMoleculeFilterSummary()}.
      *
      * @param anAtomContainerSet the set to parse
      * @param isRegardStereo whether stereochemistry should be encoded in the SMILES strings
      * @param isKekulizationEnforced whether imported molecules should always be kekulized, which means aromaticity
      *                               will not(!) be encoded in the internal SMILES strings (if false, aromaticity will be(!) encoded)
+     * @param aFilterSettingsSnapshot settings of the molecule filters to apply
      * @return list of MoleculeDataModel instances or empty list if the input set is empty or null
      */
-    private List<MoleculeDataModel> parse(IAtomContainerSet anAtomContainerSet, boolean isRegardStereo, boolean isKekulizationEnforced) {
+    private List<MoleculeDataModel> parse(IAtomContainerSet anAtomContainerSet, boolean isRegardStereo, boolean isKekulizationEnforced,
+                                          MoleculeFilterSettingsSnapshot aFilterSettingsSnapshot) {
+        MoleculeFilterRun tmpFilterRun = new MoleculeFilterRun(aFilterSettingsSnapshot);
         if (anAtomContainerSet == null || anAtomContainerSet.isEmpty()) {
+            this.moleculeFilterSummary = tmpFilterRun.getSummary();
             return new ArrayList<>(0);
         }
+        boolean tmpIsAnyFilterActive = aFilterSettingsSnapshot.isAnyFilterActive();
+        boolean tmpIsDuplicateFilterActive = aFilterSettingsSnapshot.isDuplicateFilterActive();
         List<MoleculeDataModel> tmpReturnList = new ArrayList<>(anAtomContainerSet.getAtomContainerCount());
         int tmpExceptionCount = 0;
+        //1-based position of the molecule among the read molecules and number of removed molecules to log
+        int tmpPosition = 0;
+        int tmpRemovalCount = 0;
         for (IAtomContainer tmpAtomContainer : anAtomContainerSet.atomContainers()) {
+            tmpPosition++;
+            String tmpName = tmpAtomContainer.getProperty(Importer.MOLECULE_NAME_PROPERTY_KEY);
+            MoleculeFilterResult tmpFilterResult = tmpFilterRun.applyStructuralFilters(tmpAtomContainer);
+            if (!tmpFilterResult.isKept()) {
+                this.logRemovedMolecule(++tmpRemovalCount, tmpName, tmpPosition, tmpFilterResult.getRejectionReason(), null);
+                continue;
+            }
+            //the original container or, if it was reduced to its largest component, a new one with the same name and properties
+            IAtomContainer tmpMolecule = tmpFilterResult.getMolecule();
             //returns null if no SMILES code could be created
-            String tmpSmiles = ChemUtil.createUniqueSmiles(tmpAtomContainer, isRegardStereo, !isKekulizationEnforced);
+            String tmpSmiles = ChemUtil.createUniqueSmiles(tmpMolecule, isRegardStereo, !isKekulizationEnforced);
             if (tmpSmiles == null || tmpSmiles.isBlank()) {
                 tmpExceptionCount++;
+                tmpFilterRun.registerSmilesGenerationFailure();
+                if (tmpIsAnyFilterActive) {
+                    this.logRemovedMolecule(++tmpRemovalCount, tmpName, tmpPosition, MoleculeFilterReason.SMILES_GENERATION_FAILED, null);
+                }
+                continue;
+            }
+            //the stored SMILES string depends on the notation of the input if aromaticity is encoded, the key does not;
+            // no additional SMILES string is generated if the duplicate filter is inactive
+            String tmpDuplicateKey = tmpIsDuplicateFilterActive
+                    ? MoleculeFilterUtil.createDuplicateKey(tmpMolecule, isRegardStereo, tmpSmiles, !isKekulizationEnforced)
+                    : tmpSmiles;
+            MoleculeFilterRun.FirstOccurrence tmpFirstOccurrence = tmpFilterRun.checkDuplicate(tmpDuplicateKey, tmpName, tmpPosition);
+            if (tmpFirstOccurrence != null) {
+                this.logRemovedMolecule(++tmpRemovalCount, tmpName, tmpPosition, MoleculeFilterReason.DUPLICATE, tmpFirstOccurrence);
                 continue;
             }
             MoleculeDataModel tmpMoleculeDataModel;
             if (this.settingsContainer.getKeepAtomContainerInDataModelSetting()) {
-                tmpMoleculeDataModel = new MoleculeDataModel(tmpAtomContainer, isRegardStereo);
+                tmpMoleculeDataModel = new MoleculeDataModel(tmpMolecule, isRegardStereo);
             } else {
-                tmpMoleculeDataModel = new MoleculeDataModel(tmpSmiles, tmpAtomContainer.getTitle(), tmpAtomContainer.getProperties());
+                tmpMoleculeDataModel = new MoleculeDataModel(tmpSmiles, tmpMolecule.getTitle(), tmpMolecule.getProperties());
             }
-            tmpMoleculeDataModel.setName(tmpAtomContainer.getProperty(Importer.MOLECULE_NAME_PROPERTY_KEY));
+            tmpMoleculeDataModel.setName(tmpMolecule.getProperty(Importer.MOLECULE_NAME_PROPERTY_KEY));
             tmpReturnList.add(tmpMoleculeDataModel);
         }
+        if (tmpRemovalCount > Importer.MAXIMUM_NUMBER_OF_INDIVIDUALLY_LOGGED_REMOVALS) {
+            int tmpNotLoggedCount = tmpRemovalCount - Importer.MAXIMUM_NUMBER_OF_INDIVIDUALLY_LOGGED_REMOVALS;
+            Importer.LOGGER.log(Level.INFO, () -> String.format("%d further molecules were not imported but are not " +
+                    "listed individually (at most %d per import); see the summary of the molecule filters below.",
+                    tmpNotLoggedCount, Importer.MAXIMUM_NUMBER_OF_INDIVIDUALLY_LOGGED_REMOVALS));
+        }
+        MoleculeFilterSummary tmpFilterSummary = tmpFilterRun.getSummary();
+        this.moleculeFilterSummary = tmpFilterSummary;
         int finalTmpExceptionCount = tmpExceptionCount;
+        int tmpImportedMoleculesCount = tmpReturnList.size();
         Importer.LOGGER.log(Level.INFO, () -> String.format("Successfully imported %d molecules from file: %s; " +
                 "%d molecules could not be parsed into the internal data model (SMILES code generation failed). " +
                 "See above how many molecules could not be read from the input file at all or produced exceptions while preprocessing.",
-                anAtomContainerSet.getAtomContainerCount() - finalTmpExceptionCount, this.getFileName(), finalTmpExceptionCount));
+                tmpImportedMoleculesCount, this.getFileName(), finalTmpExceptionCount));
+        Importer.LOGGER.log(Level.INFO, tmpFilterSummary::toString);
         return tmpReturnList;
     }
     //
@@ -313,6 +421,18 @@ public class Importer {
      */
     public String getFileName(){
         return this.fileName;
+    }
+    //
+    /**
+     * Returns the summary of the molecule filters of the last import, i.e. the numbers of read, imported, reduced, and
+     * removed (per reason) molecules. It is reset at the start of every import and might be null if no file was
+     * imported yet or the last import did not reach the parsing of the molecules (e.g. because of an exception or an
+     * unknown file type).
+     *
+     * @return summary of the molecule filters of the last import or null
+     */
+    public MoleculeFilterSummary getMoleculeFilterSummary() {
+        return this.moleculeFilterSummary;
     }
     //
     /**
@@ -559,6 +679,34 @@ public class Importer {
             tmpName = null;
         }
         return tmpName;
+    }
+    //
+    /**
+     * Logs at level INFO that the given molecule was not imported for the given reason, with its name and its position
+     * among the read molecules (names are not necessarily unique) and, for duplicates, name and position of the first
+     * occurrence, e.g. "Molecule nan (no. 17 of the read molecules) was not imported, reason: DUPLICATE of molecule foo
+     * (no. 3)." Only the first {@link #MAXIMUM_NUMBER_OF_INDIVIDUALLY_LOGGED_REMOVALS} removals of an import are
+     * logged.
+     *
+     * @param aRemovalNumber 1-based number of this removal in the import
+     * @param aName name of the removed molecule
+     * @param aPosition 1-based position of the removed molecule among the read molecules
+     * @param aReason the reason of the removal
+     * @param aFirstOccurrence first occurrence of the structure for a duplicate, null otherwise
+     */
+    private void logRemovedMolecule(int aRemovalNumber, String aName, int aPosition, MoleculeFilterReason aReason,
+                                    MoleculeFilterRun.FirstOccurrence aFirstOccurrence) {
+        if (aRemovalNumber > Importer.MAXIMUM_NUMBER_OF_INDIVIDUALLY_LOGGED_REMOVALS) {
+            return;
+        }
+        Importer.LOGGER.log(Level.INFO, () -> {
+            String tmpLine = String.format("Molecule %s (no. %d of the read molecules) was not imported, reason: %s",
+                    aName, aPosition, aReason.name());
+            if (aFirstOccurrence != null) {
+                tmpLine += String.format(" of molecule %s (no. %d)", aFirstOccurrence.moleculeName(), aFirstOccurrence.position());
+            }
+            return tmpLine + ".";
+        });
     }
     //
     /**
