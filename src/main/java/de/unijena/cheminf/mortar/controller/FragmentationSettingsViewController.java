@@ -128,7 +128,8 @@ public class FragmentationSettingsViewController {
             Tab tmpTab = this.settingsView.addTab(
                     tmpFragmenter.getFragmentationAlgorithmDisplayName(), tmpFragmenter.settingsProperties(),
                     tmpFragmenter.getSettingNameToDisplayNameMap(),
-                    tmpFragmenter.getSettingNameToTooltipTextMap(), tmpRecentProperties);
+                    tmpFragmenter.getSettingNameToTooltipTextMap(),
+                    tmpFragmenter.getSettingNameToVisibilityConditionMap(), tmpRecentProperties);
             if (tmpFragmenter.getFragmentationAlgorithmDisplayName().equals(this.selectedFragmenterDisplayName)) {
                 this.settingsView.getSelectionModel().select(tmpTab);
             }

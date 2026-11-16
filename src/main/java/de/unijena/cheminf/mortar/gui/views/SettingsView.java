@@ -33,11 +33,13 @@ import de.unijena.cheminf.mortar.model.util.IDisplayEnum;
 import de.unijena.cheminf.mortar.model.util.SimpleEnumConstantNameProperty;
 import de.unijena.cheminf.mortar.model.util.SimpleIDisplayEnumConstantProperty;
 
+import javafx.beans.binding.Bindings;
 import javafx.beans.property.Property;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.SimpleDoubleProperty;
 import javafx.beans.property.SimpleIntegerProperty;
 import javafx.beans.property.SimpleStringProperty;
+import javafx.beans.value.ObservableBooleanValue;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.HPos;
@@ -45,6 +47,7 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.geometry.Side;
 import javafx.scene.Group;
+import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
@@ -160,6 +163,25 @@ public class SettingsView extends AnchorPane {
      */
     public Tab addTab(String aLabel, List<Property<?>> aPropertiesList, Map<String, String> aDisplayNamesMap,
                       Map<String, String> aTooltipTextsMap, Map<String, Object> aRecentPropertiesMap) {
+        return this.addTab(aLabel, aPropertiesList, aDisplayNamesMap, aTooltipTextsMap, Map.of(), aRecentPropertiesMap);
+    }
+    //
+    /**
+     * Adds a tab which contains the properties of the given properties list. The rows of properties that have a
+     * visibility condition are only shown while their condition is true.
+     *
+     * @param aLabel Label for the tab title and the tab Id
+     * @param aPropertiesList List of properties to show in created tab
+     * @param aDisplayNamesMap Map containing setting names as keys and language-specific names for the settings to display in the GUI
+     * @param aTooltipTextsMap Map containing setting names as keys and tooltip text as values
+     * @param aVisibilityConditionsMap Map containing setting names as keys and conditions as values that determine
+     *                                 whether the respective setting is shown; settings without condition are always shown
+     * @param aRecentPropertiesMap Map to hold recent properties to restore them if necessary
+     * @return Tab
+     */
+    public Tab addTab(String aLabel, List<Property<?>> aPropertiesList, Map<String, String> aDisplayNamesMap,
+                      Map<String, String> aTooltipTextsMap, Map<String, ObservableBooleanValue> aVisibilityConditionsMap,
+                      Map<String, Object> aRecentPropertiesMap) {
         Tab tmpTab = new Tab();
         tmpTab.setClosable(false);
         tmpTab.setId(aLabel);
@@ -186,7 +208,8 @@ public class SettingsView extends AnchorPane {
                 tmpScrollPane.widthProperty().multiply(0.5)
         );
         tmpGridPane.getColumnConstraints().add(tmpColCon2);
-        this.addPropertyItems(tmpGridPane, aPropertiesList, aDisplayNamesMap, aTooltipTextsMap, aRecentPropertiesMap);
+        this.addPropertyItems(tmpGridPane, aPropertiesList, aDisplayNamesMap, aTooltipTextsMap, aVisibilityConditionsMap,
+                aRecentPropertiesMap);
         tmpScrollPane.setContent(tmpGridPane);
         tmpTab.setContent(tmpScrollPane);
         this.tabPane.getTabs().add(tmpTab);
@@ -200,10 +223,13 @@ public class SettingsView extends AnchorPane {
      * @param aPropertiesList List of properties to show in created tab
      * @param aDisplayNamesMap Map containing setting names as keys and language-specific names for the settings to display in the GUI
      * @param aTooltipTextsMap Map containing setting names as keys and tooltip text as values
+     * @param aVisibilityConditionsMap Map containing setting names as keys and conditions as values that determine
+     *                                 whether the respective setting is shown; settings without condition are always shown
      * @param aRecentPropertiesMap Map to hold recent properties to restore them if necessary
      */
     private void addPropertyItems(GridPane aGridPane, List<Property<?>> aPropertiesList,
                                   Map<String, String> aDisplayNamesMap, Map<String, String> aTooltipTextsMap,
+                                  Map<String, ObservableBooleanValue> aVisibilityConditionsMap,
                                   Map<String, Object> aRecentPropertiesMap) {
         int tmpRowIndex = 0;
         for (Property tmpProperty : aPropertiesList) {
@@ -233,6 +259,7 @@ public class SettingsView extends AnchorPane {
 
             Object tmpRecentValue = tmpProperty.getValue();
             aRecentPropertiesMap.put(tmpPropName, tmpRecentValue);
+            int tmpCurrentRowIndex = tmpRowIndex;
             switch (tmpProperty) {
                 case SimpleBooleanProperty tmpSimpleBooleanProperty -> {
                     ToggleSwitch tmpToggle = new ToggleSwitch();
@@ -337,7 +364,36 @@ public class SettingsView extends AnchorPane {
                 default ->
                         throw new UnsupportedOperationException("Unknown property type " + tmpProperty.getName());
             }
+            ObservableBooleanValue tmpVisibilityCondition = aVisibilityConditionsMap.get(tmpPropName);
+            if (tmpVisibilityCondition != null) {
+                this.bindRowVisibility(aGridPane, tmpCurrentRowIndex, tmpRow, tmpVisibilityCondition);
+            }
         }
+    }
+    //
+    /**
+     * Binds the visibility of all nodes in the given row of the grid pane to the given condition. Hidden nodes are not
+     * managed by the layout and the height of the row is set to zero so that the row takes no space while the
+     * condition is false.
+     *
+     * @param aGridPane GridPane holding the row
+     * @param aRowIndex index of the row
+     * @param aRowConstraints constraints of the row
+     * @param aVisibilityCondition condition that determines whether the row is shown
+     */
+    private void bindRowVisibility(GridPane aGridPane, int aRowIndex, RowConstraints aRowConstraints,
+                                   ObservableBooleanValue aVisibilityCondition) {
+        for (Node tmpNode : aGridPane.getChildren()) {
+            Integer tmpNodeRowIndex = GridPane.getRowIndex(tmpNode);
+            if (tmpNodeRowIndex != null && tmpNodeRowIndex == aRowIndex) {
+                tmpNode.visibleProperty().bind(aVisibilityCondition);
+                tmpNode.managedProperty().bind(aVisibilityCondition);
+            }
+        }
+        double tmpRowHeight = aRowConstraints.getPrefHeight();
+        aRowConstraints.minHeightProperty().bind(Bindings.when(aVisibilityCondition).then(tmpRowHeight).otherwise(0.0));
+        aRowConstraints.prefHeightProperty().bind(Bindings.when(aVisibilityCondition).then(tmpRowHeight).otherwise(0.0));
+        aRowConstraints.maxHeightProperty().bind(Bindings.when(aVisibilityCondition).then(tmpRowHeight).otherwise(0.0));
     }
     //</editor-fold>
     //

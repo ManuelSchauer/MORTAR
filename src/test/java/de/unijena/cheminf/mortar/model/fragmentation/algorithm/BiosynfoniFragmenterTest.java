@@ -28,6 +28,7 @@ package de.unijena.cheminf.mortar.model.fragmentation.algorithm;
 import de.unijena.cheminf.mortar.model.util.ChemUtil;
 
 import javafx.beans.property.Property;
+import javafx.beans.value.ObservableBooleanValue;
 
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -635,6 +636,40 @@ class BiosynfoniFragmenterTest {
             Assertions.assertEquals(Integer.parseInt(tmpCase[3]),
                     tmpCounts.getOrDefault(BiosynfoniFragmenter.BiosynfoniKey.valueOf(tmpCase[1]).getLabel(), 0),
                     tmpCase[0] + ", " + tmpCase[1] + ": " + tmpCase[2]);
+        }
+    }
+    //
+    /**
+     * Tests that the revision settings are only shown in the GUI while the custom pattern set is chosen, that all other
+     * settings are always shown, and that a copy of the fragmenter has its own visibility conditions.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    void revisionSettingsVisibilityTest() throws Exception {
+        BiosynfoniFragmenter tmpFragmenter = new BiosynfoniFragmenter();
+        Map<String, ObservableBooleanValue> tmpConditions = tmpFragmenter.getSettingNameToVisibilityConditionMap();
+        Set<String> tmpRevisionSettingNames = new HashSet<>();
+        for (BiosynfoniFragmenter.BiosynfoniRevision tmpRevision : BiosynfoniFragmenter.BiosynfoniRevision.values()) {
+            tmpRevisionSettingNames.add(tmpRevision.getSettingName());
+        }
+        Assertions.assertEquals(tmpRevisionSettingNames, tmpConditions.keySet());
+        for (BiosynfoniFragmenter.BiosynfoniPatternSetOption tmpPatternSet : BiosynfoniFragmenter.BiosynfoniPatternSetOption.values()) {
+            tmpFragmenter.setPatternSetSetting(tmpPatternSet);
+            for (ObservableBooleanValue tmpCondition : tmpConditions.values()) {
+                Assertions.assertEquals(tmpPatternSet == BiosynfoniFragmenter.BiosynfoniPatternSetOption.CUSTOM,
+                        tmpCondition.get(), tmpPatternSet.name());
+            }
+        }
+        tmpFragmenter.restoreDefaultSettings();
+        for (ObservableBooleanValue tmpCondition : tmpConditions.values()) {
+            Assertions.assertFalse(tmpCondition.get());
+        }
+        BiosynfoniFragmenter tmpCopy = (BiosynfoniFragmenter) tmpFragmenter.copy();
+        tmpCopy.setPatternSetSetting(BiosynfoniFragmenter.BiosynfoniPatternSetOption.CUSTOM);
+        for (String tmpSettingName : tmpRevisionSettingNames) {
+            Assertions.assertTrue(tmpCopy.getSettingNameToVisibilityConditionMap().get(tmpSettingName).get());
+            Assertions.assertFalse(tmpConditions.get(tmpSettingName).get());
         }
     }
     //

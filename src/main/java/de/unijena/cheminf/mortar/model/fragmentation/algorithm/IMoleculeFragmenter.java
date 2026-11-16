@@ -32,6 +32,7 @@ import de.unijena.cheminf.mortar.model.util.SimpleEnumConstantNameProperty;
 import de.unijena.cheminf.mortar.model.util.SimpleIDisplayEnumConstantProperty;
 
 import javafx.beans.property.Property;
+import javafx.beans.value.ObservableBooleanValue;
 
 import org.openscience.cdk.interfaces.IAtomContainer;
 
@@ -64,7 +65,9 @@ import java.util.Map;
  * the parameter test logic there. Tooltip texts for the settings must be given in a HashMap with setting (property) names
  * as keys and tooltip text as values (see {@link IMoleculeFragmenter#getSettingNameToTooltipTextMap()}).
  * Similarly, names for the settings that are language-specific and can be displayed in the GUI must be given. One setting that
- * must be available is the fragment saturation setting that is already laid out in this interface, see below.
+ * must be available is the fragment saturation setting that is already laid out in this interface, see below. Settings
+ * that are only regarded with a specific option of another setting can be hidden in the GUI while they have no effect,
+ * see {@link IMoleculeFragmenter#getSettingNameToVisibilityConditionMap()}.
  * <br>
  * <br>More details can be found in the method documentations of this interface.
  * Examples for how to implement this interface to make a new fragmentation algorithm available, can be found in
@@ -331,6 +334,18 @@ public interface IMoleculeFragmenter {
      * @return map with display names
      */
     Map<String, String> getSettingNameToDisplayNameMap();
+
+    /**
+     * Returns a map containing conditions (values) for the settings with the given names (keys) that determine whether
+     * the respective setting is shown in the GUI, e.g. because it is only regarded with a specific option of another
+     * setting. Settings that are not contained in the map are always shown. The conditions should be bound to the
+     * setting properties they depend on so that the GUI is updated directly when these settings are changed.
+     *
+     * @return map with visibility conditions, empty by default
+     */
+    default Map<String, ObservableBooleanValue> getSettingNameToVisibilityConditionMap() {
+        return Map.of();
+    }
 
     /**
      * Returns a string representation of the algorithm name, e.g. "ErtlFunctionalGroupsFinder" or "Ertl algorithm".

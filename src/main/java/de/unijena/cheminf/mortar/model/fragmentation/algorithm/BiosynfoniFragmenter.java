@@ -35,6 +35,7 @@ import de.unijena.cheminf.mortar.model.util.SimpleIDisplayEnumConstantProperty;
 
 import javafx.beans.property.Property;
 import javafx.beans.property.SimpleBooleanProperty;
+import javafx.beans.value.ObservableBooleanValue;
 
 import org.openscience.cdk.aromaticity.Aromaticity;
 import org.openscience.cdk.aromaticity.Kekulization;
@@ -1080,6 +1081,12 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
     private final HashMap<String, String> settingNameToDisplayNameMap;
 
     /**
+     * Map to store pairs of {@literal <setting name, visibility condition>}; the revision settings are only shown
+     * while the custom pattern set is chosen because they are not regarded with the other pattern sets.
+     */
+    private final HashMap<String, ObservableBooleanValue> settingNameToVisibilityConditionMap;
+
+    /**
      * Logger of this class.
      */
     private static final Logger LOGGER = Logger.getLogger(BiosynfoniFragmenter.class.getName());
@@ -1138,6 +1145,10 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
                 Message.get("BiosynfoniFragmenter.returnedFragmentsSetting.displayName"));
 
         this.revisionSettings = new EnumMap<>(BiosynfoniRevision.class);
+        this.settingNameToVisibilityConditionMap = new HashMap<>(CollectionUtil.calculateInitialHashCollectionCapacity(
+                BiosynfoniRevision.values().length, BasicDefinitions.DEFAULT_HASH_COLLECTION_LOAD_FACTOR),
+                BasicDefinitions.DEFAULT_HASH_COLLECTION_LOAD_FACTOR);
+        ObservableBooleanValue tmpIsCustomPatternSetChosen = this.patternSetSetting.isEqualTo(BiosynfoniPatternSetOption.CUSTOM);
         for (BiosynfoniRevision tmpRevision : BiosynfoniRevision.values()) {
             SimpleBooleanProperty tmpRevisionSetting = new SimpleBooleanProperty(this, tmpRevision.getSettingName(),
                     BiosynfoniFragmenter.REVISION_SETTING_DEFAULT);
@@ -1145,6 +1156,7 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
             this.settings.add(tmpRevisionSetting);
             this.settingNameToTooltipTextMap.put(tmpRevisionSetting.getName(), tmpRevision.getTooltipText());
             this.settingNameToDisplayNameMap.put(tmpRevisionSetting.getName(), tmpRevision.getDisplayName());
+            this.settingNameToVisibilityConditionMap.put(tmpRevisionSetting.getName(), tmpIsCustomPatternSetChosen);
         }
     }
     //</editor-fold>
@@ -1342,6 +1354,11 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
     @Override
     public Map<String, String> getSettingNameToDisplayNameMap() {
         return this.settingNameToDisplayNameMap;
+    }
+
+    @Override
+    public Map<String, ObservableBooleanValue> getSettingNameToVisibilityConditionMap() {
+        return this.settingNameToVisibilityConditionMap;
     }
 
     @Override
