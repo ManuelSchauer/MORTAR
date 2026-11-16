@@ -100,8 +100,10 @@ import java.util.logging.Logger;
  * keys that produced it anywhere in the data set, while its properties (e.g. the Biosynfoni label in exported files)
  * are those of only one of these keys. Its frequency in a molecule is the sum over these keys. The number of matches
  * per key and the representative structures option are not affected.
- * <br>The label and the SMARTS pattern of the key are attached to every returned fragment as properties (see
+ * <br>The label and the SMARTS pattern of the key and the method that found its matches (SMARTS pattern or ring
+ * perception) are attached to every returned fragment as properties (see
  * {@link #BIOSYNFONI_LABEL_PROPERTY_KEY}, {@link #BIOSYNFONI_SMARTS_PROPERTY_KEY},
+ * {@link #BIOSYNFONI_MATCHING_METHOD_PROPERTY_KEY},
  * {@link IMoleculeFragmenter#FRAGMENT_CATEGORY_PROPERTY_KEY}, and
  * {@link IMoleculeFragmenter#FRAGMENT_DISPLAY_LABEL_PROPERTY_KEY}); the latter is used to group the fragments by
  * their key in the GUI.
@@ -997,9 +999,28 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
     public static final String BIOSYNFONI_LABEL_PROPERTY_KEY = "BiosynfoniFragmenter.Label";
 
     /**
-     * Property key under which the SMARTS pattern of the matched key is stored in the returned fragments.
+     * Property key under which the SMARTS pattern of the matched key is stored in the returned fragments. For ring keys
+     * that are matched by ring perception (see {@link #BIOSYNFONI_MATCHING_METHOD_PROPERTY_KEY}), it is the ring
+     * pattern of the key, which matches the fragment but was not used to find the matches.
      */
     public static final String BIOSYNFONI_SMARTS_PROPERTY_KEY = "BiosynfoniFragmenter.SMARTS";
+
+    /**
+     * Property key under which the method that found the matches of the key is stored in the returned fragments,
+     * either {@link #MATCHING_METHOD_SMARTS} or {@link #MATCHING_METHOD_RING_PERCEPTION}.
+     */
+    public static final String BIOSYNFONI_MATCHING_METHOD_PROPERTY_KEY = "BiosynfoniFragmenter.MatchingMethod";
+
+    /**
+     * Value of the matching method property for keys that are matched by their SMARTS pattern.
+     */
+    public static final String MATCHING_METHOD_SMARTS = "SMARTS pattern";
+
+    /**
+     * Value of the matching method property for ring keys that are matched by ring perception, i.e. by the relevant
+     * carbocycles of their size (see {@link BiosynfoniKey#getRingSize()}).
+     */
+    public static final String MATCHING_METHOD_RING_PERCEPTION = "ring perception (relevant carbocycles)";
 
     /**
      * Default value of the intra-substructure overlap filter setting, taken from the default configuration of the
@@ -1039,6 +1060,27 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
      * matched.
      */
     private final Map<String, SmartsPattern> smartsPatternCache;
+
+    /**
+     * Applied revisions for which the key data below were created; null if they have not been created yet. The key data
+     * only depend on the applied revisions, so they are created once and reused as long as the revisions do not change.
+     */
+    private Set<BiosynfoniRevision> cachedRevisions;
+
+    /**
+     * SMARTS codes of the keys for the cached revisions, in key order.
+     */
+    private String[] cachedSmartsCodes;
+
+    /**
+     * Compiled SMARTS patterns of the keys for the cached revisions, in key order.
+     */
+    private SmartsPattern[] cachedSmartsPatterns;
+
+    /**
+     * Annotated representative structures of the keys for the cached revisions, in key order; returned as clones.
+     */
+    private IAtomContainer[] cachedRepresentatives;
 
     /**
      * Settings of the revisions, which are applied in the custom pattern set if turned on (see
@@ -1410,6 +1452,7 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
                 BiosynfoniReturnedFragmentsOption.MATCHED_SUBSTRUCTURES);
         Set<BiosynfoniRevision> tmpRevisions = this.getAppliedRevisions();
         try {
+            this.updateKeyDataCache(tmpRevisions);
             IAtomContainer tmpPreparedMolecule = BiosynfoniFragmenter.prepareMolecule(aMolecule, tmpAreMatchedSubstructuresReturned);
             int[] tmpCanonicalRanks = this.intraSubstructureOverlapFilterSetting.get()
                     ? BiosynfoniFragmenter.getCanonicalRanks(tmpPreparedMolecule) : null;
@@ -1420,24 +1463,25 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
             boolean[] tmpIsAtomBlockedByPreviousKeys = new boolean[tmpPreparedMolecule.getAtomCount()];
             BiosynfoniKey[] tmpKeys = BiosynfoniKey.values();
             for (int i = 0; i < tmpKeys.length; i++) {
-                SmartsPattern tmpPattern = this.getSmartsPattern(tmpKeys[i].getSmarts(tmpRevisions));
                 List<int[]> tmpMatches = this.getFilteredMatches(
-                        BiosynfoniFragmenter.getMatches(tmpKeys[i], tmpPattern, tmpPreparedMolecule, tmpCarbocyclesBySize),
+                        BiosynfoniFragmenter.getMatches(tmpKeys[i], this.cachedSmartsPatterns[i], tmpPreparedMolecule,
+                                tmpCarbocyclesBySize),
                         tmpCanonicalRanks, tmpIsAtomBlockedByPreviousKeys);
                 if (tmpAreMatchedSubstructuresReturned) {
                     //TODO: keys matching only a single atom (O_ETHER, O_HYDROXYL, O_EPOXY, N_NITRATE, ALL_STD_AMINOS,
                     // NON_STD_AMINOS, D_METHYL) can produce identical fragments ("O", "N") whose labels and frequencies
-                    // are then combined across keys, see class documentation; to be discussed: return the representative
-                    // structure for these keys also in this mode, since a single matched atom does not show the
-                    // promiscuity of the pattern anyway
+                    // are then combined across keys, see class documentation; in the items tab, such a fragment is
+                    // shown under the combined label (e.g. "Ether oxygen, Hydroxyl group") in every molecule, also
+                    // where only one of the keys matched it; to be discussed: return the representative structure for
+                    // these keys also in this mode, since a single matched atom does not show the promiscuity of the
+                    // pattern anyway
                     for (int[] tmpMatch : tmpMatches) {
                         tmpFragments.add(this.createMatchedSubstructureFragment(tmpPreparedMolecule, tmpMatch, tmpKeys[i],
-                                tmpRevisions));
+                                this.cachedSmartsCodes[i], tmpRevisions));
                     }
                 } else if (!tmpMatches.isEmpty()) {
                     //all matches of one key are represented by the same structure and thereby collapse into one fragment
-                    tmpFragments.addAll(Collections.nCopies(tmpMatches.size(),
-                            this.createRepresentativeFragment(tmpKeys[i], tmpRevisions)));
+                    tmpFragments.addAll(Collections.nCopies(tmpMatches.size(), this.cachedRepresentatives[i].clone()));
                 }
             }
         } catch (Exception anException) {
@@ -1494,6 +1538,34 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
      */
     private SmartsPattern getSmartsPattern(String aSmarts) {
         return this.smartsPatternCache.computeIfAbsent(aSmarts, aSmartsCode -> SmartsPattern.create(aSmartsCode).setPrepare(false));
+    }
+
+    /**
+     * Creates the SMARTS codes, compiled SMARTS patterns, and annotated representative structures of all keys for the
+     * given applied revisions, unless they have already been created for these revisions.
+     *
+     * @param aRevisionSet the applied revisions
+     * @throws CDKException if a stored representative SMILES code cannot be parsed
+     */
+    private void updateKeyDataCache(Set<BiosynfoniRevision> aRevisionSet) throws CDKException {
+        if (aRevisionSet.equals(this.cachedRevisions)) {
+            return;
+        }
+        BiosynfoniKey[] tmpKeys = BiosynfoniKey.values();
+        String[] tmpSmartsCodes = new String[tmpKeys.length];
+        SmartsPattern[] tmpSmartsPatterns = new SmartsPattern[tmpKeys.length];
+        IAtomContainer[] tmpRepresentatives = new IAtomContainer[tmpKeys.length];
+        for (int i = 0; i < tmpKeys.length; i++) {
+            tmpSmartsCodes[i] = tmpKeys[i].getSmarts(aRevisionSet);
+            tmpSmartsPatterns[i] = this.getSmartsPattern(tmpSmartsCodes[i]);
+            tmpRepresentatives[i] = this.smilesParser.parseSmiles(tmpKeys[i].getRepresentativeSmiles(aRevisionSet));
+            BiosynfoniFragmenter.annotateFragment(tmpRepresentatives[i], tmpKeys[i], tmpSmartsCodes[i], aRevisionSet);
+        }
+        this.cachedSmartsCodes = tmpSmartsCodes;
+        this.cachedSmartsPatterns = tmpSmartsPatterns;
+        this.cachedRepresentatives = tmpRepresentatives;
+        //set last, so that an exception above leaves no partially updated cache behind
+        this.cachedRevisions = EnumSet.copyOf(aRevisionSet);
     }
 
     /**
@@ -1646,22 +1718,6 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
     }
 
     /**
-     * Creates the representative fragment structure of the given key for the given applied revisions from its stored
-     * SMILES code and annotates it with the key label and SMARTS pattern.
-     *
-     * @param aKey the Biosynfoni key
-     * @param aRevisionSet the applied revisions
-     * @return new atom container of the representative structure
-     * @throws CDKException if the stored SMILES code cannot be parsed
-     */
-    private IAtomContainer createRepresentativeFragment(BiosynfoniKey aKey, Set<BiosynfoniRevision> aRevisionSet)
-            throws CDKException {
-        IAtomContainer tmpRepresentative = this.smilesParser.parseSmiles(aKey.getRepresentativeSmiles(aRevisionSet));
-        BiosynfoniFragmenter.annotateFragment(tmpRepresentative, aKey, aRevisionSet);
-        return tmpRepresentative;
-    }
-
-    /**
      * Creates a fragment from the given match that consists of the matched atoms and all bonds between them. Free
      * valences resulting from bonds to non-matched atoms are saturated with implicit hydrogen atoms, and aromaticity
      * is re-detected on the fragment. A cut bond of an aromatic system counts as a single bond and a Kekulé structure
@@ -1674,13 +1730,14 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
      *                  (Kekulé) bond orders, unset bond orders are treated as single bonds
      * @param aMatch atom indices of the match
      * @param aKey the Biosynfoni key that produced the match
+     * @param aSmarts SMARTS pattern of the key for the applied revisions
      * @param aRevisionSet the applied revisions
      * @return new atom container of the matched substructure
      * @throws CloneNotSupportedException if an atom cannot be cloned
      * @throws CDKException if aromaticity detection on the fragment fails
      */
     private IAtomContainer createMatchedSubstructureFragment(IAtomContainer aMolecule, int[] aMatch, BiosynfoniKey aKey,
-                                                             Set<BiosynfoniRevision> aRevisionSet)
+                                                             String aSmarts, Set<BiosynfoniRevision> aRevisionSet)
             throws CloneNotSupportedException, CDKException {
         IAtomContainer tmpFragment = BiosynfoniFragmenter.copyMatchedAtomsAndBonds(aMolecule, aMatch, true);
         try {
@@ -1690,7 +1747,7 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
             tmpFragment = BiosynfoniFragmenter.copyMatchedAtomsAndBonds(aMolecule, aMatch, false);
         }
         this.fragmentAromaticityModel.apply(tmpFragment);
-        BiosynfoniFragmenter.annotateFragment(tmpFragment, aKey, aRevisionSet);
+        BiosynfoniFragmenter.annotateFragment(tmpFragment, aKey, aSmarts, aRevisionSet);
         return tmpFragment;
     }
 
@@ -1747,17 +1804,23 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
     }
 
     /**
-     * Sets the title and the label, SMARTS, category, and display label properties of the given fragment according
-     * to the given key and applied revisions. The display label is the readable display name of the key.
+     * Sets the title and the label, SMARTS, matching method, category, and display label properties of the given
+     * fragment according to the given key and applied revisions. The display label is the readable display name of
+     * the key.
      *
      * @param aFragment the fragment to annotate
      * @param aKey the Biosynfoni key that produced the fragment
+     * @param aSmarts SMARTS pattern of the key for the applied revisions
      * @param aRevisionSet the applied revisions
      */
-    private static void annotateFragment(IAtomContainer aFragment, BiosynfoniKey aKey, Set<BiosynfoniRevision> aRevisionSet) {
+    private static void annotateFragment(IAtomContainer aFragment, BiosynfoniKey aKey, String aSmarts,
+                                         Set<BiosynfoniRevision> aRevisionSet) {
         aFragment.setTitle(aKey.getLabel());
         aFragment.setProperty(BiosynfoniFragmenter.BIOSYNFONI_LABEL_PROPERTY_KEY, aKey.getLabel());
-        aFragment.setProperty(BiosynfoniFragmenter.BIOSYNFONI_SMARTS_PROPERTY_KEY, aKey.getSmarts(aRevisionSet));
+        aFragment.setProperty(BiosynfoniFragmenter.BIOSYNFONI_SMARTS_PROPERTY_KEY, aSmarts);
+        aFragment.setProperty(BiosynfoniFragmenter.BIOSYNFONI_MATCHING_METHOD_PROPERTY_KEY,
+                aKey.getRingSize() > 0 && aRevisionSet.contains(BiosynfoniRevision.RING_PERCEPTION)
+                        ? BiosynfoniFragmenter.MATCHING_METHOD_RING_PERCEPTION : BiosynfoniFragmenter.MATCHING_METHOD_SMARTS);
         aFragment.setProperty(IMoleculeFragmenter.FRAGMENT_CATEGORY_PROPERTY_KEY, aKey.getLabel());
         aFragment.setProperty(IMoleculeFragmenter.FRAGMENT_DISPLAY_LABEL_PROPERTY_KEY, aKey.getDisplayName());
     }

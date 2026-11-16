@@ -33,6 +33,7 @@ import de.unijena.cheminf.mortar.model.util.IDisplayEnum;
 import de.unijena.cheminf.mortar.model.util.SimpleEnumConstantNameProperty;
 import de.unijena.cheminf.mortar.model.util.SimpleIDisplayEnumConstantProperty;
 
+import javafx.beans.Observable;
 import javafx.beans.binding.Bindings;
 import javafx.beans.property.Property;
 import javafx.beans.property.SimpleBooleanProperty;
@@ -69,6 +70,7 @@ import javafx.scene.layout.Region;
 import javafx.scene.layout.RowConstraints;
 import javafx.scene.layout.StackPane;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -232,6 +234,8 @@ public class SettingsView extends AnchorPane {
                                   Map<String, ObservableBooleanValue> aVisibilityConditionsMap,
                                   Map<String, Object> aRecentPropertiesMap) {
         int tmpRowIndex = 0;
+        List<Region> tmpBackgroundRegions = new ArrayList<>(aPropertiesList.size());
+        List<ObservableBooleanValue> tmpVisibilityConditions = new ArrayList<>(aPropertiesList.size());
         for (Property tmpProperty : aPropertiesList) {
             RowConstraints tmpRow = new RowConstraints();
             tmpRow.setVgrow(Priority.ALWAYS);
@@ -367,6 +371,42 @@ public class SettingsView extends AnchorPane {
             ObservableBooleanValue tmpVisibilityCondition = aVisibilityConditionsMap.get(tmpPropName);
             if (tmpVisibilityCondition != null) {
                 this.bindRowVisibility(aGridPane, tmpCurrentRowIndex, tmpRow, tmpVisibilityCondition);
+            }
+            tmpBackgroundRegions.add(tmpBackgroundRegion);
+            tmpVisibilityConditions.add(tmpVisibilityCondition);
+        }
+        this.bindAlternatingRowColors(tmpBackgroundRegions, tmpVisibilityConditions);
+    }
+    //
+    /**
+     * Binds the background colors of the rows so that they alternate over the visible rows only. Without hidden rows,
+     * the colors set when the rows were created are kept; only rows after a row with a visibility condition get a
+     * binding that counts the visible rows before them.
+     *
+     * @param aBackgroundRegionsList background regions of the rows, in row order
+     * @param aVisibilityConditionsList visibility conditions of the rows, in row order; null for rows that are always
+     *                                  shown
+     */
+    private void bindAlternatingRowColors(List<Region> aBackgroundRegionsList,
+                                          List<ObservableBooleanValue> aVisibilityConditionsList) {
+        List<Observable> tmpPreviousConditions = new ArrayList<>(aVisibilityConditionsList.size());
+        for (int i = 0; i < aBackgroundRegionsList.size(); i++) {
+            if (!tmpPreviousConditions.isEmpty()) {
+                int tmpRowIndex = i;
+                aBackgroundRegionsList.get(i).styleProperty().bind(Bindings.createStringBinding(() -> {
+                    int tmpVisibleRowsBefore = 0;
+                    for (int j = 0; j < tmpRowIndex; j++) {
+                        ObservableBooleanValue tmpCondition = aVisibilityConditionsList.get(j);
+                        if (tmpCondition == null || tmpCondition.get()) {
+                            tmpVisibleRowsBefore++;
+                        }
+                    }
+                    return tmpVisibleRowsBefore % 2 == 1 ? SettingsView.ODD_ROW_COLOR : SettingsView.EVEN_ROW_COLOR;
+                }, tmpPreviousConditions.toArray(new Observable[0])));
+            }
+            ObservableBooleanValue tmpCondition = aVisibilityConditionsList.get(i);
+            if (tmpCondition != null && !tmpPreviousConditions.contains(tmpCondition)) {
+                tmpPreviousConditions.add(tmpCondition);
             }
         }
     }

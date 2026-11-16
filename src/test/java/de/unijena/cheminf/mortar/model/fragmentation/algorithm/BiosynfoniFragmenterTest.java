@@ -562,6 +562,43 @@ class BiosynfoniFragmenterTest {
     }
     //
     /**
+     * Tests the matching method property: ring keys matched by ring perception are marked as such, all other matches
+     * as matched by their SMARTS pattern. Also checks that switching the pattern set on the same instance updates the
+     * cached key data and that the cached representative structures are returned as new instances on every call.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    void matchingMethodPropertyTest() throws Exception {
+        SmilesParser tmpSmiPar = new SmilesParser(SilentChemObjectBuilder.getInstance());
+        //naphthalene, with a methyl group for a key that is not a ring key
+        IAtomContainer tmpMolecule = tmpSmiPar.parseSmiles("Cc1ccc2ccccc2c1");
+        BiosynfoniFragmenter tmpFragmenter = new BiosynfoniFragmenter();
+        for (BiosynfoniFragmenter.BiosynfoniPatternSetOption tmpPatternSet : new BiosynfoniFragmenter.BiosynfoniPatternSetOption[] {
+                BiosynfoniFragmenter.BiosynfoniPatternSetOption.REVISED, BiosynfoniFragmenter.BiosynfoniPatternSetOption.ORIGINAL,
+                BiosynfoniFragmenter.BiosynfoniPatternSetOption.REVISED}) {
+            tmpFragmenter.setPatternSetSetting(tmpPatternSet);
+            boolean tmpIsRingPerceptionApplied = tmpPatternSet == BiosynfoniFragmenter.BiosynfoniPatternSetOption.REVISED;
+            List<IAtomContainer> tmpFragments = tmpFragmenter.fragmentMolecule(tmpMolecule);
+            Map<String, Integer> tmpCounts = BiosynfoniFragmenterTest.countPerLabel(tmpFragments);
+            Assertions.assertEquals(2, tmpCounts.get("r_c6"), tmpPatternSet.name());
+            Assertions.assertEquals(tmpIsRingPerceptionApplied ? null : 1, tmpCounts.get("r_c10"), tmpPatternSet.name());
+            for (IAtomContainer tmpFragment : tmpFragments) {
+                String tmpLabel = tmpFragment.getProperty(BiosynfoniFragmenter.BIOSYNFONI_LABEL_PROPERTY_KEY);
+                boolean tmpIsRingKey = tmpLabel.startsWith("r_c");
+                Assertions.assertEquals(tmpIsRingKey && tmpIsRingPerceptionApplied
+                                ? BiosynfoniFragmenter.MATCHING_METHOD_RING_PERCEPTION : BiosynfoniFragmenter.MATCHING_METHOD_SMARTS,
+                        tmpFragment.getProperty(BiosynfoniFragmenter.BIOSYNFONI_MATCHING_METHOD_PROPERTY_KEY),
+                        tmpLabel + ", " + tmpPatternSet.name());
+            }
+            List<IAtomContainer> tmpFragmentsOfSecondCall = tmpFragmenter.fragmentMolecule(tmpMolecule);
+            for (int i = 0; i < tmpFragments.size(); i++) {
+                Assertions.assertNotSame(tmpFragments.get(i), tmpFragmentsOfSecondCall.get(i));
+            }
+        }
+    }
+    //
+    /**
      * Tests the custom pattern set: with all revisions turned on, it gives the same fragments as the revised pattern
      * set, and with all revisions turned off the same as the original one; every revision changes exactly the SMARTS
      * patterns of the keys it is meant for; and the two revisions of the phenyl unit and hydroxyl keys as well as the
