@@ -33,6 +33,7 @@ import de.unijena.cheminf.mortar.model.fragmentation.algorithm.IMoleculeFragment
 import de.unijena.cheminf.mortar.model.util.CollectionUtil;
 
 import javafx.beans.property.Property;
+import javafx.beans.property.StringProperty;
 import javafx.scene.Scene;
 import javafx.scene.control.Tab;
 import javafx.scene.image.Image;
@@ -80,6 +81,10 @@ public class FragmentationSettingsViewController {
      */
     private final IConfiguration configuration;
     /**
+     * Recent directory path setting of the application for file choosers opened from setting controls, may be null.
+     */
+    private final StringProperty recentDirectoryPathProperty;
+    /**
      * Logger.
      */
     private static final Logger LOGGER = Logger.getLogger(FragmentationSettingsViewController.class.getName());
@@ -91,9 +96,15 @@ public class FragmentationSettingsViewController {
      * @param anArrayOfFragmenters IMoleculeFragmenter[]
      * @param aSelectedFragmenterAlgorithmDisplayName display name of selected fragmenter (display name, not internal name!)
      * @param aConfiguration configuration instance to read resource file paths from
+     * @param aRecentDirectoryPathProperty recent directory path setting of the application that file choosers opened
+     *                                     from setting controls start in and update, e.g. for importing SMARTS
+     *                                     patterns; may be null
      */
-    public FragmentationSettingsViewController(Stage aStage, IMoleculeFragmenter[] anArrayOfFragmenters, String aSelectedFragmenterAlgorithmDisplayName, IConfiguration aConfiguration) {
+    public FragmentationSettingsViewController(Stage aStage, IMoleculeFragmenter[] anArrayOfFragmenters,
+                                               String aSelectedFragmenterAlgorithmDisplayName, IConfiguration aConfiguration,
+                                               StringProperty aRecentDirectoryPathProperty) {
         this.mainStage = aStage;
+        this.recentDirectoryPathProperty = aRecentDirectoryPathProperty;
         this.recentProperties = new HashMap<>(CollectionUtil.calculateInitialHashCollectionCapacity(anArrayOfFragmenters.length));
         this.fragmenters = anArrayOfFragmenters;
         this.selectedFragmenterDisplayName = aSelectedFragmenterAlgorithmDisplayName;
@@ -108,6 +119,7 @@ public class FragmentationSettingsViewController {
         if (this.settingsView == null) {
             this.settingsView = new SettingsView();
         }
+        this.settingsView.setRecentDirectoryPathProperty(this.recentDirectoryPathProperty);
         this.fragmentationSettingsViewStage = new Stage();
         Scene tmpScene = new Scene(this.settingsView, GuiDefinitions.GUI_MAIN_VIEW_WIDTH_VALUE, GuiDefinitions.GUI_MAIN_VIEW_HEIGHT_VALUE);
         this.fragmentationSettingsViewStage.setScene(tmpScene);

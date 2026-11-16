@@ -46,6 +46,7 @@ dependencies {
     implementation(libs.cdkInterfaces)
     implementation(libs.cdkIoformats)
     implementation(libs.cdkSmiles)
+    implementation(libs.cdkSmarts)
     implementation(libs.cdkInchi)
     implementation(libs.cdkStandard)
     implementation(libs.cdkValencycheck)

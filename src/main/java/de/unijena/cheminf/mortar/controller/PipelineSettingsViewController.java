@@ -86,6 +86,10 @@ public class PipelineSettingsViewController {
      * Lists of fragmentation algorithms for the pipeline.
      */
     private final List<IMoleculeFragmenter> selectedPipelineFragmentersList;
+    /**
+     * Recent directory path setting of the application for file choosers opened from fragmenter settings, may be null.
+     */
+    private final StringProperty recentDirectoryPathProperty;
     //</editor-fold>
     //
     //<editor-fold desc="private class variables" defaultstate="collapsed">
@@ -126,13 +130,17 @@ public class PipelineSettingsViewController {
      * @param isMoleculeDataLoaded boolean whether molecule data is loaded and hence pipeline could be executed
      * @param isFragmentationRunning boolean whether fragmentation is running
      * @param aConfiguration configuration instance to read resource file paths from
+     * @param aRecentDirectoryPathProperty recent directory path setting of the application that file choosers opened
+     *                                     from fragmenter settings start in and update; may be null
      */
     public PipelineSettingsViewController(Stage aMainStage,
                                           FragmentationService aFragmentationService,
                                           boolean isMoleculeDataLoaded,
                                           boolean isFragmentationRunning,
-                                          IConfiguration aConfiguration) {
+                                          IConfiguration aConfiguration,
+                                          StringProperty aRecentDirectoryPathProperty) {
         this.mainStage = aMainStage;
+        this.recentDirectoryPathProperty = aRecentDirectoryPathProperty;
         this.algorithmCounter = 0;
         this.fragmentationService = aFragmentationService;
         this.pipelineNameProperty = new SimpleStringProperty(this.fragmentationService.getPipeliningFragmentationName());
@@ -301,7 +309,8 @@ public class PipelineSettingsViewController {
                     this.pipelineSettingsViewStage,
                     tmpArray,
                     this.selectedPipelineFragmentersList.get(tmpFragmenterListIndex).getFragmentationAlgorithmDisplayName(),
-                    this.configuration);
+                    this.configuration,
+                    this.recentDirectoryPathProperty);
         });
         return tmpFragmenterSettingsButton;
     }

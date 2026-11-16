@@ -29,6 +29,7 @@ import de.unijena.cheminf.mortar.model.util.BasicDefinitions;
 import de.unijena.cheminf.mortar.model.util.CollectionUtil;
 import de.unijena.cheminf.mortar.model.util.IDisplayEnum;
 import de.unijena.cheminf.mortar.model.util.SimpleIDisplayEnumConstantProperty;
+import de.unijena.cheminf.mortar.model.util.SimpleSmartsPatternListProperty;
 
 import javafx.beans.property.Property;
 import javafx.beans.property.SimpleBooleanProperty;
@@ -36,6 +37,10 @@ import javafx.beans.property.SimpleDoubleProperty;
 import javafx.beans.property.SimpleIntegerProperty;
 import javafx.beans.property.SimpleStringProperty;
 
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -54,6 +59,14 @@ public final class PreferenceUtil {
      * Logger of this class.
      */
     private static final Logger LOGGER = Logger.getLogger(PreferenceUtil.class.getName());
+
+    /**
+     * Prefix of the content of a SingleTermPreference that persists a {@link SimpleSmartsPatternListProperty}. The
+     * pattern list text is stored Base64-URL-encoded (UTF-8, without padding) after this prefix because SMARTS
+     * patterns and line breaks contain characters that a SingleTermPreference does not allow. The prefix also makes
+     * the content of an empty pattern list non-empty, which a SingleTermPreference requires.
+     */
+    private static final String SMARTS_PATTERN_LIST_CONTENT_PREFIX = "base64:";
     //</editor-fold>
     //
     //<editor-fold defaultstate="collapsed" desc="Private constructor">
@@ -125,6 +138,12 @@ public final class PreferenceUtil {
                                 ((Enum) simpleIDisplayEnumConstantProperty.get()).name());
                         tmpContainer.add(tmpStringPreference);
                     }
+                    case SimpleSmartsPatternListProperty simpleSmartsPatternListProperty -> {
+                        //must be checked before SimpleStringProperty, which it extends
+                        SingleTermPreference tmpStringPreference = new SingleTermPreference(simpleSmartsPatternListProperty.getName(),
+                                PreferenceUtil.encodeSmartsPatternList(simpleSmartsPatternListProperty.get()));
+                        tmpContainer.add(tmpStringPreference);
+                    }
                     case SimpleStringProperty simpleStringProperty -> {
                         // includes SimpleEnumConstantNameProperty
                         SingleTermPreference tmpStringPreference = new SingleTermPreference(simpleStringProperty.getName(),
@@ -183,6 +202,13 @@ public final class PreferenceUtil {
                         case SimpleIDisplayEnumConstantProperty tmpSimpleIDisplayEnumConstantProperty -> {
                             SingleTermPreference tmpStringPreference = (SingleTermPreference) tmpPreferences[0];
                             tmpSimpleIDisplayEnumConstantProperty.setValue((IDisplayEnum) Enum.valueOf(tmpSimpleIDisplayEnumConstantProperty.getAssociatedEnum(), tmpStringPreference.getContent()));
+                        }
+                        case SimpleSmartsPatternListProperty tmpSimpleSmartsPatternListProperty -> {
+                            //must be checked before SimpleStringProperty, which it extends
+                            SingleTermPreference tmpStringPreference = (SingleTermPreference) tmpPreferences[0];
+                            String tmpText = PreferenceUtil.decodeSmartsPatternList(tmpStringPreference.getContent());
+                            tmpSimpleSmartsPatternListProperty.setValue(
+                                    PreferenceUtil.removeInvalidSmartsPatternLines(tmpPropertyName, tmpText));
                         }
                         case SimpleStringProperty tmpSimpleStringProperty -> {
                             //includes SimpleEnumConstantNameProperty since it extends tmpSimpleStringProperty
@@ -252,6 +278,15 @@ public final class PreferenceUtil {
                                 + " of setting name " + tmpSetting.getName() + " is invalid.");
                     }
                 }
+                case SimpleSmartsPatternListProperty simpleSmartsPatternListProperty -> {
+                    //must be checked before SimpleStringProperty, which it extends
+                    if (!SimpleSmartsPatternListProperty.validate(simpleSmartsPatternListProperty.get()).isEmpty()
+                            || !SingleTermPreference.isValidContent(
+                                    PreferenceUtil.encodeSmartsPatternList(simpleSmartsPatternListProperty.get()))) {
+                        throw new UnsupportedOperationException("Setting value " + simpleSmartsPatternListProperty.get()
+                                + " of setting name " + tmpSetting.getName() + " is invalid.");
+                    }
+                }
                 case SimpleStringProperty simpleStringProperty -> {
                     //includes SimpleEnumConstantNameProperty
                     if (!SingleTermPreference.isValidContent(simpleStringProperty.get())) {
@@ -264,6 +299,70 @@ public final class PreferenceUtil {
                 }
             }
         }
+    }
+    //</editor-fold>
+    //
+    //<editor-fold defaultstate="collapsed" desc="Private static methods">
+    /**
+     * Encodes the given SMARTS pattern list text as content of a SingleTermPreference, see
+     * {@link #SMARTS_PATTERN_LIST_CONTENT_PREFIX}.
+     *
+     * @param aText the pattern list text
+     * @return the prefix followed by the Base64-URL-encoded UTF-8 bytes of the text without padding
+     * @throws NullPointerException if the given text is null
+     */
+    private static String encodeSmartsPatternList(String aText) throws NullPointerException {
+        Objects.requireNonNull(aText, "Given text is null.");
+        return PreferenceUtil.SMARTS_PATTERN_LIST_CONTENT_PREFIX
+                + Base64.getUrlEncoder().withoutPadding().encodeToString(aText.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * Decodes the content of a SingleTermPreference that was created by {@link #encodeSmartsPatternList(String)}.
+     *
+     * @param aContent the content of the preference
+     * @return the pattern list text
+     * @throws NullPointerException if the given content is null
+     * @throws IllegalArgumentException if the given content lacks the prefix, is no valid Base64 code, or does not
+     * encode valid UTF-8 text
+     */
+    private static String decodeSmartsPatternList(String aContent) throws NullPointerException, IllegalArgumentException {
+        Objects.requireNonNull(aContent, "Given content is null.");
+        String tmpContent = aContent.trim();
+        if (!tmpContent.startsWith(PreferenceUtil.SMARTS_PATTERN_LIST_CONTENT_PREFIX)) {
+            throw new IllegalArgumentException("Persisted SMARTS pattern list does not start with the expected prefix "
+                    + PreferenceUtil.SMARTS_PATTERN_LIST_CONTENT_PREFIX + ".");
+        }
+        //throws IllegalArgumentException if the content is no valid Base64 code
+        byte[] tmpBytes = Base64.getUrlDecoder().decode(
+                tmpContent.substring(PreferenceUtil.SMARTS_PATTERN_LIST_CONTENT_PREFIX.length()));
+        try {
+            return StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(tmpBytes)).toString();
+        } catch (CharacterCodingException anException) {
+            throw new IllegalArgumentException("Persisted SMARTS pattern list is no valid UTF-8 text.", anException);
+        }
+    }
+
+    /**
+     * Removes the lines of the given SMARTS pattern list text whose SMARTS pattern is invalid, e.g. because a newer
+     * CDK version rejects it, so that the valid patterns of a persisted setting are still restored. Every removed line
+     * is logged. If no line is invalid, the text is returned unchanged.
+     *
+     * @param aSettingName name of the setting, for logging
+     * @param aText the pattern list text
+     * @return the text, or the valid entries of the text if it contains invalid lines
+     */
+    private static String removeInvalidSmartsPatternLines(String aSettingName, String aText) {
+        List<SimpleSmartsPatternListProperty.ParsedLine> tmpInvalidLines = SimpleSmartsPatternListProperty.validate(aText);
+        if (tmpInvalidLines.isEmpty()) {
+            return aText;
+        }
+        for (SimpleSmartsPatternListProperty.ParsedLine tmpInvalidLine : tmpInvalidLines) {
+            PreferenceUtil.LOGGER.log(Level.WARNING, String.format(
+                    "Persisted SMARTS pattern in line %d of setting %s is invalid and is not restored: %s (%s)",
+                    tmpInvalidLine.lineNumber(), aSettingName, tmpInvalidLine.line(), tmpInvalidLine.errorMessage()));
+        }
+        return SimpleSmartsPatternListProperty.toText(SimpleSmartsPatternListProperty.parseEntries(aText));
     }
     //</editor-fold>
 }

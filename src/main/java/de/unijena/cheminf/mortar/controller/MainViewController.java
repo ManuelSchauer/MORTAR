@@ -792,7 +792,8 @@ public class MainViewController {
         new FragmentationSettingsViewController(this.primaryStage,
                 this.fragmentationService.getFragmenters(),
                 this.fragmentationService.getSelectedFragmenter().getFragmentationAlgorithmDisplayName(),
-                this.configuration);
+                this.configuration,
+                this.settingsContainer.recentDirectoryPathSettingProperty());
     }
     //
     /**
@@ -800,7 +801,8 @@ public class MainViewController {
      */
     private void openPipelineSettingsView() {
         PipelineSettingsViewController tmpPipelineSettingsViewController =
-                new PipelineSettingsViewController(this.primaryStage, this.fragmentationService, !this.moleculeDataModelList.isEmpty(), this.isFragmentationRunning, this.configuration);
+                new PipelineSettingsViewController(this.primaryStage, this.fragmentationService, !this.moleculeDataModelList.isEmpty(),
+                        this.isFragmentationRunning, this.configuration, this.settingsContainer.recentDirectoryPathSettingProperty());
         if (tmpPipelineSettingsViewController.isFragmentationStarted()) {
             this.startFragmentation(tmpPipelineSettingsViewController.isFragmentationStarted());
         }

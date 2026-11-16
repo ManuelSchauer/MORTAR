@@ -32,12 +32,15 @@ import de.unijena.cheminf.mortar.message.Message;
 import de.unijena.cheminf.mortar.model.util.IDisplayEnum;
 import de.unijena.cheminf.mortar.model.util.SimpleEnumConstantNameProperty;
 import de.unijena.cheminf.mortar.model.util.SimpleIDisplayEnumConstantProperty;
+import de.unijena.cheminf.mortar.model.util.SimpleSmartsPatternListProperty;
 
+import javafx.beans.binding.Bindings;
 import javafx.beans.property.Property;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.SimpleDoubleProperty;
 import javafx.beans.property.SimpleIntegerProperty;
 import javafx.beans.property.SimpleStringProperty;
+import javafx.beans.property.StringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.HPos;
@@ -69,6 +72,8 @@ import javafx.scene.layout.StackPane;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * View class for the settings windows, both global and fragmenter settings.
@@ -89,6 +94,13 @@ public class SettingsView extends AnchorPane {
     public static final String ODD_ROW_COLOR = "-fx-background-color: #f5f5f5;";
     //</editor-fold>
     //
+    //<editor-fold desc="private static final class constants" defaultstate="collapsed">
+    /**
+     * Logger of this class.
+     */
+    private static final Logger LOGGER = Logger.getLogger(SettingsView.class.getName());
+    //</editor-fold>
+    //
     //<editor-fold desc="private class variables" defaultstate="collapsed">
     private final TabPane tabPane;
     private final BorderPane borderPane;
@@ -99,6 +111,10 @@ public class SettingsView extends AnchorPane {
     private final HBox hBoxLeftSideButtons;
     private final HBox hBoxButtonsHBox;
     private final SelectionModel<Tab> selectionModel;
+    /**
+     * Recent directory path setting of the application for file choosers opened from setting controls, may be null.
+     */
+    private StringProperty recentDirectoryPathProperty;
     //</editor-fold>
     //
     /**
@@ -323,6 +339,32 @@ public class SettingsView extends AnchorPane {
                     aGridPane.add(tmpEnumComboBox, 1, tmpRowIndex++);
                     GridPane.setMargin(tmpEnumComboBox, new Insets(GuiDefinitions.GUI_INSETS_VALUE));
                 }
+                case SimpleSmartsPatternListProperty tmpSmartsPatternListProperty -> {
+                    //must be checked before SimpleStringProperty, which it extends
+                    Button tmpEditButton = new Button();
+                    tmpEditButton.textProperty().bind(Bindings.createStringBinding(
+                            () -> String.format(Message.get("SettingsView.smartsPatternListButton.text"),
+                                    SimpleSmartsPatternListProperty.countEntries(tmpSmartsPatternListProperty.get())),
+                            tmpSmartsPatternListProperty));
+                    tmpEditButton.setTooltip(tmpTooltip);
+                    tmpEditButton.setOnAction(anEvent -> {
+                        SmartsPatternListEditorView tmpEditor = new SmartsPatternListEditorView(
+                                tmpEditButton.getScene().getWindow(),
+                                tmpSmartsPatternListProperty.get(),
+                                this.recentDirectoryPathProperty);
+                        tmpEditor.showAndWait().ifPresent(aPatternListText -> {
+                            try {
+                                tmpSmartsPatternListProperty.set(aPatternListText);
+                            } catch (IllegalArgumentException anException) {
+                                //should not happen because the editor only returns valid text; the setting reports it
+                                SettingsView.LOGGER.log(Level.WARNING, anException.toString(), anException);
+                            }
+                        });
+                    });
+                    //add to gridpane
+                    aGridPane.add(tmpEditButton, 1, tmpRowIndex++);
+                    GridPane.setMargin(tmpEditButton, new Insets(GuiDefinitions.GUI_INSETS_VALUE));
+                }
                 case SimpleStringProperty simpleStringProperty -> {
                     TextField tmpStringTextField = new TextField();
                     tmpStringTextField.setPrefWidth(GuiDefinitions.GUI_TEXT_FIELD_PREF_WIDTH_VALUE);
@@ -386,6 +428,17 @@ public class SettingsView extends AnchorPane {
      */
     public Button getDefaultButton() {
         return this.defaultButton;
+    }
+    //
+    /**
+     * Sets the recent directory path setting of the application, which file choosers opened from setting controls,
+     * e.g. for importing SMARTS patterns, start in and update.
+     *
+     * @param aRecentDirectoryPathProperty recent directory path setting; may be null, then the user home directory is
+     *                                     used
+     */
+    public void setRecentDirectoryPathProperty(StringProperty aRecentDirectoryPathProperty) {
+        this.recentDirectoryPathProperty = aRecentDirectoryPathProperty;
     }
     //</editor-fold>
 }

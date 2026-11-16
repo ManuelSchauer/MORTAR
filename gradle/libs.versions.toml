@@ -21,6 +21,7 @@ cdkHash = { group = "org.openscience.cdk", name = "cdk-hash", version.ref = "cdk
 cdkInterfaces = { group = "org.openscience.cdk", name = "cdk-interfaces", version.ref = "cdk-version" }
 cdkIoformats = { group = "org.openscience.cdk", name = "cdk-ioformats", version.ref = "cdk-version" }
 cdkSmiles = { group = "org.openscience.cdk", name = "cdk-smiles", version.ref = "cdk-version" }
+cdkSmarts = { group = "org.openscience.cdk", name = "cdk-smarts", version.ref = "cdk-version" }
 cdkInchi = { group = "org.openscience.cdk", name = "cdk-inchi", version.ref = "cdk-version" }
 cdkStandard = { group = "org.openscience.cdk", name = "cdk-standard", version.ref = "cdk-version" }
 cdkValencycheck = { group = "org.openscience.cdk", name = "cdk-valencycheck", version.ref = "cdk-version" }
