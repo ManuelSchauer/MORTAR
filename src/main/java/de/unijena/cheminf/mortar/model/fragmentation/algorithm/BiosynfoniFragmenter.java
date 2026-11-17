@@ -120,17 +120,18 @@ import java.util.logging.Logger;
  * Prior to matching, ring perception and Daylight aromaticity detection are applied to a copy of the input molecule
  * (see {@link SmartsPattern#prepare(IAtomContainer)}).
  * <br>
- * <br><b>Pattern sets</b>: The SMARTS patterns of the reference implementation (Python, RDKit, version "full_1103")
- * contain errors, i.e. patterns that match other structures than their name and their explanation in the reference
- * implementation state, and some design decisions that are chemically questionable. Therefore, two pattern sets are
- * available as setting (see {@link BiosynfoniPatternSetOption}): the original patterns, identical to the reference
- * implementation, and revised patterns (default). The revised pattern set differs from the original one in 15 SMARTS
- * patterns and in the matching of the 8 ring keys; the other 16 keys are identical. The changes are grouped into 13
- * revisions (see {@link BiosynfoniRevision}), and a third option, the custom pattern set, applies only those revisions
- * whose setting is turned on, e.g. only the corrected errors without the chemical decisions. The documentation of each
- * key describes its revision; "revised pattern set" there means that the respective revision is applied.
+ * <br><b>Pattern sets</b>: Several SMARTS patterns of the reference implementation (Python, RDKit, version
+ * "full_1103") match more substructures than their name and their explanation in the reference implementation
+ * describe, and some patterns leave room for chemical interpretation. Therefore, the pattern set is a setting (see
+ * {@link BiosynfoniPatternSetOption}): the original patterns, identical to the reference implementation, or the
+ * pattern variants (default), which follow the key names more closely. The variant pattern set differs from the
+ * original one in 15 SMARTS patterns and in the matching of the 8 ring keys; the other 16 keys are identical. The
+ * changes are grouped into 13 variants (see {@link BiosynfoniVariant}), and a third option, the custom pattern set,
+ * applies only those variants whose setting is turned on, e.g. only the variants that follow the key names without
+ * the interpretations. The documentation of each key describes its variant; "variant pattern set" there means that
+ * the respective variant is applied.
  * <ul>
- *   <li><b>Corrected errors</b>: the open-chain sugar patterns also match sugar rings
+ *   <li><b>Patterns that match more than their name describes</b>: the open-chain sugar patterns also match sugar rings
  *   ({@link BiosynfoniKey#S_OPENPYR_C6O6}, {@link BiosynfoniKey#S_OPENFUR_C5O5}); the non-standard amino acid
  *   pattern lists the standard side chains instead of a generic one ({@link BiosynfoniKey#NON_STD_AMINOS}); the
  *   phenethylamine pattern matches the pyrrole ring of indoles ({@link BiosynfoniKey#D_PHENYL_C2N}); the hydroxyl
@@ -143,12 +144,12 @@ import java.util.logging.Logger;
  *   ({@link BiosynfoniKey#N_NITRATE}); the ether pattern matches peroxides ({@link BiosynfoniKey#O_ETHER}); and the
  *   ring patterns also match the perimeter of fused and bridged ring systems, e.g. a ten-membered ring in
  *   naphthalene ({@link BiosynfoniKey#getRingSize()}).</li>
- *   <li><b>Chemical decisions</b>: the rings of the phenyl units from the shikimate pathway have to be aromatic
+ *   <li><b>Interpretations</b>: the rings of the phenyl units from the shikimate pathway have to be aromatic
  *   ({@link BiosynfoniKey#D_PHENYL_C3}), the methyl group of a methylmalonyl unit has to be attached to a branching
  *   point ({@link BiosynfoniKey#D2_METHYLMALONYL}), and standard amino acids that are N-alkylated or esterified count
  *   as standard amino acids ({@link BiosynfoniKey#ALL_STD_AMINOS}).</li>
  * </ul>
- * The revisions of the phenyl side chain condition and of the nitro and N-oxide oxygen atoms go back to the
+ * The variants of the phenyl side chain condition and of the nitro and N-oxide oxygen atoms go back to the
  * Biosynfoni fingerprinter that is being developed for the CDK. Deliberately broad patterns of the reference
  * implementation, e.g. for isoprene, acetyl, and ethyl units, are kept, as is the definition of the sugar rings by
  * their number of oxygen atoms.
@@ -173,11 +174,11 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
     //<editor-fold desc="Enum BiosynfoniKey">
     /**
      * Biosynfoni substructure keys in the order of the fingerprint positions. Each constant holds the label of the
-     * key in the reference implementation, its original and, if revised, its revised SMARTS pattern and representative
-     * SMILES code, and the revision that switches between them (see {@link BiosynfoniRevision}). The phenyl unit and
-     * hydroxyl keys are affected by two revisions each, so their SMARTS patterns are composed of the original or
-     * revised parts. The representative structure is matched by the SMARTS pattern of the key for every combination of
-     * applied revisions and is returned as fragment for every accepted match of the key. For every combination, all
+     * key in the reference implementation, its original and, if it has a variant, its variant SMARTS pattern and representative
+     * SMILES code, and the variant that switches between them (see {@link BiosynfoniVariant}). The phenyl unit and
+     * hydroxyl keys are affected by two variants each, so their SMARTS patterns are composed of the original or
+     * variant parts. The representative structure is matched by the SMARTS pattern of the key for every combination of
+     * applied variants and is returned as fragment for every accepted match of the key. For every combination, all
      * representative structures are pairwise distinct so that every key yields exactly one fragment.
      */
     public enum BiosynfoniKey {
@@ -191,13 +192,13 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
                 "CC(C)(COP(=O)(O)OP(=O)(O)OCC1C(C(C(O1)N2C=NC3=C(N=CN=C32)N)O)OP(=O)(O)O)C(C(=O)NCCC(=O)NCCS)O"),
         /**
          * Reduced nicotinamide adenine dinucleotide (NADH); the pattern also matches the oxidised form
-         * NAD<sup>+</sup>. In the revised pattern set, the 2'-oxygen atom of the adenosine ribose must not be bonded
+         * NAD<sup>+</sup>. In the variant pattern set, the 2'-oxygen atom of the adenosine ribose must not be bonded
          * to a phosphorus atom ("[O;!$(*P)]"). The original pattern also matches NADPH, so that NADPH counts as NADH
          * as well, and with the inter-substructure overlap filter, the following NADPH key can never match, contrary
          * to the key order of the reference implementation that puts the largest cofactors first.
          */
         CO_NADH("co_nadh",
-                BiosynfoniRevision.NADH,
+                BiosynfoniVariant.NADH,
                 "[#6]~1~[#6]~[#6]~[#7](~[#6]~[#6]~1~[#6](~O)~[#7])~[#6]~2~[#6](~[#6](~[#6](~O~2)~[#6]~O~P(~O)(~O)~O~P(~O)(~O)~O~[#6]~[#6]~3~[#6](~[#6](~[#6](~O~3)~[#7]~4~[#6]~[#7]~[#6]~5~[#6](~[#7]~[#6]~[#7]~[#6]~5~4)~[#7])~O)~O)~O)~O",
                 "[#6]~1~[#6]~[#6]~[#7](~[#6]~[#6]~1~[#6](~O)~[#7])~[#6]~2~[#6](~[#6](~[#6](~O~2)~[#6]~O~P(~O)(~O)~O~P(~O)(~O)~O~[#6]~[#6]~3~[#6](~[#6](~[#6](~O~3)~[#7]~4~[#6]~[#7]~[#6]~5~[#6](~[#7]~[#6]~[#7]~[#6]~5~4)~[#7])~[O;!$(*P)])~O)~O)~O",
                 "C1C=CN(C=C1C(=O)N)C2C(C(C(O2)COP(=O)(O)OP(=O)(O)OCC3C(C(C(O3)N4C=NC5=C(N=CN=C54)N)O)O)O)O"),
@@ -215,11 +216,11 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
          * the reference implementation, "standard" refers to the 20 standard side chains. The original pattern,
          * however, does not match residues with a standard side chain whose amino nitrogen atom carries a further
          * carbon substituent, e.g. N-methylated residues in peptides, or whose carboxy group is esterified, e.g. in
-         * depsipeptides. In the revised pattern set, these residues are matched, since N-methylation and
+         * depsipeptides. In the variant pattern set, these residues are matched, since N-methylation and
          * esterification are modifications of standard amino acids.
          */
         ALL_STD_AMINOS("allstnd_aminos",
-                BiosynfoniRevision.AMINO_ACIDS,
+                BiosynfoniVariant.AMINO_ACIDS,
                 "[$([$([NX3H,NX4H2+]),$([NX3](C)(C)(C))]1[CX4H]([CH2][CH2][CH2]1)[CX3](=[OX1])[OX2H,OX1-,N]),$([$([NX3H2,NX4H3+]),$([NX3H](C)(C))][CX4H2][CX3](=[OX1])[OX2H,OX1-,N]),$([$([NX3H2,NX4H3+]),$([NX3H](C)(C))][CX4H]([$([CH3X4]),$([CH2X4][CH2X4][CH2X4][NHX3][CH0X3](=[NH2X3+,NHX2+0])[NH2X3]),$([CH2X4][CX3](=[OX1])[NX3H2]),$([CH2X4][CX3](=[OX1])[OH0-,OH]),$([CH2X4][SX2H,SX1H0-]),$([CH2X4][CH2X4][CX3](=[OX1])[OH0-,OH]),$([CH2X4][#6X3]1:[$([#7X3H+,#7X2H0+0]:[#6X3H]:[#7X3H]),$([#7X3H])]:[#6X3H]:[$([#7X3H+,#7X2H0+0]:[#6X3H]:[#7X3H]),$([#7X3H])]:[#6X3H]1),$([CHX4]([CH3X4])[CH2X4][CH3X4]),$([CH2X4][CHX4]([CH3X4])[CH3X4]),$([CH2X4][CH2X4][CH2X4][CH2X4][NX4+,NX3+0]),$([CH2X4][CH2X4][SX2][CH3X4]),$([CH2X4][cX3]1[cX3H][cX3H][cX3H][cX3H][cX3H]1),$([CH2X4][OX2H]),$([CHX4]([CH3X4])[OX2H]),$([CH2X4][cX3]1[cX3H][nX3H][cX3]2[cX3H][cX3H][cX3H][cX3H][cX3]12),$([CH2X4][cX3]1[cX3H][cX3H][cX3]([OHX2,OH0X1-])[cX3H][cX3H]1),$([CHX4]([CH3X4])[CH3X4])])[CX3](=[OX1])[OX2H,OX1-,N])]",
                 "[$([$([NX3H,NX4H2+]),$([NX3](C)(C)(C))]1[CX4H]([CH2][CH2][CH2]1)[CX3](=[OX1])[OX2,OX1-,N]),$([$([NX3H2,NX4H3+]),$([NX3H](C)(C)),$([NX3](C)(C)(C))][CX4H2][CX3](=[OX1])[OX2,OX1-,N]),$([$([NX3H2,NX4H3+]),$([NX3H](C)(C)),$([NX3](C)(C)(C))][CX4H]([$([CH3X4]),$([CH2X4][CH2X4][CH2X4][NHX3][CH0X3](=[NH2X3+,NHX2+0])[NH2X3]),$([CH2X4][CX3](=[OX1])[NX3H2]),$([CH2X4][CX3](=[OX1])[OH0-,OH]),$([CH2X4][SX2H,SX1H0-]),$([CH2X4][CH2X4][CX3](=[OX1])[OH0-,OH]),$([CH2X4][#6X3]1:[$([#7X3H+,#7X2H0+0]:[#6X3H]:[#7X3H]),$([#7X3H])]:[#6X3H]:[$([#7X3H+,#7X2H0+0]:[#6X3H]:[#7X3H]),$([#7X3H])]:[#6X3H]1),$([CHX4]([CH3X4])[CH2X4][CH3X4]),$([CH2X4][CHX4]([CH3X4])[CH3X4]),$([CH2X4][CH2X4][CH2X4][CH2X4][NX4+,NX3+0]),$([CH2X4][CH2X4][SX2][CH3X4]),$([CH2X4][cX3]1[cX3H][cX3H][cX3H][cX3H][cX3H]1),$([CH2X4][OX2H]),$([CHX4]([CH3X4])[OX2H]),$([CH2X4][cX3]1[cX3H][nX3H][cX3]2[cX3H][cX3H][cX3H][cX3H][cX3]12),$([CH2X4][cX3]1[cX3H][cX3H][cX3]([OHX2,OH0X1-])[cX3H][cX3H]1),$([CHX4]([CH3X4])[CH3X4])])[CX3](=[OX1])[OX2,OX1-,N])]",
                 "NCC(=O)O"),
@@ -229,37 +230,37 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
          * the first part of the pattern describes a generic amino acid ("generic amino acid but not a standard amino
          * acid"). In the original pattern, however, it lists the 20 standard side chains, so that only amino acids
          * with a standard side chain but a modified amino or carboxy group are matched, e.g. alanine methyl ester, and
-         * no amino acid with a non-standard side chain, e.g. ornithine or 2-aminobutyric acid. In the revised pattern
+         * no amino acid with a non-standard side chain, e.g. ornithine or 2-aminobutyric acid. In the variant pattern
          * set, the first part describes a generic alpha-amino acid, including alpha,alpha-disubstituted ones like
          * 2-aminoisobutyric acid. Represented by alanine methyl ester in the original and by 2-aminobutyric acid in
-         * the revised pattern set.
+         * the variant pattern set.
          */
         NON_STD_AMINOS("nonstnd_aminos",
-                BiosynfoniRevision.AMINO_ACIDS,
+                BiosynfoniVariant.AMINO_ACIDS,
                 "[$([NX3,NX4+][CX4H]([$([CH3X4]),$([CH2X4][CH2X4][CH2X4][NHX3][CH0X3](=[NH2X3+,NHX2+0])[NH2X3]),$([CH2X4][CX3](=[OX1])[NX3H2]),$([CH2X4][CX3](=[OX1])[OH0-,OH]),$([CH2X4][SX2H,SX1H0-]),$([CH2X4][CH2X4][CX3](=[OX1])[OH0-,OH]),$([CH2X4][#6X3]1:[$([#7X3H+,#7X2H0+0]:[#6X3H]:[#7X3H]),$([#7X3H])]:[#6X3H]:[$([#7X3H+,#7X2H0+0]:[#6X3H]:[#7X3H]),$([#7X3H])]:[#6X3H]1),$([CHX4]([CH3X4])[CH2X4][CH3X4]),$([CH2X4][CHX4]([CH3X4])[CH3X4]),$([CH2X4][CH2X4][CH2X4][CH2X4][NX4+,NX3+0]),$([CH2X4][CH2X4][SX2][CH3X4]),$([CH2X4][cX3]1[cX3H][cX3H][cX3H][cX3H][cX3H]1),$([CH2X4][OX2H]),$([CHX4]([CH3X4])[OX2H]),$([CH2X4][cX3]1[cX3H][nX3H][cX3]2[cX3H][cX3H][cX3H][cX3H][cX3]12),$([CH2X4][cX3]1[cX3H][cX3H][cX3]([OHX2,OH0X1-])[cX3H][cX3H]1),$([CHX4]([CH3X4])[CH3X4])])[CX3](=[OX1])[O,N]);!$([$([$([NX3H,NX4H2+]),$([NX3](C)(C)(C))]1[CX4H]([CH2][CH2][CH2]1)[CX3](=[OX1])[OX2H,OX1-,N]),$([$([NX3H2,NX4H3+]),$([NX3H](C)(C))][CX4H2][CX3](=[OX1])[OX2H,OX1-,N]),$([$([NX3H2,NX4H3+]),$([NX3H](C)(C))][CX4H]([$([CH3X4]),$([CH2X4][CH2X4][CH2X4][NHX3][CH0X3](=[NH2X3+,NHX2+0])[NH2X3]),$([CH2X4][CX3](=[OX1])[NX3H2]),$([CH2X4][CX3](=[OX1])[OH0-,OH]),$([CH2X4][SX2H,SX1H0-]),$([CH2X4][CH2X4][CX3](=[OX1])[OH0-,OH]),$([CH2X4][#6X3]1:[$([#7X3H+,#7X2H0+0]:[#6X3H]:[#7X3H]),$([#7X3H])]:[#6X3H]:[$([#7X3H+,#7X2H0+0]:[#6X3H]:[#7X3H]),$([#7X3H])]:[#6X3H]1),$([CHX4]([CH3X4])[CH2X4][CH3X4]),$([CH2X4][CHX4]([CH3X4])[CH3X4]),$([CH2X4][CH2X4][CH2X4][CH2X4][NX4+,NX3+0]),$([CH2X4][CH2X4][SX2][CH3X4]),$([CH2X4][cX3]1[cX3H][cX3H][cX3H][cX3H][cX3H]1),$([CH2X4][OX2H]),$([CHX4]([CH3X4])[OX2H]),$([CH2X4][cX3]1[cX3H][nX3H][cX3]2[cX3H][cX3H][cX3H][cX3H][cX3]12),$([CH2X4][cX3]1[cX3H][cX3H][cX3]([OHX2,OH0X1-])[cX3H][cX3H]1),$([CHX4]([CH3X4])[CH3X4])])[CX3](=[OX1])[OX2H,OX1-,N])])]",
                 "[$([NX3,NX4+][CX4;H1,H0]([*])[CX3](=[OX1])[O,N]);!$([$([$([NX3H,NX4H2+]),$([NX3](C)(C)(C))]1[CX4H]([CH2][CH2][CH2]1)[CX3](=[OX1])[OX2,OX1-,N]),$([$([NX3H2,NX4H3+]),$([NX3H](C)(C)),$([NX3](C)(C)(C))][CX4H2][CX3](=[OX1])[OX2,OX1-,N]),$([$([NX3H2,NX4H3+]),$([NX3H](C)(C)),$([NX3](C)(C)(C))][CX4H]([$([CH3X4]),$([CH2X4][CH2X4][CH2X4][NHX3][CH0X3](=[NH2X3+,NHX2+0])[NH2X3]),$([CH2X4][CX3](=[OX1])[NX3H2]),$([CH2X4][CX3](=[OX1])[OH0-,OH]),$([CH2X4][SX2H,SX1H0-]),$([CH2X4][CH2X4][CX3](=[OX1])[OH0-,OH]),$([CH2X4][#6X3]1:[$([#7X3H+,#7X2H0+0]:[#6X3H]:[#7X3H]),$([#7X3H])]:[#6X3H]:[$([#7X3H+,#7X2H0+0]:[#6X3H]:[#7X3H]),$([#7X3H])]:[#6X3H]1),$([CHX4]([CH3X4])[CH2X4][CH3X4]),$([CH2X4][CHX4]([CH3X4])[CH3X4]),$([CH2X4][CH2X4][CH2X4][CH2X4][NX4+,NX3+0]),$([CH2X4][CH2X4][SX2][CH3X4]),$([CH2X4][cX3]1[cX3H][cX3H][cX3H][cX3H][cX3H]1),$([CH2X4][OX2H]),$([CHX4]([CH3X4])[OX2H]),$([CH2X4][cX3]1[cX3H][nX3H][cX3]2[cX3H][cX3H][cX3H][cX3H][cX3]12),$([CH2X4][cX3]1[cX3H][cX3H][cX3]([OHX2,OH0X1-])[cX3H][cX3H]1),$([CHX4]([CH3X4])[CH3X4])])[CX3](=[OX1])[OX2,OX1-,N])])]",
                 "COC(=O)C(C)N",
                 "CCC(N)C(=O)O"),
         //sugar derivatives
         /**
-         * Open-chain hexose, linear chain of six carbon atoms that each carry an oxygen atom. In the revised pattern
+         * Open-chain hexose, linear chain of six carbon atoms that each carry an oxygen atom. In the variant pattern
          * set, the carbon-carbon bonds must not be ring bonds ("!@"), as the name requires. The original pattern also
          * matches cyclic hexoses, e.g. glucopyranose, so that with the inter-substructure overlap filter,
          * hexopyranoses are counted as open-chain hexoses and the following pyranose key cannot match them.
          */
         S_OPENPYR_C6O6("s_openpyr_C6O6",
-                BiosynfoniRevision.OPEN_CHAIN_SUGARS,
+                BiosynfoniVariant.OPEN_CHAIN_SUGARS,
                 "C(~[#8])~C(~[#8])~C(~[#8])~C(~[#8])~C(~[#8])~C(~[#8])",
                 "C(~[#8])!@C(~[#8])!@C(~[#8])!@C(~[#8])!@C(~[#8])!@C(~[#8])",
                 "OCC(O)C(O)C(O)C(O)C=O"),
         /**
-         * Open-chain pentose, linear chain of five carbon atoms that each carry an oxygen atom. In the revised pattern
+         * Open-chain pentose, linear chain of five carbon atoms that each carry an oxygen atom. In the variant pattern
          * set, the carbon-carbon bonds must not be ring bonds ("!@"), as the name and the explanation of the reference
          * implementation ("linear furanose, in open form") require. The original pattern also matches furanoses and
          * hexopyranoses.
          */
         S_OPENFUR_C5O5("s_openfur_C5O5",
-                BiosynfoniRevision.OPEN_CHAIN_SUGARS,
+                BiosynfoniVariant.OPEN_CHAIN_SUGARS,
                 "C(~[#8])~C(~[#8])~C(~[#8])~C(~[#8])~C(~[#8])",
                 "C(~[#8])!@C(~[#8])!@C(~[#8])!@C(~[#8])!@C(~[#8])",
                 "OCC(O)C(O)C(O)C=O"),
@@ -288,12 +289,12 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
          * Phenethylamine, benzene ring connected to a two-carbon chain ending in a nitrogen atom. In the original
          * pattern, the chain is written without bond symbols, i.e. with single or aromatic bonds, and may form a
          * five-membered ring with the benzene ring, so that the pyrrole ring of every indole (C3a-C3-C2-N1) is matched
-         * as phenethylamine unit. In the revised pattern set, the first chain carbon atom must not be part of a
+         * as phenethylamine unit. In the variant pattern set, the first chain carbon atom must not be part of a
          * five-membered ring, and the chain is written with any-bond expressions. Isoquinolines, whose phenethylamine
          * unit forms a six-membered ring with the benzene ring, are still matched.
          */
         D_PHENYL_C2N("d_phenylC2N_9",
-                BiosynfoniRevision.PHENETHYLAMINE,
+                BiosynfoniVariant.PHENETHYLAMINE,
                 "c1ccccc1[#6][#6][#7]",
                 "c1ccccc1[#6;!$(*~1~*~*~*~*~1)]~[#6]~[#7]",
                 "NCCc1ccccc1"),
@@ -317,9 +318,9 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
          * <br>In the original pattern set, the ring does not have to be aromatic, and the side chain atoms are
          * excluded via "[#6;!$([r6])]" only if their smallest ring is six-membered, so that, e.g., carbon atoms in a
          * six-membered ring fused to the five-membered lactone ring of aryltetralin lignans are not excluded.
-         * <br>The two revisions are applied independently, see {@link BiosynfoniRevision#AROMATIC_PHENYL_RINGS} and
-         * {@link BiosynfoniRevision#PHENYL_SIDE_CHAIN}.
-         * <br>In the revised pattern set, the ring has to be aromatic, so that cyclohexyl groups and monocyclic
+         * <br>The two variants are applied independently, see {@link BiosynfoniVariant#AROMATIC_PHENYL_RINGS} and
+         * {@link BiosynfoniVariant#PHENYL_SIDE_CHAIN}.
+         * <br>In the variant pattern set, the ring has to be aromatic, so that cyclohexyl groups and monocyclic
          * terpenes, e.g. menthane derivatives, are not matched; non-aromatic shikimate derivatives like shikimic acid
          * are therefore not matched either. The side chain atoms must not be part of any six-membered ring, which is
          * written with any-bond expressions ("~") so that rings with non-aromatic double bonds, e.g. cyclohexene, are
@@ -333,7 +334,7 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
          */
         D_PHENYL_C2("d_phenylC2_8_strict", "CCc1ccccc1"),
         /**
-         * Phenyl ring attached to a single carbon atom, i.e. a C6-C1 unit. In the revised pattern set, the ring has to
+         * Phenyl ring attached to a single carbon atom, i.e. a C6-C1 unit. In the variant pattern set, the ring has to
          * be aromatic, see {@link #D_PHENYL_C3}.
          */
         D_PHENYL_C1("d_phenylC1_7_strict", "Cc1ccccc1"),
@@ -356,15 +357,15 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
         /**
          * Methylmalonyl unit, three-carbon motif terminating in a methyl carbon atom. The original pattern matches
          * every C-C-CH<sub>3</sub> motif, including chain ends, methyl groups on aromatic rings, and methyl ketones,
-         * i.e. typically acetate-derived structures. In the revised pattern set, the methyl group must be attached to
+         * i.e. typically acetate-derived structures. In the variant pattern set, the methyl group must be attached to
          * an aliphatic carbon atom with at least three heavy-atom neighbours that is not a carbonyl carbon atom, i.e.
          * to a branching point as in polyketide chains built from methylmalonyl units; terpenoid methyl groups are
          * still matched, but with the inter-substructure overlap filter, they are taken by the isoprene key first.
-         * Represented by propane in the original and by an isopropyl group attached to a pseudo atom in the revised
+         * Represented by propane in the original and by an isopropyl group attached to a pseudo atom in the variant
          * pattern set, whose pattern requires a further neighbour.
          */
         D2_METHYLMALONYL("d2_methylmalonyl_C3",
-                BiosynfoniRevision.METHYLMALONYL,
+                BiosynfoniVariant.METHYLMALONYL,
                 "[#6]~[#6][C;D1;h3]",
                 "[#6]~[C;D3,D4;!$(*=[#8])]-[C;D1;h3]",
                 "CCC",
@@ -386,22 +387,22 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
         /**
          * Phosphorus atom bonded to an oxygen atom. The original pattern "P~O" matches every phosphorus-oxygen pair,
          * so that one phosphate group is counted four times, although the explanation of the reference implementation
-         * states that additional oxygen atoms are not matched. In the revised pattern set, only the phosphorus atom is
+         * states that additional oxygen atoms are not matched. In the variant pattern set, only the phosphorus atom is
          * matched, so that every phosphorus atom bonded to at least one oxygen atom is counted once.
          */
         PHOSPHATE("phosphate_2",
-                BiosynfoniRevision.PHOSPHATE_SULFONATE,
+                BiosynfoniVariant.PHOSPHATE_SULFONATE,
                 "P~O",
                 "[P;$(*~[#8])]",
                 "OP"),
         /**
          * Sulfur atom bonded to an oxygen atom, e.g. in sulfoxides, sulfones, sulfonates, and sulfates. The original
-         * pattern "S~O" matches every sulfur-oxygen pair, e.g. four times for one sulfate group. In the revised
+         * pattern "S~O" matches every sulfur-oxygen pair, e.g. four times for one sulfate group. In the variant
          * pattern set, only the sulfur atom is matched, so that every sulfur atom bonded to at least one oxygen atom
          * is counted once.
          */
         SULFONATE("sulfonate_2",
-                BiosynfoniRevision.PHOSPHATE_SULFONATE,
+                BiosynfoniVariant.PHOSPHATE_SULFONATE,
                 "S~O",
                 "[S;$(*~[#8])]",
                 "OS"),
@@ -426,12 +427,12 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
         /**
          * Terminal aliphatic nitrogen atom with exactly one neighbour (not restricted to nitrate groups despite the
          * name). Represented by an amino group attached to a pseudo atom because the pattern requires exactly one
-         * neighbour. In the revised pattern set, the nitrogen atom must be bonded by a single bond, as stated in the
+         * neighbour. In the variant pattern set, the nitrogen atom must be bonded by a single bond, as stated in the
          * explanation of the reference implementation ("N with one single bond"), so that nitriles and imines are not
          * matched.
          */
         N_NITRATE("n_nitrate_1",
-                BiosynfoniRevision.TERMINAL_NITROGEN,
+                BiosynfoniVariant.TERMINAL_NITROGEN,
                 "[N;D1]",
                 "[N;D1;!$(*=*);!$(*#*)]",
                 "*N"),
@@ -442,11 +443,11 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
                 "[O;x2;r3]",
                 "C1CO1"),
         /**
-         * Acyclic ether oxygen atom, excluding esters, phosphates, and sulfates. In the revised pattern set, oxygen
+         * Acyclic ether oxygen atom, excluding esters, phosphates, and sulfates. In the variant pattern set, oxygen
          * atoms bonded to a further oxygen atom, i.e. acyclic peroxides, are excluded as well.
          */
         O_ETHER("o_ether_1",
-                BiosynfoniRevision.ETHER,
+                BiosynfoniVariant.ETHER,
                 "[O;D2;!h;!$(*C=O);X2;!R;!$(*P);!$(*S)]",
                 "[O;D2;!h;!$(*C=O);X2;!R;!$(*P);!$(*S);!$(*[#8])]",
                 "COC"),
@@ -456,7 +457,7 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
          * atom that carries a further oxygen atom ("!$(*C~O)"), which also excludes the hydroxyl groups of hemiacetals
          * and hemiketals, e.g. the anomeric hydroxyl group of reducing sugars; its parts "!$(P)" and "!$(S)" have no
          * effect because they test the oxygen atom itself.
-         * <br>In the revised pattern set, only oxygen atoms bonded to a carbonyl carbon atom are excluded
+         * <br>In the variant pattern set, only oxygen atoms bonded to a carbonyl carbon atom are excluded
          * ("!$(*C=O)"). Additionally, the oxygen atoms of nitro groups, nitrate esters, and N-oxides are excluded:
          * oxygen atoms bonded to a nitrogen atom that carries a further oxygen atom ("!$(*[#7]~[#8])") and negatively
          * charged oxygen atoms bonded to a positively charged nitrogen atom ("!$([#8-][#7+])"). These groups can be
@@ -471,42 +472,42 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
         O_HYDROXYL("o_hydroxyl_1", "CO"),
         //carbon rings
         /**
-         * Three-membered carbon ring, regardless of aromaticity. In the revised pattern set, the key is matched by
+         * Three-membered carbon ring, regardless of aromaticity. In the variant pattern set, the key is matched by
          * ring perception instead of its SMARTS pattern, see {@link #getRingSize()}.
          */
         R_C3("r_c3", "[#6]~1~[#6]~[#6]~1", "C1CC1", 3),
         /**
-         * Four-membered carbon ring, regardless of aromaticity. In the revised pattern set, the key is matched by ring
+         * Four-membered carbon ring, regardless of aromaticity. In the variant pattern set, the key is matched by ring
          * perception instead of its SMARTS pattern, see {@link #getRingSize()}.
          */
         R_C4("r_c4", "[#6]~1~[#6]~[#6]~[#6]~1", "C1CCC1", 4),
         /**
-         * Five-membered carbon ring, regardless of aromaticity. In the revised pattern set, the key is matched by ring
+         * Five-membered carbon ring, regardless of aromaticity. In the variant pattern set, the key is matched by ring
          * perception instead of its SMARTS pattern, see {@link #getRingSize()}.
          */
         R_C5("r_c5", "[#6]~1~[#6]~[#6]~[#6]~[#6]~1", "C1CCCC1", 5),
         /**
-         * Six-membered carbon ring, regardless of aromaticity. In the revised pattern set, the key is matched by ring
+         * Six-membered carbon ring, regardless of aromaticity. In the variant pattern set, the key is matched by ring
          * perception instead of its SMARTS pattern, see {@link #getRingSize()}.
          */
         R_C6("r_c6", "[#6]~1~[#6]~[#6]~[#6]~[#6]~[#6]~1", "C1CCCCC1", 6),
         /**
-         * Seven-membered carbon ring, regardless of aromaticity. In the revised pattern set, the key is matched by
+         * Seven-membered carbon ring, regardless of aromaticity. In the variant pattern set, the key is matched by
          * ring perception instead of its SMARTS pattern, see {@link #getRingSize()}.
          */
         R_C7("r_c7", "[#6]~1~[#6]~[#6]~[#6]~[#6]~[#6]~[#6]~1", "C1CCCCCC1", 7),
         /**
-         * Eight-membered carbon ring, regardless of aromaticity. In the revised pattern set, the key is matched by
+         * Eight-membered carbon ring, regardless of aromaticity. In the variant pattern set, the key is matched by
          * ring perception instead of its SMARTS pattern, see {@link #getRingSize()}.
          */
         R_C8("r_c8", "[#6]~1~[#6]~[#6]~[#6]~[#6]~[#6]~[#6]~[#6]~1", "C1CCCCCCC1", 8),
         /**
-         * Nine-membered carbon ring, regardless of aromaticity. In the revised pattern set, the key is matched by ring
+         * Nine-membered carbon ring, regardless of aromaticity. In the variant pattern set, the key is matched by ring
          * perception instead of its SMARTS pattern, see {@link #getRingSize()}.
          */
         R_C9("r_c9", "[#6]~1~[#6]~[#6]~[#6]~[#6]~[#6]~[#6]~[#6]~[#6]~1", "C1CCCCCCCC1", 9),
         /**
-         * Ten-membered carbon ring, regardless of aromaticity. In the revised pattern set, the key is matched by ring
+         * Ten-membered carbon ring, regardless of aromaticity. In the variant pattern set, the key is matched by ring
          * perception instead of its SMARTS pattern, see {@link #getRingSize()}.
          */
         R_C10("r_c10", "[#6]~1~[#6]~[#6]~[#6]~[#6]~[#6]~[#6]~[#6]~[#6]~[#6]~1", "C1CCCCCCCCC1", 10);
@@ -516,8 +517,8 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
          */
         private static final String PHENYL_RING_SMARTS = "[#6;R1]~1~[#6;R1]~[#6;R1]~[#6;R1]~[#6;R1]~[#6;R1]~1";
         /**
-         * Phenyl ring of the revised phenyl unit patterns, six aromatic carbon atoms that are not part of further
-         * rings, see {@link BiosynfoniRevision#AROMATIC_PHENYL_RINGS}.
+         * Phenyl ring of the phenyl unit pattern variants, six aromatic carbon atoms that are not part of further
+         * rings, see {@link BiosynfoniVariant#AROMATIC_PHENYL_RINGS}.
          */
         private static final String AROMATIC_PHENYL_RING_SMARTS = "[c;R1]1[c;R1][c;R1][c;R1][c;R1][c;R1]1";
         /**
@@ -526,42 +527,42 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
          */
         private static final String PHENYL_SIDE_CHAIN_ATOM_SMARTS = "[#6;!$([r6])]";
         /**
-         * Side chain carbon atom of the revised phenyl unit patterns that is not part of any six-membered ring, see
-         * {@link BiosynfoniRevision#PHENYL_SIDE_CHAIN}.
+         * Side chain carbon atom of the phenyl unit pattern variants that is not part of any six-membered ring, see
+         * {@link BiosynfoniVariant#PHENYL_SIDE_CHAIN}.
          */
-        private static final String REVISED_PHENYL_SIDE_CHAIN_ATOM_SMARTS = "[#6;!$(*~1~*~*~*~*~*~1)]";
+        private static final String VARIANT_PHENYL_SIDE_CHAIN_ATOM_SMARTS = "[#6;!$(*~1~*~*~*~*~*~1)]";
         /**
          * Label of the key as used in the reference implementation.
          */
         private final String label;
         /**
-         * Revision that switches between the original and the revised SMARTS pattern and representative structure of
-         * the key; null if the key is unchanged or composed of several revisions.
+         * Variant that switches between the original and the variant SMARTS pattern and representative structure of
+         * the key; null if the key is unchanged or composed of several variants.
          */
-        private final BiosynfoniRevision revision;
+        private final BiosynfoniVariant variant;
         /**
          * Original SMARTS pattern of the key; null for keys whose SMARTS pattern is composed.
          */
         private final String originalSmarts;
         /**
-         * Revised SMARTS pattern of the key; null for keys whose SMARTS pattern is composed.
+         * Variant SMARTS pattern of the key; null for keys whose SMARTS pattern is composed.
          */
-        private final String revisedSmarts;
+        private final String variantSmarts;
         /**
          * SMILES code of the original representative structure of the key.
          */
         private final String originalRepresentativeSmiles;
         /**
-         * SMILES code of the revised representative structure of the key.
+         * SMILES code of the variant representative structure of the key.
          */
-        private final String revisedRepresentativeSmiles;
+        private final String variantRepresentativeSmiles;
         /**
          * Number of ring atoms of a ring key, 0 for all other keys.
          */
         private final int ringSize;
         /**
-         * Constructor for keys whose SMARTS pattern is composed of original or revised parts depending on several
-         * revisions (see {@link #getSmarts(Set)}).
+         * Constructor for keys whose SMARTS pattern is composed of original or variant parts depending on several
+         * variants (see {@link #getSmarts(Set)}).
          *
          * @param aLabel label of the key as used in the reference implementation
          * @param aRepresentativeSmiles SMILES code of the representative structure of the key
@@ -571,7 +572,7 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
         }
         //
         /**
-         * Constructor for keys that are not revised.
+         * Constructor for keys without a variant.
          *
          * @param aLabel label of the key as used in the reference implementation
          * @param aSmarts SMARTS pattern of the key
@@ -582,38 +583,38 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
         }
         //
         /**
-         * Constructor for keys whose SMARTS pattern is revised while the representative structure fits both patterns.
+         * Constructor for keys whose SMARTS pattern has a variant while the representative structure fits both patterns.
          *
          * @param aLabel label of the key as used in the reference implementation
-         * @param aRevision revision that switches between the original and the revised SMARTS pattern
+         * @param aVariant variant that switches between the original and the variant SMARTS pattern
          * @param anOriginalSmarts original SMARTS pattern of the key
-         * @param aRevisedSmarts revised SMARTS pattern of the key
+         * @param aVariantSmarts variant SMARTS pattern of the key
          * @param aRepresentativeSmiles SMILES code of the representative structure of the key
          */
-        BiosynfoniKey(String aLabel, BiosynfoniRevision aRevision, String anOriginalSmarts, String aRevisedSmarts,
+        BiosynfoniKey(String aLabel, BiosynfoniVariant aVariant, String anOriginalSmarts, String aVariantSmarts,
                       String aRepresentativeSmiles) {
-            this(aLabel, aRevision, anOriginalSmarts, aRevisedSmarts, aRepresentativeSmiles, aRepresentativeSmiles, 0);
+            this(aLabel, aVariant, anOriginalSmarts, aVariantSmarts, aRepresentativeSmiles, aRepresentativeSmiles, 0);
         }
         //
         /**
-         * Constructor for keys whose SMARTS pattern and representative structure are revised.
+         * Constructor for keys whose SMARTS pattern and representative structure have a variant.
          *
          * @param aLabel label of the key as used in the reference implementation
-         * @param aRevision revision that switches between the original and the revised SMARTS pattern
+         * @param aVariant variant that switches between the original and the variant SMARTS pattern
          * @param anOriginalSmarts original SMARTS pattern of the key
-         * @param aRevisedSmarts revised SMARTS pattern of the key
+         * @param aVariantSmarts variant SMARTS pattern of the key
          * @param anOriginalRepresentativeSmiles SMILES code of the original representative structure
-         * @param aRevisedRepresentativeSmiles SMILES code of the revised representative structure
+         * @param aVariantRepresentativeSmiles SMILES code of the variant representative structure
          */
-        BiosynfoniKey(String aLabel, BiosynfoniRevision aRevision, String anOriginalSmarts, String aRevisedSmarts,
-                      String anOriginalRepresentativeSmiles, String aRevisedRepresentativeSmiles) {
-            this(aLabel, aRevision, anOriginalSmarts, aRevisedSmarts, anOriginalRepresentativeSmiles,
-                    aRevisedRepresentativeSmiles, 0);
+        BiosynfoniKey(String aLabel, BiosynfoniVariant aVariant, String anOriginalSmarts, String aVariantSmarts,
+                      String anOriginalRepresentativeSmiles, String aVariantRepresentativeSmiles) {
+            this(aLabel, aVariant, anOriginalSmarts, aVariantSmarts, anOriginalRepresentativeSmiles,
+                    aVariantRepresentativeSmiles, 0);
         }
         //
         /**
-         * Constructor for ring keys, whose SMARTS pattern and representative structure are not revised, but which are
-         * matched by ring perception if {@link BiosynfoniRevision#RING_PERCEPTION} is applied (see
+         * Constructor for ring keys, whose SMARTS pattern and representative structure have no variant, but which are
+         * matched by ring perception if {@link BiosynfoniVariant#RING_PERCEPTION} is applied (see
          * {@link #getRingSize()}).
          *
          * @param aLabel label of the key as used in the reference implementation
@@ -622,7 +623,7 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
          * @param aRingSize number of ring atoms
          */
         BiosynfoniKey(String aLabel, String aSmarts, String aRepresentativeSmiles, int aRingSize) {
-            this(aLabel, BiosynfoniRevision.RING_PERCEPTION, aSmarts, aSmarts, aRepresentativeSmiles,
+            this(aLabel, BiosynfoniVariant.RING_PERCEPTION, aSmarts, aSmarts, aRepresentativeSmiles,
                     aRepresentativeSmiles, aRingSize);
         }
         //
@@ -630,22 +631,22 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
          * Constructor that sets all fields.
          *
          * @param aLabel label of the key as used in the reference implementation
-         * @param aRevision revision that switches between the original and the revised version of the key; null if
+         * @param aVariant variant that switches between the original and the variant of the key; null if
          *                  the key is unchanged or its SMARTS pattern is composed
          * @param anOriginalSmarts original SMARTS pattern of the key; null if composed
-         * @param aRevisedSmarts revised SMARTS pattern of the key; null if composed
+         * @param aVariantSmarts variant SMARTS pattern of the key; null if composed
          * @param anOriginalRepresentativeSmiles SMILES code of the original representative structure
-         * @param aRevisedRepresentativeSmiles SMILES code of the revised representative structure
+         * @param aVariantRepresentativeSmiles SMILES code of the variant representative structure
          * @param aRingSize number of ring atoms of a ring key, 0 for all other keys
          */
-        BiosynfoniKey(String aLabel, BiosynfoniRevision aRevision, String anOriginalSmarts, String aRevisedSmarts,
-                      String anOriginalRepresentativeSmiles, String aRevisedRepresentativeSmiles, int aRingSize) {
+        BiosynfoniKey(String aLabel, BiosynfoniVariant aVariant, String anOriginalSmarts, String aVariantSmarts,
+                      String anOriginalRepresentativeSmiles, String aVariantRepresentativeSmiles, int aRingSize) {
             this.label = aLabel;
-            this.revision = aRevision;
+            this.variant = aVariant;
             this.originalSmarts = anOriginalSmarts;
-            this.revisedSmarts = aRevisedSmarts;
+            this.variantSmarts = aVariantSmarts;
             this.originalRepresentativeSmiles = anOriginalRepresentativeSmiles;
-            this.revisedRepresentativeSmiles = aRevisedRepresentativeSmiles;
+            this.variantRepresentativeSmiles = aVariantRepresentativeSmiles;
             this.ringSize = aRingSize;
         }
         //
@@ -659,35 +660,35 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
         }
         //
         /**
-         * Returns the SMARTS pattern of the key for the given applied revisions. No revisions give the original
-         * pattern of the reference implementation, all revisions the revised pattern.
+         * Returns the SMARTS pattern of the key for the given applied variants. No variants give the original
+         * pattern of the reference implementation, all variants the variant pattern.
          *
-         * @param aRevisionSet the applied revisions
+         * @param aVariantSet the applied variants
          * @return SMARTS pattern
          * @throws NullPointerException if the given set is null
          */
-        public String getSmarts(Set<BiosynfoniRevision> aRevisionSet) throws NullPointerException {
-            Objects.requireNonNull(aRevisionSet, "Given set of revisions is null.");
+        public String getSmarts(Set<BiosynfoniVariant> aVariantSet) throws NullPointerException {
+            Objects.requireNonNull(aVariantSet, "Given set of variants is null.");
             return switch (this) {
-                case D_PHENYL_C3 -> BiosynfoniKey.composePhenylSmarts(2, aRevisionSet);
-                case D_PHENYL_C2 -> BiosynfoniKey.composePhenylSmarts(1, aRevisionSet);
-                case D_PHENYL_C1 -> BiosynfoniKey.composePhenylSmarts(0, aRevisionSet);
-                case O_HYDROXYL -> BiosynfoniKey.composeHydroxylSmarts(aRevisionSet);
-                default -> this.isRevisionApplied(aRevisionSet) ? this.revisedSmarts : this.originalSmarts;
+                case D_PHENYL_C3 -> BiosynfoniKey.composePhenylSmarts(2, aVariantSet);
+                case D_PHENYL_C2 -> BiosynfoniKey.composePhenylSmarts(1, aVariantSet);
+                case D_PHENYL_C1 -> BiosynfoniKey.composePhenylSmarts(0, aVariantSet);
+                case O_HYDROXYL -> BiosynfoniKey.composeHydroxylSmarts(aVariantSet);
+                default -> this.isVariantApplied(aVariantSet) ? this.variantSmarts : this.originalSmarts;
             };
         }
         //
         /**
          * Returns the SMILES code of the representative structure that is returned as fragment for every match of
-         * the key with the given applied revisions.
+         * the key with the given applied variants.
          *
-         * @param aRevisionSet the applied revisions
+         * @param aVariantSet the applied variants
          * @return representative SMILES code
          * @throws NullPointerException if the given set is null
          */
-        public String getRepresentativeSmiles(Set<BiosynfoniRevision> aRevisionSet) throws NullPointerException {
-            Objects.requireNonNull(aRevisionSet, "Given set of revisions is null.");
-            return this.isRevisionApplied(aRevisionSet) ? this.revisedRepresentativeSmiles : this.originalRepresentativeSmiles;
+        public String getRepresentativeSmiles(Set<BiosynfoniVariant> aVariantSet) throws NullPointerException {
+            Objects.requireNonNull(aVariantSet, "Given set of variants is null.");
+            return this.isVariantApplied(aVariantSet) ? this.variantRepresentativeSmiles : this.originalRepresentativeSmiles;
         }
         //
         /**
@@ -695,7 +696,7 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
          * <br>A ring SMARTS pattern like "[#6]~1~[#6]~[#6]~[#6]~[#6]~[#6]~1" matches every closed path of the given
          * size, also along the perimeter of fused or bridged ring systems, e.g. the ten carbon atoms of the perimeter
          * of naphthalene, decalin, or steroids, or the six carbon atoms of the perimeter of bicyclo[3.1.0]hexane. If
-         * {@link BiosynfoniRevision#RING_PERCEPTION} is applied, ring keys are therefore matched by ring perception
+         * {@link BiosynfoniVariant#RING_PERCEPTION} is applied, ring keys are therefore matched by ring perception
          * instead of their SMARTS pattern: every relevant cycle (see {@link Cycles#relevant(IAtomContainer)}) of the
          * given size that consists only of carbon atoms is a match. The relevant cycles are the union of all minimum
          * cycle bases, so they do not depend on the input atom order, and they include all faces of symmetric ring
@@ -717,31 +718,31 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
         }
         //
         /**
-         * Checks whether the single revision of this key is contained in the given set of applied revisions.
+         * Checks whether the single variant of this key is contained in the given set of applied variants.
          *
-         * @param aRevisionSet the applied revisions
-         * @return true if the key has a single revision and it is applied
+         * @param aVariantSet the applied variants
+         * @return true if the key has a single variant and it is applied
          */
-        private boolean isRevisionApplied(Set<BiosynfoniRevision> aRevisionSet) {
-            return !Objects.isNull(this.revision) && aRevisionSet.contains(this.revision);
+        private boolean isVariantApplied(Set<BiosynfoniVariant> aVariantSet) {
+            return !Objects.isNull(this.variant) && aVariantSet.contains(this.variant);
         }
         //
         /**
-         * Composes the SMARTS pattern of a phenyl unit key from the original or revised phenyl ring (see
-         * {@link BiosynfoniRevision#AROMATIC_PHENYL_RINGS}) and the original or revised side chain condition (see
-         * {@link BiosynfoniRevision#PHENYL_SIDE_CHAIN}).
+         * Composes the SMARTS pattern of a phenyl unit key from the original or variant phenyl ring (see
+         * {@link BiosynfoniVariant#AROMATIC_PHENYL_RINGS}) and the original or variant side chain condition (see
+         * {@link BiosynfoniVariant#PHENYL_SIDE_CHAIN}).
          *
          * @param aNumberOfConditionedSideChainAtoms number of side chain atoms after the first one, i.e. 2 for the
          *                                           phenyl-C3, 1 for the phenyl-C2, and 0 for the phenyl-C1 unit
-         * @param aRevisionSet the applied revisions
+         * @param aVariantSet the applied variants
          * @return SMARTS pattern
          */
-        private static String composePhenylSmarts(int aNumberOfConditionedSideChainAtoms, Set<BiosynfoniRevision> aRevisionSet) {
-            StringBuilder tmpSmarts = new StringBuilder(aRevisionSet.contains(BiosynfoniRevision.AROMATIC_PHENYL_RINGS)
+        private static String composePhenylSmarts(int aNumberOfConditionedSideChainAtoms, Set<BiosynfoniVariant> aVariantSet) {
+            StringBuilder tmpSmarts = new StringBuilder(aVariantSet.contains(BiosynfoniVariant.AROMATIC_PHENYL_RINGS)
                     ? BiosynfoniKey.AROMATIC_PHENYL_RING_SMARTS : BiosynfoniKey.PHENYL_RING_SMARTS);
             tmpSmarts.append("~[#6]");
-            String tmpSideChainAtom = aRevisionSet.contains(BiosynfoniRevision.PHENYL_SIDE_CHAIN)
-                    ? BiosynfoniKey.REVISED_PHENYL_SIDE_CHAIN_ATOM_SMARTS : BiosynfoniKey.PHENYL_SIDE_CHAIN_ATOM_SMARTS;
+            String tmpSideChainAtom = aVariantSet.contains(BiosynfoniVariant.PHENYL_SIDE_CHAIN)
+                    ? BiosynfoniKey.VARIANT_PHENYL_SIDE_CHAIN_ATOM_SMARTS : BiosynfoniKey.PHENYL_SIDE_CHAIN_ATOM_SMARTS;
             for (int i = 0; i < aNumberOfConditionedSideChainAtoms; i++) {
                 tmpSmarts.append('~').append(tmpSideChainAtom);
             }
@@ -749,109 +750,109 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
         }
         //
         /**
-         * Composes the SMARTS pattern of the hydroxyl key from the original or revised exclusion of oxygen atoms bonded
-         * to a carbon atom with a further oxygen atom (see {@link BiosynfoniRevision#HYDROXYL_HEMIACETAL}) and the
-         * original or revised remaining exclusions (see {@link BiosynfoniRevision#HYDROXYL_NITRO_N_OXIDE}). The
+         * Composes the SMARTS pattern of the hydroxyl key from the original or variant exclusion of oxygen atoms bonded
+         * to a carbon atom with a further oxygen atom (see {@link BiosynfoniVariant#HYDROXYL_HEMIACETAL}) and the
+         * original or variant remaining exclusions (see {@link BiosynfoniVariant#HYDROXYL_NITRO_N_OXIDE}). The
          * original remaining exclusions "!$(P)" and "!$(S)" have no effect but are kept to reproduce the original
          * pattern exactly.
          *
-         * @param aRevisionSet the applied revisions
+         * @param aVariantSet the applied variants
          * @return SMARTS pattern
          */
-        private static String composeHydroxylSmarts(Set<BiosynfoniRevision> aRevisionSet) {
+        private static String composeHydroxylSmarts(Set<BiosynfoniVariant> aVariantSet) {
             return "[#8;D1;h,!v2;$(*[#6,#7]);"
-                    + (aRevisionSet.contains(BiosynfoniRevision.HYDROXYL_HEMIACETAL) ? "!$(*C=O)" : "!$(*C~O)")
-                    + (aRevisionSet.contains(BiosynfoniRevision.HYDROXYL_NITRO_N_OXIDE)
+                    + (aVariantSet.contains(BiosynfoniVariant.HYDROXYL_HEMIACETAL) ? "!$(*C=O)" : "!$(*C~O)")
+                    + (aVariantSet.contains(BiosynfoniVariant.HYDROXYL_NITRO_N_OXIDE)
                             ? ";!$(*[#7]~[#8]);!$([#8-][#7+])" : ";!$(P);!$(S)")
                     + "]";
         }
     }
     //</editor-fold>
     //
-    //<editor-fold desc="Enum BiosynfoniRevision">
+    //<editor-fold desc="Enum BiosynfoniVariant">
     /**
-     * Revisions of the original Biosynfoni SMARTS patterns. The revised pattern set applies all revisions, the
+     * Variants of the original Biosynfoni SMARTS patterns. The variant pattern set applies all variants, the
      * original pattern set none, and the custom pattern set those whose setting is turned on (see
-     * {@link BiosynfoniPatternSetOption}). Related changes form one revision so that no contradictory combinations
+     * {@link BiosynfoniPatternSetOption}). Related changes form one variant so that no contradictory combinations
      * arise, e.g. both amino acid keys or both open-chain sugar keys. The documentation of the affected keys describes
-     * each revision in detail.
+     * each variant in detail.
      */
-    public enum BiosynfoniRevision {
+    public enum BiosynfoniVariant {
         /**
          * NADH pattern that does not match NADPH ({@link BiosynfoniKey#CO_NADH}).
          */
-        NADH("Revised NADH pattern setting"),
+        NADH("NADH pattern variant setting"),
         /**
          * Standard amino acids including N-alkylated and esterified residues, and non-standard amino acids with a
          * generic side chain ({@link BiosynfoniKey#ALL_STD_AMINOS}, {@link BiosynfoniKey#NON_STD_AMINOS}).
          */
-        AMINO_ACIDS("Revised amino acid patterns setting"),
+        AMINO_ACIDS("Amino acid pattern variants setting"),
         /**
          * Open-chain sugar patterns that do not match sugar rings ({@link BiosynfoniKey#S_OPENPYR_C6O6},
          * {@link BiosynfoniKey#S_OPENFUR_C5O5}).
          */
-        OPEN_CHAIN_SUGARS("Revised open-chain sugar patterns setting"),
+        OPEN_CHAIN_SUGARS("Open-chain sugar pattern variants setting"),
         /**
          * Phenethylamine pattern that does not match the pyrrole ring of indoles ({@link BiosynfoniKey#D_PHENYL_C2N}).
          */
-        PHENETHYLAMINE("Revised phenethylamine pattern setting"),
+        PHENETHYLAMINE("Phenethylamine pattern variant setting"),
         /**
          * Side chain atoms of the phenyl-C3 and phenyl-C2 units that must not be part of any six-membered ring instead
          * of a six-membered smallest ring ({@link BiosynfoniKey#D_PHENYL_C3}, {@link BiosynfoniKey#D_PHENYL_C2}).
          */
-        PHENYL_SIDE_CHAIN("Revised phenyl side chain setting"),
+        PHENYL_SIDE_CHAIN("Phenyl side chain variant setting"),
         /**
          * Aromatic rings of the phenyl units ({@link BiosynfoniKey#D_PHENYL_C3}, {@link BiosynfoniKey#D_PHENYL_C2},
          * {@link BiosynfoniKey#D_PHENYL_C1}).
          */
-        AROMATIC_PHENYL_RINGS("Aromatic phenyl rings setting"),
+        AROMATIC_PHENYL_RINGS("Aromatic phenyl rings variant setting"),
         /**
          * Methylmalonyl units whose methyl group is attached to a branching point
          * ({@link BiosynfoniKey#D2_METHYLMALONYL}).
          */
-        METHYLMALONYL("Revised methylmalonyl pattern setting"),
+        METHYLMALONYL("Methylmalonyl pattern variant setting"),
         /**
          * One match per phosphorus or sulfur atom instead of per bond to an oxygen atom ({@link BiosynfoniKey#PHOSPHATE},
          * {@link BiosynfoniKey#SULFONATE}).
          */
-        PHOSPHATE_SULFONATE("Revised phosphate and sulfonate patterns setting"),
+        PHOSPHATE_SULFONATE("Phosphate and sulfonate pattern variants setting"),
         /**
          * Terminal nitrogen atoms with a single bond only ({@link BiosynfoniKey#N_NITRATE}).
          */
-        TERMINAL_NITROGEN("Revised terminal nitrogen pattern setting"),
+        TERMINAL_NITROGEN("Terminal nitrogen pattern variant setting"),
         /**
          * Ether pattern that does not match peroxides ({@link BiosynfoniKey#O_ETHER}).
          */
-        ETHER("Revised ether pattern setting"),
+        ETHER("Ether pattern variant setting"),
         /**
          * Hydroxyl pattern that matches the hydroxyl groups of hemiacetals and hemiketals
          * ({@link BiosynfoniKey#O_HYDROXYL}).
          */
-        HYDROXYL_HEMIACETAL("Revised hydroxyl hemiacetal setting"),
+        HYDROXYL_HEMIACETAL("Hydroxyl hemiacetal variant setting"),
         /**
          * Hydroxyl pattern that does not match the oxygen atoms of nitro groups, nitrate esters, and N-oxides
          * ({@link BiosynfoniKey#O_HYDROXYL}).
          */
-        HYDROXYL_NITRO_N_OXIDE("Revised hydroxyl nitro and N-oxide setting"),
+        HYDROXYL_NITRO_N_OXIDE("Hydroxyl nitro and N-oxide variant setting"),
         /**
          * Ring keys matched by ring perception instead of their SMARTS pattern (see {@link BiosynfoniKey#getRingSize()}).
          */
-        RING_PERCEPTION("Ring perception for ring keys setting");
+        RING_PERCEPTION("Ring perception variant setting");
         /**
-         * Name of the setting that turns the revision on or off in the custom pattern set.
+         * Name of the setting that turns the variant on or off in the custom pattern set.
          */
         private final String settingName;
         /**
          * Constructor.
          *
-         * @param aSettingName name of the setting that turns the revision on or off in the custom pattern set
+         * @param aSettingName name of the setting that turns the variant on or off in the custom pattern set
          */
-        BiosynfoniRevision(String aSettingName) {
+        BiosynfoniVariant(String aSettingName) {
             this.settingName = aSettingName;
         }
         //
         /**
-         * Returns the name of the setting that turns the revision on or off in the custom pattern set.
+         * Returns the name of the setting that turns the variant on or off in the custom pattern set.
          *
          * @return setting name
          */
@@ -860,21 +861,21 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
         }
         //
         /**
-         * Returns the language-specific display name of the setting of the revision.
+         * Returns the language-specific display name of the setting of the variant.
          *
          * @return display name
          */
         public String getDisplayName() {
-            return Message.get("BiosynfoniFragmenter.BiosynfoniRevision." + this.name() + ".displayName");
+            return Message.get("BiosynfoniFragmenter.BiosynfoniVariant." + this.name() + ".displayName");
         }
         //
         /**
-         * Returns the language-specific tooltip text of the setting of the revision.
+         * Returns the language-specific tooltip text of the setting of the variant.
          *
          * @return tooltip text
          */
         public String getTooltipText() {
-            return Message.get("BiosynfoniFragmenter.BiosynfoniRevision." + this.name() + ".tooltip");
+            return Message.get("BiosynfoniFragmenter.BiosynfoniVariant." + this.name() + ".tooltip");
         }
     }
     //</editor-fold>
@@ -933,16 +934,16 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
     //<editor-fold desc="Enum BiosynfoniPatternSetOption">
     /**
      * Enum for the options of which SMARTS patterns are used: the original ones of Biosynfoni version "full_1103", the
-     * revised ones, or a custom selection of revisions (see class documentation and {@link BiosynfoniRevision}).
+     * variant ones, or a custom selection of variants (see class documentation and {@link BiosynfoniVariant}).
      */
     public enum BiosynfoniPatternSetOption implements IDisplayEnum {
         /**
-         * Revised SMARTS patterns, which correct errors of the original patterns and decide some of them chemically,
-         * i.e. all revisions are applied.
+         * Pattern variants, which follow the key names more closely than the original patterns and interpret some of
+         * them chemically, i.e. all variants are applied.
          */
-        REVISED(
-                Message.get("BiosynfoniFragmenter.BiosynfoniPatternSetOption.Revised.displayName"),
-                Message.get("BiosynfoniFragmenter.BiosynfoniPatternSetOption.Revised.tooltip")),
+        VARIANT(
+                Message.get("BiosynfoniFragmenter.BiosynfoniPatternSetOption.Variant.displayName"),
+                Message.get("BiosynfoniFragmenter.BiosynfoniPatternSetOption.Variant.tooltip")),
         /**
          * Original SMARTS patterns of Biosynfoni version "full_1103", identical to the reference implementation.
          */
@@ -950,8 +951,8 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
                 Message.get("BiosynfoniFragmenter.BiosynfoniPatternSetOption.Original.displayName"),
                 Message.get("BiosynfoniFragmenter.BiosynfoniPatternSetOption.Original.tooltip")),
         /**
-         * Custom selection of revisions: a revision is applied if its setting is turned on (see
-         * {@link BiosynfoniRevision}).
+         * Custom selection of variants: a variant is applied if its setting is turned on (see
+         * {@link BiosynfoniVariant}).
          */
         CUSTOM(
                 Message.get("BiosynfoniFragmenter.BiosynfoniPatternSetOption.Custom.displayName"),
@@ -1043,13 +1044,13 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
     /**
      * Default option for the pattern set setting.
      */
-    public static final BiosynfoniPatternSetOption PATTERN_SET_OPTION_DEFAULT = BiosynfoniPatternSetOption.REVISED;
+    public static final BiosynfoniPatternSetOption PATTERN_SET_OPTION_DEFAULT = BiosynfoniPatternSetOption.VARIANT;
 
     /**
-     * Default value of the settings of the revisions in the custom pattern set (see {@link BiosynfoniRevision}), so
-     * that the custom pattern set initially corresponds to the revised one.
+     * Default value of the settings of the variants in the custom pattern set (see {@link BiosynfoniVariant}), so
+     * that the custom pattern set initially corresponds to the variant pattern set.
      */
-    public static final boolean REVISION_SETTING_DEFAULT = true;
+    public static final boolean VARIANT_SETTING_DEFAULT = true;
     //</editor-fold>
     //
     //<editor-fold desc="Private final variables">
@@ -1062,31 +1063,31 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
     private final Map<String, SmartsPattern> smartsPatternCache;
 
     /**
-     * Applied revisions for which the key data below were created; null if they have not been created yet. The key data
-     * only depend on the applied revisions, so they are created once and reused as long as the revisions do not change.
+     * Applied variants for which the key data below were created; null if they have not been created yet. The key data
+     * only depend on the applied variants, so they are created once and reused as long as the variants do not change.
      */
-    private Set<BiosynfoniRevision> cachedRevisions;
+    private Set<BiosynfoniVariant> cachedVariants;
 
     /**
-     * SMARTS codes of the keys for the cached revisions, in key order.
+     * SMARTS codes of the keys for the cached variants, in key order.
      */
     private String[] cachedSmartsCodes;
 
     /**
-     * Compiled SMARTS patterns of the keys for the cached revisions, in key order.
+     * Compiled SMARTS patterns of the keys for the cached variants, in key order.
      */
     private SmartsPattern[] cachedSmartsPatterns;
 
     /**
-     * Annotated representative structures of the keys for the cached revisions, in key order; returned as clones.
+     * Annotated representative structures of the keys for the cached variants, in key order; returned as clones.
      */
     private IAtomContainer[] cachedRepresentatives;
 
     /**
-     * Settings of the revisions, which are applied in the custom pattern set if turned on (see
-     * {@link BiosynfoniRevision}).
+     * Settings of the variants, which are applied in the custom pattern set if turned on (see
+     * {@link BiosynfoniVariant}).
      */
-    private final Map<BiosynfoniRevision, SimpleBooleanProperty> revisionSettings;
+    private final Map<BiosynfoniVariant, SimpleBooleanProperty> variantSettings;
 
     /**
      * SMILES parser for creating the representative fragment structures.
@@ -1123,7 +1124,7 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
     private final HashMap<String, String> settingNameToDisplayNameMap;
 
     /**
-     * Map to store pairs of {@literal <setting name, visibility condition>}; the revision settings are only shown
+     * Map to store pairs of {@literal <setting name, visibility condition>}; the variant settings are only shown
      * while the custom pattern set is chosen because they are not regarded with the other pattern sets.
      */
     private final HashMap<String, ObservableBooleanValue> settingNameToVisibilityConditionMap;
@@ -1144,7 +1145,7 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
         this.smilesParser = new SmilesParser(SilentChemObjectBuilder.getInstance());
         this.fragmentAromaticityModel = new Aromaticity(Aromaticity.Model.Daylight,
                 Cycles.or(Cycles.all(), Cycles.cdkAromaticSet()));
-        int tmpNumberOfSettings = 4 + BiosynfoniRevision.values().length;
+        int tmpNumberOfSettings = 4 + BiosynfoniVariant.values().length;
         this.settings = new ArrayList<>(tmpNumberOfSettings);
         int tmpInitialCapacityForSettingMaps = CollectionUtil.calculateInitialHashCollectionCapacity(
                 tmpNumberOfSettings,
@@ -1186,19 +1187,19 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
         this.settingNameToDisplayNameMap.put(this.returnedFragmentsSetting.getName(),
                 Message.get("BiosynfoniFragmenter.returnedFragmentsSetting.displayName"));
 
-        this.revisionSettings = new EnumMap<>(BiosynfoniRevision.class);
+        this.variantSettings = new EnumMap<>(BiosynfoniVariant.class);
         this.settingNameToVisibilityConditionMap = new HashMap<>(CollectionUtil.calculateInitialHashCollectionCapacity(
-                BiosynfoniRevision.values().length, BasicDefinitions.DEFAULT_HASH_COLLECTION_LOAD_FACTOR),
+                BiosynfoniVariant.values().length, BasicDefinitions.DEFAULT_HASH_COLLECTION_LOAD_FACTOR),
                 BasicDefinitions.DEFAULT_HASH_COLLECTION_LOAD_FACTOR);
         ObservableBooleanValue tmpIsCustomPatternSetChosen = this.patternSetSetting.isEqualTo(BiosynfoniPatternSetOption.CUSTOM);
-        for (BiosynfoniRevision tmpRevision : BiosynfoniRevision.values()) {
-            SimpleBooleanProperty tmpRevisionSetting = new SimpleBooleanProperty(this, tmpRevision.getSettingName(),
-                    BiosynfoniFragmenter.REVISION_SETTING_DEFAULT);
-            this.revisionSettings.put(tmpRevision, tmpRevisionSetting);
-            this.settings.add(tmpRevisionSetting);
-            this.settingNameToTooltipTextMap.put(tmpRevisionSetting.getName(), tmpRevision.getTooltipText());
-            this.settingNameToDisplayNameMap.put(tmpRevisionSetting.getName(), tmpRevision.getDisplayName());
-            this.settingNameToVisibilityConditionMap.put(tmpRevisionSetting.getName(), tmpIsCustomPatternSetChosen);
+        for (BiosynfoniVariant tmpVariant : BiosynfoniVariant.values()) {
+            SimpleBooleanProperty tmpVariantSetting = new SimpleBooleanProperty(this, tmpVariant.getSettingName(),
+                    BiosynfoniFragmenter.VARIANT_SETTING_DEFAULT);
+            this.variantSettings.put(tmpVariant, tmpVariantSetting);
+            this.settings.add(tmpVariantSetting);
+            this.settingNameToTooltipTextMap.put(tmpVariantSetting.getName(), tmpVariant.getTooltipText());
+            this.settingNameToDisplayNameMap.put(tmpVariantSetting.getName(), tmpVariant.getDisplayName());
+            this.settingNameToVisibilityConditionMap.put(tmpVariantSetting.getName(), tmpIsCustomPatternSetChosen);
         }
     }
     //</editor-fold>
@@ -1223,46 +1224,46 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
     }
 
     /**
-     * Returns the current state of the setting of the given revision, which is only regarded in the custom pattern
+     * Returns the current state of the setting of the given variant, which is only regarded in the custom pattern
      * set.
      *
-     * @param aRevision the revision
-     * @return true if the revision is applied in the custom pattern set
-     * @throws NullPointerException if the given revision is null
+     * @param aVariant the variant
+     * @return true if the variant is applied in the custom pattern set
+     * @throws NullPointerException if the given variant is null
      */
-    public boolean getRevisionSetting(BiosynfoniRevision aRevision) throws NullPointerException {
-        Objects.requireNonNull(aRevision, "Given revision is null.");
-        return this.revisionSettings.get(aRevision).get();
+    public boolean getVariantSetting(BiosynfoniVariant aVariant) throws NullPointerException {
+        Objects.requireNonNull(aVariant, "Given variant is null.");
+        return this.variantSettings.get(aVariant).get();
     }
 
     /**
-     * Returns the property object of the setting of the given revision that can be used to configure this setting.
+     * Returns the property object of the setting of the given variant that can be used to configure this setting.
      *
-     * @param aRevision the revision
-     * @return property object of the setting of the revision
-     * @throws NullPointerException if the given revision is null
+     * @param aVariant the variant
+     * @return property object of the setting of the variant
+     * @throws NullPointerException if the given variant is null
      */
-    public SimpleBooleanProperty revisionSettingProperty(BiosynfoniRevision aRevision) throws NullPointerException {
-        Objects.requireNonNull(aRevision, "Given revision is null.");
-        return this.revisionSettings.get(aRevision);
+    public SimpleBooleanProperty variantSettingProperty(BiosynfoniVariant aVariant) throws NullPointerException {
+        Objects.requireNonNull(aVariant, "Given variant is null.");
+        return this.variantSettings.get(aVariant);
     }
 
     /**
-     * Returns the revisions that are applied according to the pattern set setting: none for the original pattern
-     * set, all for the revised pattern set, and those whose setting is turned on for the custom pattern set.
+     * Returns the variants that are applied according to the pattern set setting: none for the original pattern
+     * set, all for the variant pattern set, and those whose setting is turned on for the custom pattern set.
      *
-     * @return the applied revisions, a new set
+     * @return the applied variants, a new set
      */
-    public Set<BiosynfoniRevision> getAppliedRevisions() {
+    public Set<BiosynfoniVariant> getAppliedVariants() {
         BiosynfoniPatternSetOption tmpPatternSet = (BiosynfoniPatternSetOption) this.patternSetSetting.get();
-        Set<BiosynfoniRevision> tmpAppliedRevisions = EnumSet.noneOf(BiosynfoniRevision.class);
-        for (BiosynfoniRevision tmpRevision : BiosynfoniRevision.values()) {
-            if (tmpPatternSet == BiosynfoniPatternSetOption.REVISED
-                    || (tmpPatternSet == BiosynfoniPatternSetOption.CUSTOM && this.revisionSettings.get(tmpRevision).get())) {
-                tmpAppliedRevisions.add(tmpRevision);
+        Set<BiosynfoniVariant> tmpAppliedVariants = EnumSet.noneOf(BiosynfoniVariant.class);
+        for (BiosynfoniVariant tmpVariant : BiosynfoniVariant.values()) {
+            if (tmpPatternSet == BiosynfoniPatternSetOption.VARIANT
+                    || (tmpPatternSet == BiosynfoniPatternSetOption.CUSTOM && this.variantSettings.get(tmpVariant).get())) {
+                tmpAppliedVariants.add(tmpVariant);
             }
         }
-        return tmpAppliedRevisions;
+        return tmpAppliedVariants;
     }
 
     /**
@@ -1325,7 +1326,7 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
     //<editor-fold desc="Public properties set">
     /**
      * Sets the pattern set setting, defining whether the original SMARTS patterns of Biosynfoni version "full_1103"
-     * or the revised patterns are used.
+     * or the pattern variants are used.
      *
      * @param anOption a constant from the {@link BiosynfoniPatternSetOption} enum
      * @throws NullPointerException if the given option is null
@@ -1336,15 +1337,15 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
     }
 
     /**
-     * Sets the setting of the given revision, which is only regarded in the custom pattern set.
+     * Sets the setting of the given variant, which is only regarded in the custom pattern set.
      *
-     * @param aRevision the revision
-     * @param aBoolean true if the revision should be applied in the custom pattern set
-     * @throws NullPointerException if the given revision is null
+     * @param aVariant the variant
+     * @param aBoolean true if the variant should be applied in the custom pattern set
+     * @throws NullPointerException if the given variant is null
      */
-    public void setRevisionSetting(BiosynfoniRevision aRevision, boolean aBoolean) throws NullPointerException {
-        Objects.requireNonNull(aRevision, "Given revision is null.");
-        this.revisionSettings.get(aRevision).set(aBoolean);
+    public void setVariantSetting(BiosynfoniVariant aVariant, boolean aBoolean) throws NullPointerException {
+        Objects.requireNonNull(aVariant, "Given variant is null.");
+        this.variantSettings.get(aVariant).set(aBoolean);
     }
 
     /**
@@ -1417,8 +1418,8 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
     public IMoleculeFragmenter copy() {
         BiosynfoniFragmenter tmpCopy = new BiosynfoniFragmenter();
         tmpCopy.setPatternSetSetting((BiosynfoniPatternSetOption) this.patternSetSetting.get());
-        for (BiosynfoniRevision tmpRevision : BiosynfoniRevision.values()) {
-            tmpCopy.setRevisionSetting(tmpRevision, this.revisionSettings.get(tmpRevision).get());
+        for (BiosynfoniVariant tmpVariant : BiosynfoniVariant.values()) {
+            tmpCopy.setVariantSetting(tmpVariant, this.variantSettings.get(tmpVariant).get());
         }
         tmpCopy.setIntraSubstructureOverlapFilterSetting(this.intraSubstructureOverlapFilterSetting.get());
         tmpCopy.setInterSubstructureOverlapFilterSetting(this.interSubstructureOverlapFilterSetting.get());
@@ -1429,8 +1430,8 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
     @Override
     public void restoreDefaultSettings() {
         this.patternSetSetting.set(BiosynfoniFragmenter.PATTERN_SET_OPTION_DEFAULT);
-        for (SimpleBooleanProperty tmpRevisionSetting : this.revisionSettings.values()) {
-            tmpRevisionSetting.set(BiosynfoniFragmenter.REVISION_SETTING_DEFAULT);
+        for (SimpleBooleanProperty tmpVariantSetting : this.variantSettings.values()) {
+            tmpVariantSetting.set(BiosynfoniFragmenter.VARIANT_SETTING_DEFAULT);
         }
         this.intraSubstructureOverlapFilterSetting.set(BiosynfoniFragmenter.INTRA_SUBSTRUCTURE_OVERLAP_FILTER_SETTING_DEFAULT);
         this.interSubstructureOverlapFilterSetting.set(BiosynfoniFragmenter.INTER_SUBSTRUCTURE_OVERLAP_FILTER_SETTING_DEFAULT);
@@ -1450,14 +1451,14 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
         List<IAtomContainer> tmpFragments = new ArrayList<>();
         boolean tmpAreMatchedSubstructuresReturned = this.returnedFragmentsSetting.get().equals(
                 BiosynfoniReturnedFragmentsOption.MATCHED_SUBSTRUCTURES);
-        Set<BiosynfoniRevision> tmpRevisions = this.getAppliedRevisions();
+        Set<BiosynfoniVariant> tmpVariants = this.getAppliedVariants();
         try {
-            this.updateKeyDataCache(tmpRevisions);
+            this.updateKeyDataCache(tmpVariants);
             IAtomContainer tmpPreparedMolecule = BiosynfoniFragmenter.prepareMolecule(aMolecule, tmpAreMatchedSubstructuresReturned);
             int[] tmpCanonicalRanks = this.intraSubstructureOverlapFilterSetting.get()
                     ? BiosynfoniFragmenter.getCanonicalRanks(tmpPreparedMolecule) : null;
-            //ring keys are matched by ring perception if this revision is applied, see BiosynfoniKey.getRingSize()
-            Map<Integer, List<int[]>> tmpCarbocyclesBySize = tmpRevisions.contains(BiosynfoniRevision.RING_PERCEPTION)
+            //ring keys are matched by ring perception if this variant is applied, see BiosynfoniKey.getRingSize()
+            Map<Integer, List<int[]>> tmpCarbocyclesBySize = tmpVariants.contains(BiosynfoniVariant.RING_PERCEPTION)
                     ? BiosynfoniFragmenter.getRelevantCarbocyclesBySize(tmpPreparedMolecule) : null;
             //atoms of accepted matches of previous keys, only used by the inter-substructure overlap filter
             boolean[] tmpIsAtomBlockedByPreviousKeys = new boolean[tmpPreparedMolecule.getAtomCount()];
@@ -1477,7 +1478,7 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
                     // pattern anyway
                     for (int[] tmpMatch : tmpMatches) {
                         tmpFragments.add(this.createMatchedSubstructureFragment(tmpPreparedMolecule, tmpMatch, tmpKeys[i],
-                                this.cachedSmartsCodes[i], tmpRevisions));
+                                this.cachedSmartsCodes[i], tmpVariants));
                     }
                 } else if (!tmpMatches.isEmpty()) {
                     //all matches of one key are represented by the same structure and thereby collapse into one fragment
@@ -1542,13 +1543,13 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
 
     /**
      * Creates the SMARTS codes, compiled SMARTS patterns, and annotated representative structures of all keys for the
-     * given applied revisions, unless they have already been created for these revisions.
+     * given applied variants, unless they have already been created for these variants.
      *
-     * @param aRevisionSet the applied revisions
+     * @param aVariantSet the applied variants
      * @throws CDKException if a stored representative SMILES code cannot be parsed
      */
-    private void updateKeyDataCache(Set<BiosynfoniRevision> aRevisionSet) throws CDKException {
-        if (aRevisionSet.equals(this.cachedRevisions)) {
+    private void updateKeyDataCache(Set<BiosynfoniVariant> aVariantSet) throws CDKException {
+        if (aVariantSet.equals(this.cachedVariants)) {
             return;
         }
         BiosynfoniKey[] tmpKeys = BiosynfoniKey.values();
@@ -1556,16 +1557,16 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
         SmartsPattern[] tmpSmartsPatterns = new SmartsPattern[tmpKeys.length];
         IAtomContainer[] tmpRepresentatives = new IAtomContainer[tmpKeys.length];
         for (int i = 0; i < tmpKeys.length; i++) {
-            tmpSmartsCodes[i] = tmpKeys[i].getSmarts(aRevisionSet);
+            tmpSmartsCodes[i] = tmpKeys[i].getSmarts(aVariantSet);
             tmpSmartsPatterns[i] = this.getSmartsPattern(tmpSmartsCodes[i]);
-            tmpRepresentatives[i] = this.smilesParser.parseSmiles(tmpKeys[i].getRepresentativeSmiles(aRevisionSet));
-            BiosynfoniFragmenter.annotateFragment(tmpRepresentatives[i], tmpKeys[i], tmpSmartsCodes[i], aRevisionSet);
+            tmpRepresentatives[i] = this.smilesParser.parseSmiles(tmpKeys[i].getRepresentativeSmiles(aVariantSet));
+            BiosynfoniFragmenter.annotateFragment(tmpRepresentatives[i], tmpKeys[i], tmpSmartsCodes[i], aVariantSet);
         }
         this.cachedSmartsCodes = tmpSmartsCodes;
         this.cachedSmartsPatterns = tmpSmartsPatterns;
         this.cachedRepresentatives = tmpRepresentatives;
         //set last, so that an exception above leaves no partially updated cache behind
-        this.cachedRevisions = EnumSet.copyOf(aRevisionSet);
+        this.cachedVariants = EnumSet.copyOf(aVariantSet);
     }
 
     /**
@@ -1645,11 +1646,11 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
     /**
      * Returns the unique matches of the given key in the prepared molecule, before the overlap filters are applied.
      * Ring keys are matched by the given relevant carbocycles if these are given, i.e. if
-     * {@link BiosynfoniRevision#RING_PERCEPTION} is applied (see {@link BiosynfoniKey#getRingSize()}); all other keys
+     * {@link BiosynfoniVariant#RING_PERCEPTION} is applied (see {@link BiosynfoniKey#getRingSize()}); all other keys
      * are matched by the given SMARTS pattern.
      *
      * @param aKey the Biosynfoni key
-     * @param aPattern SMARTS pattern of the key for the applied revisions
+     * @param aPattern SMARTS pattern of the key for the applied variants
      * @param aPreparedMolecule molecule prepared for SMARTS matching, see {@link #prepareMolecule(IAtomContainer, boolean)}
      * @param aCarbocyclesBySize relevant cycles consisting only of carbon atoms, by ring size; null if ring keys are
      *                           matched by their SMARTS pattern
@@ -1730,14 +1731,14 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
      *                  (Kekulé) bond orders, unset bond orders are treated as single bonds
      * @param aMatch atom indices of the match
      * @param aKey the Biosynfoni key that produced the match
-     * @param aSmarts SMARTS pattern of the key for the applied revisions
-     * @param aRevisionSet the applied revisions
+     * @param aSmarts SMARTS pattern of the key for the applied variants
+     * @param aVariantSet the applied variants
      * @return new atom container of the matched substructure
      * @throws CloneNotSupportedException if an atom cannot be cloned
      * @throws CDKException if aromaticity detection on the fragment fails
      */
     private IAtomContainer createMatchedSubstructureFragment(IAtomContainer aMolecule, int[] aMatch, BiosynfoniKey aKey,
-                                                             String aSmarts, Set<BiosynfoniRevision> aRevisionSet)
+                                                             String aSmarts, Set<BiosynfoniVariant> aVariantSet)
             throws CloneNotSupportedException, CDKException {
         IAtomContainer tmpFragment = BiosynfoniFragmenter.copyMatchedAtomsAndBonds(aMolecule, aMatch, true);
         try {
@@ -1747,7 +1748,7 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
             tmpFragment = BiosynfoniFragmenter.copyMatchedAtomsAndBonds(aMolecule, aMatch, false);
         }
         this.fragmentAromaticityModel.apply(tmpFragment);
-        BiosynfoniFragmenter.annotateFragment(tmpFragment, aKey, aSmarts, aRevisionSet);
+        BiosynfoniFragmenter.annotateFragment(tmpFragment, aKey, aSmarts, aVariantSet);
         return tmpFragment;
     }
 
@@ -1805,21 +1806,21 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
 
     /**
      * Sets the title and the label, SMARTS, matching method, category, and display label properties of the given
-     * fragment according to the given key and applied revisions. The display label is the readable display name of
+     * fragment according to the given key and applied variants. The display label is the readable display name of
      * the key.
      *
      * @param aFragment the fragment to annotate
      * @param aKey the Biosynfoni key that produced the fragment
-     * @param aSmarts SMARTS pattern of the key for the applied revisions
-     * @param aRevisionSet the applied revisions
+     * @param aSmarts SMARTS pattern of the key for the applied variants
+     * @param aVariantSet the applied variants
      */
     private static void annotateFragment(IAtomContainer aFragment, BiosynfoniKey aKey, String aSmarts,
-                                         Set<BiosynfoniRevision> aRevisionSet) {
+                                         Set<BiosynfoniVariant> aVariantSet) {
         aFragment.setTitle(aKey.getLabel());
         aFragment.setProperty(BiosynfoniFragmenter.BIOSYNFONI_LABEL_PROPERTY_KEY, aKey.getLabel());
         aFragment.setProperty(BiosynfoniFragmenter.BIOSYNFONI_SMARTS_PROPERTY_KEY, aSmarts);
         aFragment.setProperty(BiosynfoniFragmenter.BIOSYNFONI_MATCHING_METHOD_PROPERTY_KEY,
-                aKey.getRingSize() > 0 && aRevisionSet.contains(BiosynfoniRevision.RING_PERCEPTION)
+                aKey.getRingSize() > 0 && aVariantSet.contains(BiosynfoniVariant.RING_PERCEPTION)
                         ? BiosynfoniFragmenter.MATCHING_METHOD_RING_PERCEPTION : BiosynfoniFragmenter.MATCHING_METHOD_SMARTS);
         aFragment.setProperty(IMoleculeFragmenter.FRAGMENT_CATEGORY_PROPERTY_KEY, aKey.getLabel());
         aFragment.setProperty(IMoleculeFragmenter.FRAGMENT_DISPLAY_LABEL_PROPERTY_KEY, aKey.getDisplayName());
