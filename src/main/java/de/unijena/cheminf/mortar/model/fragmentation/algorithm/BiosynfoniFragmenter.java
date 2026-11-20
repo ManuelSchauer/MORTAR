@@ -1130,6 +1130,12 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
     private final HashMap<String, ObservableBooleanValue> settingNameToVisibilityConditionMap;
 
     /**
+     * Map to store pairs of {@literal <setting name, section title>}; the variant settings form a section of their own
+     * that starts with the setting of the first variant.
+     */
+    private final Map<String, String> settingNameToSectionTitleMap;
+
+    /**
      * Logger of this class.
      */
     private static final Logger LOGGER = Logger.getLogger(BiosynfoniFragmenter.class.getName());
@@ -1201,6 +1207,8 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
             this.settingNameToDisplayNameMap.put(tmpVariantSetting.getName(), tmpVariant.getDisplayName());
             this.settingNameToVisibilityConditionMap.put(tmpVariantSetting.getName(), tmpIsCustomPatternSetChosen);
         }
+        this.settingNameToSectionTitleMap = Map.of(BiosynfoniVariant.values()[0].getSettingName(),
+                Message.get("BiosynfoniFragmenter.variantSettings.sectionTitle"));
     }
     //</editor-fold>
     //
@@ -1402,6 +1410,11 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
     @Override
     public Map<String, ObservableBooleanValue> getSettingNameToVisibilityConditionMap() {
         return this.settingNameToVisibilityConditionMap;
+    }
+
+    @Override
+    public Map<String, String> getSettingNameToSectionTitleMap() {
+        return this.settingNameToSectionTitleMap;
     }
 
     @Override

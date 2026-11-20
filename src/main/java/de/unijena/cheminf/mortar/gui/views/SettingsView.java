@@ -92,6 +92,15 @@ public class SettingsView extends AnchorPane {
      * The color of the odd rows for the settings view (light grey).
      */
     public static final String ODD_ROW_COLOR = "-fx-background-color: #f5f5f5;";
+    /**
+     * The style of the header bar above a section of settings, similar to a table column header.
+     */
+    public static final String SECTION_HEADER_STYLE = "-fx-background-color: linear-gradient(#f4f4f4, #e2e2e2);"
+            + " -fx-border-color: #c8c8c8; -fx-border-width: 1 0 1 0; -fx-font-weight: bold; -fx-padding: 0 0 0 10;";
+    /**
+     * The height of the header bar above a section of settings.
+     */
+    public static final double SECTION_HEADER_HEIGHT = 36.0;
     //</editor-fold>
     //
     //<editor-fold desc="private class variables" defaultstate="collapsed">
@@ -184,6 +193,29 @@ public class SettingsView extends AnchorPane {
     public Tab addTab(String aLabel, List<Property<?>> aPropertiesList, Map<String, String> aDisplayNamesMap,
                       Map<String, String> aTooltipTextsMap, Map<String, ObservableBooleanValue> aVisibilityConditionsMap,
                       Map<String, Object> aRecentPropertiesMap) {
+        return this.addTab(aLabel, aPropertiesList, aDisplayNamesMap, aTooltipTextsMap, aVisibilityConditionsMap,
+                Map.of(), aRecentPropertiesMap);
+    }
+    //
+    /**
+     * Adds a tab which contains the properties of the given properties list. The rows of properties that have a
+     * visibility condition are only shown while their condition is true. Above the properties that start a section, a
+     * header bar with the section title is shown, which is hidden together with the row of the property.
+     *
+     * @param aLabel Label for the tab title and the tab Id
+     * @param aPropertiesList List of properties to show in created tab
+     * @param aDisplayNamesMap Map containing setting names as keys and language-specific names for the settings to display in the GUI
+     * @param aTooltipTextsMap Map containing setting names as keys and tooltip text as values
+     * @param aVisibilityConditionsMap Map containing setting names as keys and conditions as values that determine
+     *                                 whether the respective setting is shown; settings without condition are always shown
+     * @param aSectionTitlesMap Map containing names of the settings that start a section as keys and the section
+     *                          titles as values
+     * @param aRecentPropertiesMap Map to hold recent properties to restore them if necessary
+     * @return Tab
+     */
+    public Tab addTab(String aLabel, List<Property<?>> aPropertiesList, Map<String, String> aDisplayNamesMap,
+                      Map<String, String> aTooltipTextsMap, Map<String, ObservableBooleanValue> aVisibilityConditionsMap,
+                      Map<String, String> aSectionTitlesMap, Map<String, Object> aRecentPropertiesMap) {
         Tab tmpTab = new Tab();
         tmpTab.setClosable(false);
         tmpTab.setId(aLabel);
@@ -211,7 +243,7 @@ public class SettingsView extends AnchorPane {
         );
         tmpGridPane.getColumnConstraints().add(tmpColCon2);
         this.addPropertyItems(tmpGridPane, aPropertiesList, aDisplayNamesMap, aTooltipTextsMap, aVisibilityConditionsMap,
-                aRecentPropertiesMap);
+                aSectionTitlesMap, aRecentPropertiesMap);
         tmpScrollPane.setContent(tmpGridPane);
         tmpTab.setContent(tmpScrollPane);
         this.tabPane.getTabs().add(tmpTab);
@@ -227,16 +259,22 @@ public class SettingsView extends AnchorPane {
      * @param aTooltipTextsMap Map containing setting names as keys and tooltip text as values
      * @param aVisibilityConditionsMap Map containing setting names as keys and conditions as values that determine
      *                                 whether the respective setting is shown; settings without condition are always shown
+     * @param aSectionTitlesMap Map containing names of the settings that start a section as keys and the section
+     *                          titles as values
      * @param aRecentPropertiesMap Map to hold recent properties to restore them if necessary
      */
     private void addPropertyItems(GridPane aGridPane, List<Property<?>> aPropertiesList,
                                   Map<String, String> aDisplayNamesMap, Map<String, String> aTooltipTextsMap,
                                   Map<String, ObservableBooleanValue> aVisibilityConditionsMap,
-                                  Map<String, Object> aRecentPropertiesMap) {
+                                  Map<String, String> aSectionTitlesMap, Map<String, Object> aRecentPropertiesMap) {
         int tmpRowIndex = 0;
         List<Region> tmpBackgroundRegions = new ArrayList<>(aPropertiesList.size());
         List<ObservableBooleanValue> tmpVisibilityConditions = new ArrayList<>(aPropertiesList.size());
         for (Property tmpProperty : aPropertiesList) {
+            String tmpSectionTitle = aSectionTitlesMap.get(tmpProperty.getName());
+            if (tmpSectionTitle != null) {
+                this.addSectionHeader(aGridPane, tmpRowIndex++, tmpSectionTitle, aVisibilityConditionsMap.get(tmpProperty.getName()));
+            }
             RowConstraints tmpRow = new RowConstraints();
             tmpRow.setVgrow(Priority.ALWAYS);
             tmpRow.setPrefHeight(50); //magic number
@@ -408,6 +446,34 @@ public class SettingsView extends AnchorPane {
             if (tmpCondition != null && !tmpPreviousConditions.contains(tmpCondition)) {
                 tmpPreviousConditions.add(tmpCondition);
             }
+        }
+    }
+    //
+    /**
+     * Adds a row with a header bar that shows the given section title across both columns. The row is not counted for
+     * the alternating row colors.
+     *
+     * @param aGridPane GridPane to add the row to
+     * @param aRowIndex index of the new row
+     * @param aTitle section title
+     * @param aVisibilityCondition condition that determines whether the header is shown, i.e. the visibility condition
+     *                             of the first setting of the section; null if the header is always shown
+     */
+    private void addSectionHeader(GridPane aGridPane, int aRowIndex, String aTitle,
+                                  ObservableBooleanValue aVisibilityCondition) {
+        RowConstraints tmpRow = new RowConstraints();
+        tmpRow.setPrefHeight(SettingsView.SECTION_HEADER_HEIGHT);
+        tmpRow.setMaxHeight(SettingsView.SECTION_HEADER_HEIGHT);
+        tmpRow.setMinHeight(SettingsView.SECTION_HEADER_HEIGHT);
+        aGridPane.getRowConstraints().add(tmpRow);
+        Label tmpHeader = new Label(aTitle);
+        tmpHeader.setStyle(SettingsView.SECTION_HEADER_STYLE);
+        tmpHeader.setMaxWidth(Double.MAX_VALUE);
+        tmpHeader.setMaxHeight(Double.MAX_VALUE);
+        tmpHeader.setAlignment(Pos.CENTER_LEFT);
+        aGridPane.add(tmpHeader, 0, aRowIndex, 2, 1);
+        if (aVisibilityCondition != null) {
+            this.bindRowVisibility(aGridPane, aRowIndex, tmpRow, aVisibilityCondition);
         }
     }
     //

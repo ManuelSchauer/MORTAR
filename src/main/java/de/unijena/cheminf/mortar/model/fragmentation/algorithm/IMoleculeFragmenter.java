@@ -348,6 +348,18 @@ public interface IMoleculeFragmenter {
     }
 
     /**
+     * Returns a map containing section titles (values) for the settings with the given names (keys) that start a new
+     * section of settings. In the GUI, a header bar with the title is shown above the respective setting, so that it
+     * and the following settings form a block of their own. If the setting has a visibility condition (see
+     * {@link #getSettingNameToVisibilityConditionMap()}), the header bar is shown and hidden together with it.
+     *
+     * @return map with section titles, empty by default
+     */
+    default Map<String, String> getSettingNameToSectionTitleMap() {
+        return Map.of();
+    }
+
+    /**
      * Returns a string representation of the algorithm name, e.g. "ErtlFunctionalGroupsFinder" or "Ertl algorithm".
      * The given name must be unique among the available fragmentation algorithms! It is mostly used internal for
      * persistence. For other functionalities, the display name (see below) is used.

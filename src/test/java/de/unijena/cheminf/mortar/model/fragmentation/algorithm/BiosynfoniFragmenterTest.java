@@ -711,6 +711,25 @@ class BiosynfoniFragmenterTest {
     }
     //
     /**
+     * Tests that the variant settings form a section of their own in the GUI: the only section title is attached to
+     * the first variant setting, which directly follows the other settings and is hidden unless the custom pattern set
+     * is chosen, so that the header bar of the section is hidden together with the variant settings.
+     */
+    @Test
+    void variantSettingsSectionTitleTest() {
+        BiosynfoniFragmenter tmpFragmenter = new BiosynfoniFragmenter();
+        Map<String, String> tmpSectionTitles = tmpFragmenter.getSettingNameToSectionTitleMap();
+        String tmpFirstVariantSettingName = BiosynfoniFragmenter.BiosynfoniVariant.values()[0].getSettingName();
+        Assertions.assertEquals(Set.of(tmpFirstVariantSettingName), tmpSectionTitles.keySet());
+        Assertions.assertFalse(tmpSectionTitles.get(tmpFirstVariantSettingName).isBlank());
+        List<String> tmpSettingNames = tmpFragmenter.settingsProperties().stream().map(Property::getName).toList();
+        int tmpIndex = tmpSettingNames.indexOf(tmpFirstVariantSettingName);
+        Assertions.assertEquals(tmpSettingNames.size() - BiosynfoniFragmenter.BiosynfoniVariant.values().length, tmpIndex);
+        Assertions.assertTrue(tmpFragmenter.getSettingNameToVisibilityConditionMap().containsKey(tmpFirstVariantSettingName));
+        Assertions.assertEquals(tmpSectionTitles, ((BiosynfoniFragmenter) tmpFragmenter.copy()).getSettingNameToSectionTitleMap());
+    }
+    //
+    /**
      * Returns sets of variants for testing: no variants, all variants, every single variant, and all variants but
      * one.
      *
