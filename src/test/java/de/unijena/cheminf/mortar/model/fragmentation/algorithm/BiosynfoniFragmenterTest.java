@@ -430,9 +430,10 @@ class BiosynfoniFragmenterTest {
     /**
      * Tests every variant of the variant pattern set against the original pattern set: for each case, the number of
      * matches of the given key in the given molecule is checked in both pattern sets, without overlap filters. The
-     * cases cover the corrected errors (e.g. open-chain sugar patterns matching sugar rings, the phenethylamine pattern
-     * matching indoles, ring patterns matching the perimeter of fused ring systems) and the chemical decisions (e.g.
-     * aromatic phenyl rings, methylmalonyl units at branching points), as well as unchanged behaviour.
+     * cases cover the patterns that match more than their name describes (e.g. open-chain sugar patterns matching sugar
+     * rings, the phenethylamine pattern matching indoles, ring patterns matching the perimeter of fused ring systems)
+     * and the interpretations (e.g. aromatic phenyl rings, methylmalonyl units at branching points), as well as
+     * unchanged behaviour.
      *
      * @throws Exception if anything goes wrong
      */

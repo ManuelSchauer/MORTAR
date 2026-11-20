@@ -25,6 +25,40 @@
 
 package de.unijena.cheminf.mortar.model.fragmentation.algorithm;
 
+/*
+ * Third-party content: Biosynfoni
+ *
+ * The SMARTS patterns, the key labels, and the key order of the original pattern set in this file are taken from
+ * Biosynfoni, version "full_1103" (https://github.com/lucinamay/biosynfoni, files
+ * src/biosynfoni/subkeys/biosmartfonis.py and src/biosynfoni/subkeys/versionfonis.py). The SMILES codes of the
+ * representative structures of the NADH and NADPH keys are identical to the PubChem-based NADH and NADPH patterns of
+ * Biosynfoni ("co_nadh_pubchem" and "co_nadph_pubchem" in biosmartfonis.py). The pattern variants are modifications
+ * of the original patterns; the other representative structures are not taken from Biosynfoni.
+ * Biosynfoni is distributed under the following licence:
+ *
+ * MIT License
+ *
+ * Copyright (c) 2023 BioSynFoni (biosynfoni)
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 import de.unijena.cheminf.mortar.gui.util.GuiUtil;
 import de.unijena.cheminf.mortar.message.Message;
 import de.unijena.cheminf.mortar.model.io.Importer;
@@ -1094,6 +1128,8 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
      */
     private final SmilesParser smilesParser;
 
+    //note: since Java 21, the javadoc build complains about "double comments" when there is a comment
+    // for the get() method of the property and the private property itself as well
     private final SimpleIDisplayEnumConstantProperty patternSetSetting;
 
     private final SimpleBooleanProperty intraSubstructureOverlapFilterSetting;

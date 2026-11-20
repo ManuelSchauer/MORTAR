@@ -50,6 +50,12 @@
         <license>LGPL v2.1 or MPL 2.0</license>
     </externalTool>
     <externalTool>
+        <name>Biosynfoni (substructure definitions)</name>
+        <version>full_1103</version>
+        <author>Nollen et al.</author>
+        <license>MIT License</license>
+    </externalTool>
+    <externalTool>
         <name>spotless</name>
         <version>8.1.0</version>
         <author>DiffPlug</author>

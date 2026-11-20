@@ -278,6 +278,7 @@ fragmentation (Baensch et al. 2023)</a>).
 **Biosynfoni**
 * [Nollen, L.-M., Meijer, D., Sorokina, M., van der Hooft, J.J.J. Biosynfoni: a biosynthesis-informed and interpretable lightweight molecular fingerprint. J Cheminform 17, 136 (2025). https://doi.org/10.1186/s13321-025-01081-6](https://doi.org/10.1186/s13321-025-01081-6)
 * [Biosynfoni on GitHub](https://github.com/lucinamay/biosynfoni)
+* The SMARTS patterns, key labels, and key order of the original pattern set of the Biosynfoni fragmenter are taken from Biosynfoni (version full_1103), Copyright (c) 2023 BioSynFoni (biosynfoni), [MIT License](https://github.com/lucinamay/biosynfoni/blob/main/LICENSE)
 
 **Chemistry Development Kit (CDK)**
 * [Chemistry Development Kit on GitHub](https://cdk.github.io/)
