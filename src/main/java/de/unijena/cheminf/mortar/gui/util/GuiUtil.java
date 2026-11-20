@@ -495,7 +495,9 @@ public class GuiUtil {
                     tmpClipboardContent.putString(((Integer)tmpCell).toString());
                 } else if(tmpCell.getClass() == Double.class) {
                     tmpClipboardContent.putString(((Double)tmpCell).toString());
-                } else if(tmpCell.getClass() == ImageView.class) {
+                } else if(tmpCell.getClass() == ImageView.class
+                        //labelled fragments in the items tab are displayed as a box of header and image
+                        || (aTableView.getClass() == ItemizationDataTableView.class && tmpCell instanceof Pane)) {
                     IAtomContainer tmpAtomContainer;
                     try {
                         if (aTableView.getClass() == FragmentsDataTableView.class) {
@@ -528,7 +530,13 @@ public class GuiUtil {
                         tmpClipboardContent.putImage(tmpImage);
                     } catch (CDKException | ClassCastException tmpException) {
                         //copies the exact image instance already on display in the cell to clipboard, instead of generating a bigger depiction
-                        tmpClipboardContent.putImage(((ImageView) tmpCell).getImage());
+                        ImageView tmpImageView = tmpCell instanceof ImageView ? (ImageView) tmpCell
+                                : (ImageView) ((Pane) tmpCell).getChildren().stream().filter(ImageView.class::isInstance).findFirst().orElse(null);
+                        if (tmpImageView == null) {
+                            GuiUtil.LOGGER.log(Level.WARNING, "Selected cell in table view contains no image and could not be copied to clipboard.");
+                            return;
+                        }
+                        tmpClipboardContent.putImage(tmpImageView.getImage());
                     }
                 } else {
                     GuiUtil.LOGGER.log(Level.WARNING, "Unknown data type in table view cell ({0}) could not be copied to clipboard.", tmpCell.getClass());

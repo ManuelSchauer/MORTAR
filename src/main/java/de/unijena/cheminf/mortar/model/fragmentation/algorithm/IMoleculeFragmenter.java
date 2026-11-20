@@ -32,6 +32,7 @@ import de.unijena.cheminf.mortar.model.util.SimpleEnumConstantNameProperty;
 import de.unijena.cheminf.mortar.model.util.SimpleIDisplayEnumConstantProperty;
 
 import javafx.beans.property.Property;
+import javafx.beans.value.ObservableBooleanValue;
 
 import org.openscience.cdk.interfaces.IAtomContainer;
 
@@ -64,7 +65,9 @@ import java.util.Map;
  * the parameter test logic there. Tooltip texts for the settings must be given in a HashMap with setting (property) names
  * as keys and tooltip text as values (see {@link IMoleculeFragmenter#getSettingNameToTooltipTextMap()}).
  * Similarly, names for the settings that are language-specific and can be displayed in the GUI must be given. One setting that
- * must be available is the fragment saturation setting that is already laid out in this interface, see below.
+ * must be available is the fragment saturation setting that is already laid out in this interface, see below. Settings
+ * that are only regarded with a specific option of another setting can be hidden in the GUI while they have no effect,
+ * see {@link IMoleculeFragmenter#getSettingNameToVisibilityConditionMap()}.
  * <br>
  * <br>More details can be found in the method documentations of this interface.
  * Examples for how to implement this interface to make a new fragmentation algorithm available, can be found in
@@ -294,6 +297,15 @@ public interface IMoleculeFragmenter {
     String FRAGMENT_CATEGORY_PROPERTY_KEY = "IMoleculeFragmenter.Category";
 
     /**
+     * Property key/name to assign a short label to a fragment, represented by an IAtomContainer, e.g. the name of the
+     * substructure pattern that produced the fragment. In the GUI, fragments with the same label are listed below each
+     * other in the fragments tab and grouped under a header with the label in the items tab. If the same fragment is
+     * produced with different labels, all labels are combined. The labels are only used for single fragmentations,
+     * not in pipelines, and only if the fragmenter declares that it assigns them, see {@link #providesDisplayLabels()}.
+     */
+    String FRAGMENT_DISPLAY_LABEL_PROPERTY_KEY = "IMoleculeFragmenter.DisplayLabel";
+
+    /**
      * Default option for saturating free valences on the returned fragment molecules.
      */
     FragmentSaturationOption FRAGMENT_SATURATION_OPTION_DEFAULT = FragmentSaturationOption.HYDROGEN_SATURATION;
@@ -322,6 +334,30 @@ public interface IMoleculeFragmenter {
      * @return map with display names
      */
     Map<String, String> getSettingNameToDisplayNameMap();
+
+    /**
+     * Returns a map containing conditions (values) for the settings with the given names (keys) that determine whether
+     * the respective setting is shown in the GUI, e.g. because it is only regarded with a specific option of another
+     * setting. Settings that are not contained in the map are always shown. The conditions should be bound to the
+     * setting properties they depend on so that the GUI is updated directly when these settings are changed.
+     *
+     * @return map with visibility conditions, empty by default
+     */
+    default Map<String, ObservableBooleanValue> getSettingNameToVisibilityConditionMap() {
+        return Map.of();
+    }
+
+    /**
+     * Returns a map containing section titles (values) for the settings with the given names (keys) that start a new
+     * section of settings. In the GUI, a header bar with the title is shown above the respective setting, so that it
+     * and the following settings form a block of their own. If the setting has a visibility condition (see
+     * {@link #getSettingNameToVisibilityConditionMap()}), the header bar is shown and hidden together with it.
+     *
+     * @return map with section titles, empty by default
+     */
+    default Map<String, String> getSettingNameToSectionTitleMap() {
+        return Map.of();
+    }
 
     /**
      * Returns a string representation of the algorithm name, e.g. "ErtlFunctionalGroupsFinder" or "Ertl algorithm".
@@ -411,5 +447,17 @@ public interface IMoleculeFragmenter {
      */
     IAtomContainer applyPreprocessing(IAtomContainer aMolecule)
             throws NullPointerException, IllegalArgumentException, CloneNotSupportedException;
+
+    /**
+     * Returns true if the fragmenter assigns display labels to its fragments (see
+     * {@link #FRAGMENT_DISPLAY_LABEL_PROPERTY_KEY}). Only then, the labels are collected in single fragmentations.
+     * This prevents labels from being taken over from input molecules that carry the respective property, e.g. after
+     * re-importing exported fragments, if the fragmenter passes on the properties of the input molecule.
+     *
+     * @return true if the fragmenter assigns display labels; false by default
+     */
+    default boolean providesDisplayLabels() {
+        return false;
+    }
     //</editor-fold>
 }

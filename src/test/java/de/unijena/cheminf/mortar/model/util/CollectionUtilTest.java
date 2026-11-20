@@ -25,8 +25,14 @@
 
 package de.unijena.cheminf.mortar.model.util;
 
+import de.unijena.cheminf.mortar.model.data.FragmentDataModel;
+
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 
 /**
  * Test class for CollectionUtil routines.
@@ -47,5 +53,30 @@ public class CollectionUtilTest {
             Assertions.assertTrue(tmpNumberOfElements[i] < tmpRehashThreshold);
             Assertions.assertEquals(tmpExpectedInitialCapacity[i], tmpCalculatedInitialHashMapCapacity);
         }
+    }
+    //
+    /**
+     * Tests that fragments with the same display label are sorted below each other, groups by summed frequency and
+     * fragments within a group by frequency, and that fragments without display label are listed last.
+     */
+    @Test
+    public void sortGivenFragmentListByDisplayLabelGroupsTest() {
+        List<FragmentDataModel> tmpList = new ArrayList<>();
+        //label, SMILES, frequency
+        Object[][] tmpData = {{"Ethyl", "CC", 5}, {"Acetyl", "CCO", 4}, {null, "N", 9}, {"Ethyl", "C=C", 7},
+                {"Acetyl", "CC=O", 3}, {"Methyl", "C", 1}};
+        for (Object[] tmpEntry : tmpData) {
+            FragmentDataModel tmpFragment = new FragmentDataModel((String) tmpEntry[1], null, new HashMap<>());
+            if (tmpEntry[0] != null) {
+                tmpFragment.addDisplayLabel((String) tmpEntry[0]);
+            }
+            for (int i = 0; i < (int) tmpEntry[2]; i++) {
+                tmpFragment.incrementAbsoluteFrequency();
+            }
+            tmpList.add(tmpFragment);
+        }
+        CollectionUtil.sortGivenFragmentListByDisplayLabelGroups(tmpList);
+        Assertions.assertEquals(List.of("C=C", "CC", "CCO", "CC=O", "C", "N"),
+                tmpList.stream().map(FragmentDataModel::getUniqueSmiles).toList());
     }
 }

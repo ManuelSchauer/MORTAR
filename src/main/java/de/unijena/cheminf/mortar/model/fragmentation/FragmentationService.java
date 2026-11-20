@@ -29,6 +29,7 @@ import de.unijena.cheminf.mortar.gui.util.GuiUtil;
 import de.unijena.cheminf.mortar.message.Message;
 import de.unijena.cheminf.mortar.model.data.FragmentDataModel;
 import de.unijena.cheminf.mortar.model.data.MoleculeDataModel;
+import de.unijena.cheminf.mortar.model.fragmentation.algorithm.BiosynfoniFragmenter;
 import de.unijena.cheminf.mortar.model.fragmentation.algorithm.CDKCircularFragmenter;
 import de.unijena.cheminf.mortar.model.fragmentation.algorithm.CDKExhaustiveFragmenter;
 import de.unijena.cheminf.mortar.model.fragmentation.algorithm.ErtlFunctionalGroupsFinderFragmenter;
@@ -212,6 +213,11 @@ public class FragmentationService {
     private final IMoleculeFragmenter cdkEF;
     //
     /**
+     * Biosynfoni fragmenter.
+     */
+    private final IMoleculeFragmenter biosynfoniF;
+    //
+    /**
      * Property of display name of selected fragmenter.
      */
     private final SimpleStringProperty selectedFragmenterDisplayNameProperty;
@@ -223,7 +229,7 @@ public class FragmentationService {
      */
     public FragmentationService() {
         //Note: Every fragmenter class should only be added once to the array or there will be problems with setting persistence!
-        this.fragmenters = new IMoleculeFragmenter[6];
+        this.fragmenters = new IMoleculeFragmenter[7];
         this.ertlFGF = new ErtlFunctionalGroupsFinderFragmenter();
         this.fragmenters[0] = this.ertlFGF;
         this.sugarRUF = new SugarRemovalUtilityFragmenter();
@@ -236,6 +242,8 @@ public class FragmentationService {
         this.fragmenters[4] = this.cdkCircularF;
         this.cdkEF = new CDKExhaustiveFragmenter();
         this.fragmenters[5] = this.cdkEF;
+        this.biosynfoniF = new BiosynfoniFragmenter();
+        this.fragmenters[6] = this.biosynfoniF;
         //
         this.selectedFragmenterDisplayNameProperty = new SimpleStringProperty();
         try {
@@ -290,7 +298,10 @@ public class FragmentationService {
         String tmpFragmentationName = this.createAndCheckFragmentationName(this.selectedFragmenter.getFragmentationAlgorithmDisplayName());
         this.existingFragmentations.add(tmpFragmentationName);
         this.currentFragmentationName = tmpFragmentationName;
-        this.fragments = this.startFragmentation(aListOfMolecules, aNumberOfTasks, this.selectedFragmenter, tmpFragmentationName, isStereoChemistryRegarded);
+        //display labels, e.g. the names of the Biosynfoni substructures, are only used for single fragmentations and
+        // only collected if the fragmenter assigns them itself
+        this.fragments = this.startFragmentation(aListOfMolecules, aNumberOfTasks, this.selectedFragmenter, tmpFragmentationName,
+                isStereoChemistryRegarded, this.selectedFragmenter.providesDisplayLabels());
         FragmentationService.LOGGER.log(Level.INFO, "Number of different fragments extracted: {0}", this.fragments == null ? 0 : this.fragments.size());
     }
     //
@@ -325,7 +336,7 @@ public class FragmentationService {
         List<MoleculeDataModel> tmpMolsToFragment = new ArrayList<>(aListOfMolecules);
         for (int i = 0; i < this.pipelineFragmenter.length; i++) {
             this.fragments.clear();
-            tmpFragmentsMap = this.startFragmentation(tmpMolsToFragment, aNumberOfTasks, this.pipelineFragmenter[i], tmpPipelineFragmentationName, isStereoChemistryRegarded);
+            tmpFragmentsMap = this.startFragmentation(tmpMolsToFragment, aNumberOfTasks, this.pipelineFragmenter[i], tmpPipelineFragmentationName, isStereoChemistryRegarded, false);
             tmpMolsToFragment.clear();
             //iterate through all initial molecules
             for (MoleculeDataModel tmpMolecule : aListOfMolecules) {
@@ -488,7 +499,7 @@ public class FragmentationService {
         this.existingFragmentations.add(tmpPipelineFragmentationName);
         this.currentFragmentationName = tmpPipelineFragmentationName;
 
-        this.fragments = this.startFragmentation(aListOfMolecules, aNumberOfTasks, this.pipelineFragmenter[0], tmpPipelineFragmentationName, isStereoChemRegarded);
+        this.fragments = this.startFragmentation(aListOfMolecules, aNumberOfTasks, this.pipelineFragmenter[0], tmpPipelineFragmentationName, isStereoChemRegarded, false);
 
         for(int i = 1; i < this.pipelineFragmenter.length; i++){
             String tmpFragmentationName = this.createAndCheckFragmentationName(tmpPipelineFragmentationName + "_" + this.pipelineFragmenter[i].getFragmentationAlgorithmDisplayName());
@@ -499,7 +510,7 @@ public class FragmentationService {
                 }
                 List<MoleculeDataModel> tmpChildMols = (List<MoleculeDataModel>)(List<?>) tmpParentMol.getFragmentsOfSpecificFragmentation(tmpPipelineFragmentationName);
                 Map<String, FragmentDataModel> tmpFragmentsMap = this.startFragmentation(
-                        tmpChildMols, aNumberOfTasks, this.pipelineFragmenter[i], tmpFragmentationName, isStereoChemRegarded);
+                        tmpChildMols, aNumberOfTasks, this.pipelineFragmenter[i], tmpFragmentationName, isStereoChemRegarded, false);
                 Set<String> tmpKeySet = tmpFragmentsMap.keySet();
                 LinkedList<FragmentDataModel> tmpFrags = new LinkedList<>();
                 for(String tmpKey : tmpKeySet){
@@ -1001,13 +1012,16 @@ public class FragmentationService {
      * @param aFragmenter fragmenter instance to use to fragment, will be copied for the parallel tasks
      * @param aFragmentationName name under which to store the fragmentation results on the molecules
      * @param isStereoChemistryRegarded whether stereo chemistry should be encoded in the resulting fragment SMILES codes
+     * @param areDisplayLabelsCollected whether the display labels of the fragments should be collected; only true for
+     *                                  single fragmentations, not in pipelines
      * @throws Exception if anything goes wrong
      */
     private Map<String, FragmentDataModel> startFragmentation(List<MoleculeDataModel> aListOfMolecules,
                                                                     int aNumberOfTasks,
                                                                     IMoleculeFragmenter aFragmenter,
                                                                     String aFragmentationName,
-                                                                    boolean isStereoChemistryRegarded)
+                                                                    boolean isStereoChemistryRegarded,
+                                                                    boolean areDisplayLabelsCollected)
             throws Exception {
         if (aListOfMolecules.isEmpty() || aNumberOfTasks == 0) {
             return new ConcurrentHashMap<>(0);
@@ -1045,7 +1059,7 @@ public class FragmentationService {
         for (int i = 1; i <= tmpNumberOfTasks; i++) {
             List<MoleculeDataModel> tmpMoleculesForTask = aListOfMolecules.subList(tmpFromIndex, tmpToIndex);
             IMoleculeFragmenter tmpFragmenterForTask = aFragmenter.copy();
-            tmpFragmentationTaskList.add(new FragmentationTask(tmpMoleculesForTask, tmpFragmenterForTask, tmpFragmentMap, aFragmentationName, isStereoChemistryRegarded));
+            tmpFragmentationTaskList.add(new FragmentationTask(tmpMoleculesForTask, tmpFragmenterForTask, tmpFragmentMap, aFragmentationName, isStereoChemistryRegarded, areDisplayLabelsCollected));
             tmpFromIndex = tmpToIndex;
             tmpToIndex = tmpFromIndex + tmpMoleculesPerTask;
             if(tmpMoleculeModulo > 0){
