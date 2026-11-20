@@ -252,6 +252,8 @@ public class SettingsView extends AnchorPane {
     //
     /**
      * Adds a row for each {@link Property} of given List which contains the property name and a control to change the property value.
+     * The background colors of the setting rows alternate over the setting rows only; the rows of section headers are
+     * not counted.
      *
      * @param aGridPane GridPane to add row
      * @param aPropertiesList List of properties to show in created tab
@@ -268,6 +270,8 @@ public class SettingsView extends AnchorPane {
                                   Map<String, ObservableBooleanValue> aVisibilityConditionsMap,
                                   Map<String, String> aSectionTitlesMap, Map<String, Object> aRecentPropertiesMap) {
         int tmpRowIndex = 0;
+        //index of the setting row, unlike the grid row index not shifted by section header rows
+        int tmpSettingRowIndex = 0;
         List<Region> tmpBackgroundRegions = new ArrayList<>(aPropertiesList.size());
         List<ObservableBooleanValue> tmpVisibilityConditions = new ArrayList<>(aPropertiesList.size());
         for (Property tmpProperty : aPropertiesList) {
@@ -283,8 +287,8 @@ public class SettingsView extends AnchorPane {
             Region tmpBackgroundRegion = new Region();
             tmpBackgroundRegion.setPrefHeight(50);
 
-            // Set alternating colors
-            if (tmpRowIndex % 2 == 1) {
+            // Set alternating colors by the setting row index so that section header rows do not shift them
+            if (tmpSettingRowIndex % 2 == 1) {
                 tmpBackgroundRegion.setStyle(SettingsView.ODD_ROW_COLOR);
             } else {
                 tmpBackgroundRegion.setStyle(SettingsView.EVEN_ROW_COLOR);
@@ -412,18 +416,20 @@ public class SettingsView extends AnchorPane {
             }
             tmpBackgroundRegions.add(tmpBackgroundRegion);
             tmpVisibilityConditions.add(tmpVisibilityCondition);
+            tmpSettingRowIndex++;
         }
         this.bindAlternatingRowColors(tmpBackgroundRegions, tmpVisibilityConditions);
     }
     //
     /**
-     * Binds the background colors of the rows so that they alternate over the visible rows only. Without hidden rows,
-     * the colors set when the rows were created are kept; only rows after a row with a visibility condition get a
-     * binding that counts the visible rows before them.
+     * Binds the background colors of the setting rows so that they alternate over the visible setting rows only.
+     * Without hidden rows, the colors set when the rows were created from the setting row index are kept; only rows
+     * after a row with a visibility condition get a binding that counts the visible setting rows before them. Section
+     * header rows are not part of the given lists and therefore never counted.
      *
-     * @param aBackgroundRegionsList background regions of the rows, in row order
-     * @param aVisibilityConditionsList visibility conditions of the rows, in row order; null for rows that are always
-     *                                  shown
+     * @param aBackgroundRegionsList background regions of the setting rows, in row order
+     * @param aVisibilityConditionsList visibility conditions of the setting rows, in row order; null for rows that are
+     *                                  always shown
      */
     private void bindAlternatingRowColors(List<Region> aBackgroundRegionsList,
                                           List<ObservableBooleanValue> aVisibilityConditionsList) {
