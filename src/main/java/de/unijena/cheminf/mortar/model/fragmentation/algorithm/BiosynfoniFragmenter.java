@@ -117,7 +117,9 @@ import java.util.logging.Logger;
  * that is stored for this key (see {@link BiosynfoniKey#getRepresentativeSmiles(Set)}). All
  * matches of the same key thus
  * end up as one fragment in MORTAR, and the frequency of this fragment in a molecule equals the count of the
- * respective Biosynfoni count fingerprint position.
+ * respective Biosynfoni count fingerprint position. The representative structures are not parts of the input molecule
+ * and partly contain pseudo atoms (e.g. "*C"); as a step of a fragmentation pipeline, the fragmenter should therefore
+ * return the matched substructures.
  * <br>Alternatively, the actually matched substructures can be returned (see
  * {@link BiosynfoniReturnedFragmentsOption#MATCHED_SUBSTRUCTURES}). This shows which different substructures are
  * covered by a specific SMARTS pattern. Each matched substructure consists of the matched atoms and all bonds between
@@ -126,7 +128,9 @@ import java.util.logging.Logger;
  * remain aromatic, e.g. the pyrrole ring of indole. If the matched part of an aromatic system has no Kekulé structure,
  * e.g. three atoms of a benzene ring, the fragment is built from the bond orders of the Kekulé form of the input
  * molecule instead, so that its bonds appear in this Kekulé form. If the input molecule has no Kekulé structure, its
- * unset bond orders are treated as single bonds.
+ * unset bond orders are treated as single bonds, which leaves open valences in the fragments, e.g.
+ * "[CH]1[CH][CH][CH][CH]1" for "c1cccc1". Stereochemistry is not transferred to the matched substructures, since
+ * stereo elements can refer to atoms outside the match.
  * <br><b>Known limitation of the matched substructures option:</b> MORTAR identifies fragments by their unique SMILES
  * code across the whole data set. Keys whose SMARTS pattern matches only a single atom (ether, hydroxyl, and epoxide
  * oxygen; terminal nitrogen and both amino acid keys; methyl) can produce identical fragments, e.g. "O" for an ether
@@ -140,7 +144,11 @@ import java.util.logging.Logger;
  * {@link #BIOSYNFONI_MATCHING_METHOD_PROPERTY_KEY},
  * {@link IMoleculeFragmenter#FRAGMENT_CATEGORY_PROPERTY_KEY}, and
  * {@link IMoleculeFragmenter#FRAGMENT_DISPLAY_LABEL_PROPERTY_KEY}); the latter is used to group the fragments by
- * their key in the GUI.
+ * their key in the GUI. Like all fragment properties, they are also written to exported files, the display label in
+ * the language of the GUI.
+ * <br>The fragmenter has no fragment saturation setting (see {@link IMoleculeFragmenter}), like e.g. the Sugar Removal
+ * Utility fragmenter: the representative structures are fixed, and the free valences of the matched substructures are
+ * saturated with implicit hydrogen atoms.
  * <br>
  * <br>As in the reference implementation, two optional overlap filters are available as settings:
  * <ul>
@@ -604,7 +612,7 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
          * @param aLabel label of the key as used in the reference implementation
          * @param aRepresentativeSmiles SMILES code of the representative structure of the key
          */
-        BiosynfoniKey(String aLabel, String aRepresentativeSmiles) {
+        private BiosynfoniKey(String aLabel, String aRepresentativeSmiles) {
             this(aLabel, null, null, null, aRepresentativeSmiles, aRepresentativeSmiles, 0);
         }
         //
@@ -615,7 +623,7 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
          * @param aSmarts SMARTS pattern of the key
          * @param aRepresentativeSmiles SMILES code of the representative structure of the key
          */
-        BiosynfoniKey(String aLabel, String aSmarts, String aRepresentativeSmiles) {
+        private BiosynfoniKey(String aLabel, String aSmarts, String aRepresentativeSmiles) {
             this(aLabel, null, aSmarts, aSmarts, aRepresentativeSmiles, aRepresentativeSmiles, 0);
         }
         //
@@ -628,7 +636,7 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
          * @param aVariantSmarts variant SMARTS pattern of the key
          * @param aRepresentativeSmiles SMILES code of the representative structure of the key
          */
-        BiosynfoniKey(String aLabel, BiosynfoniVariant aVariant, String anOriginalSmarts, String aVariantSmarts,
+        private BiosynfoniKey(String aLabel, BiosynfoniVariant aVariant, String anOriginalSmarts, String aVariantSmarts,
                       String aRepresentativeSmiles) {
             this(aLabel, aVariant, anOriginalSmarts, aVariantSmarts, aRepresentativeSmiles, aRepresentativeSmiles, 0);
         }
@@ -643,7 +651,7 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
          * @param anOriginalRepresentativeSmiles SMILES code of the original representative structure
          * @param aVariantRepresentativeSmiles SMILES code of the variant representative structure
          */
-        BiosynfoniKey(String aLabel, BiosynfoniVariant aVariant, String anOriginalSmarts, String aVariantSmarts,
+        private BiosynfoniKey(String aLabel, BiosynfoniVariant aVariant, String anOriginalSmarts, String aVariantSmarts,
                       String anOriginalRepresentativeSmiles, String aVariantRepresentativeSmiles) {
             this(aLabel, aVariant, anOriginalSmarts, aVariantSmarts, anOriginalRepresentativeSmiles,
                     aVariantRepresentativeSmiles, 0);
@@ -659,7 +667,7 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
          * @param aRepresentativeSmiles SMILES code of the representative structure of the key
          * @param aRingSize number of ring atoms
          */
-        BiosynfoniKey(String aLabel, String aSmarts, String aRepresentativeSmiles, int aRingSize) {
+        private BiosynfoniKey(String aLabel, String aSmarts, String aRepresentativeSmiles, int aRingSize) {
             this(aLabel, BiosynfoniVariant.RING_PERCEPTION, aSmarts, aSmarts, aRepresentativeSmiles,
                     aRepresentativeSmiles, aRingSize);
         }
@@ -676,7 +684,7 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
          * @param aVariantRepresentativeSmiles SMILES code of the variant representative structure
          * @param aRingSize number of ring atoms of a ring key, 0 for all other keys
          */
-        BiosynfoniKey(String aLabel, BiosynfoniVariant aVariant, String anOriginalSmarts, String aVariantSmarts,
+        private BiosynfoniKey(String aLabel, BiosynfoniVariant aVariant, String anOriginalSmarts, String aVariantSmarts,
                       String anOriginalRepresentativeSmiles, String aVariantRepresentativeSmiles, int aRingSize) {
             this.label = aLabel;
             this.variant = aVariant;
@@ -884,7 +892,7 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
          *
          * @param aSettingName name of the setting that turns the variant on or off in the custom pattern set
          */
-        BiosynfoniVariant(String aSettingName) {
+        private BiosynfoniVariant(String aSettingName) {
             this.settingName = aSettingName;
         }
         //
@@ -1908,7 +1916,8 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
             tmpSortedRanksOfMatches[i] = tmpRanks;
             tmpOrder[i] = i;
         }
-        Arrays.sort(tmpOrder, (a, b) -> Arrays.compare(tmpSortedRanksOfMatches[a], tmpSortedRanksOfMatches[b]));
+        Arrays.sort(tmpOrder, (anIndex1, anIndex2) -> Arrays.compare(tmpSortedRanksOfMatches[anIndex1],
+                tmpSortedRanksOfMatches[anIndex2]));
         boolean[] tmpIsAtomBlocked = new boolean[aCanonicalRanks.length];
         List<int[]> tmpFilteredMatches = new ArrayList<>(tmpNumberOfMatches);
         for (int tmpIndex : tmpOrder) {
@@ -1992,7 +2001,8 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
         for (int i = 0; i < tmpLabels.length; i++) {
             tmpIndices[i] = i;
         }
-        Arrays.sort(tmpIndices, Comparator.comparingLong((Integer i) -> tmpLabels[i]).thenComparingInt(i -> i));
+        Arrays.sort(tmpIndices, Comparator.comparingLong((Integer anIndex) -> tmpLabels[anIndex])
+                .thenComparingInt(anIndex -> anIndex));
         int[] tmpRanks = new int[tmpIndices.length];
         for (int tmpRank = 0; tmpRank < tmpIndices.length; tmpRank++) {
             tmpRanks[tmpIndices[tmpRank]] = tmpRank;
