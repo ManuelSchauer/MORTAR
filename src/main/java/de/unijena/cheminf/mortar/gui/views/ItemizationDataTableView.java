@@ -293,8 +293,7 @@ public class ItemizationDataTableView extends TableView implements IDataTableVie
                 if (tmpIndex >= cellData.getValue().getFragmentsOfSpecificFragmentation(this.fragmentationName).size()) {
                     return null;
                 }
-                List<FragmentDataModel> tmpFragments = cellData.getValue().getFragmentsOfSpecificFragmentation(this.fragmentationName);
-                FragmentDataModel tmpFragment = tmpFragments.get(tmpIndex);
+                FragmentDataModel tmpFragment = cellData.getValue().getFragmentsOfSpecificFragmentation(this.fragmentationName).get(tmpIndex);
                 int tmpFrequency = cellData.getValue().getFragmentFrequencyOfSpecificFragmentation(this.fragmentationName).get(tmpFragment.getUniqueSmiles());
                 String tmpFrequencyString = String.valueOf(tmpFrequency);
                 // just a precaution; it is highly unlikely that we get that many fragments of the same type for one(!) molecule
@@ -305,7 +304,8 @@ public class ItemizationDataTableView extends TableView implements IDataTableVie
                 // fragments with display labels, e.g. the name of the substructure pattern that produced them, are
                 // grouped by a header bar with the label above them; the frequency is displayed below the structure
                 if (tmpFragment.getDisplayLabelText() != null) {
-                    return this.createLabelledFragmentCell(tmpFragments, tmpIndex, tmpFrequencyString, tmpColumn);
+                    return this.createLabelledFragmentCell(cellData.getValue().getFragmentsOfSpecificFragmentation(this.fragmentationName),
+                            tmpIndex, tmpFrequencyString, tmpColumn);
                 }
                 return tmpFragment.getStructureWithText(tmpFrequencyString);
             }));

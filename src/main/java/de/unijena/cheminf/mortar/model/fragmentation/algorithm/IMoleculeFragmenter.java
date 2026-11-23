@@ -65,9 +65,9 @@ import java.util.Map;
  * the parameter test logic there. Tooltip texts for the settings must be given in a HashMap with setting (property) names
  * as keys and tooltip text as values (see {@link IMoleculeFragmenter#getSettingNameToTooltipTextMap()}).
  * Similarly, names for the settings that are language-specific and can be displayed in the GUI must be given. One setting that
- * must be available is the fragment saturation setting that is already laid out in this interface, see below. Settings
- * that are only regarded with a specific option of another setting can be hidden in the GUI while they have no effect,
- * see {@link IMoleculeFragmenter#getSettingNameToVisibilityConditionMap()}.
+ * must be available is the fragment saturation setting that is already laid out in this interface, see below.
+ * Settings that are only regarded with a specific option of another setting can be hidden in the GUI while they have
+ * no effect, see {@link IMoleculeFragmenter#getSettingNameToVisibilityConditionMap()}.
  * <br>
  * <br>More details can be found in the method documentations of this interface.
  * Examples for how to implement this interface to make a new fragmentation algorithm available, can be found in

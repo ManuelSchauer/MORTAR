@@ -174,27 +174,8 @@ public class SettingsView extends AnchorPane {
      */
     public Tab addTab(String aLabel, List<Property<?>> aPropertiesList, Map<String, String> aDisplayNamesMap,
                       Map<String, String> aTooltipTextsMap, Map<String, Object> aRecentPropertiesMap) {
-        return this.addTab(aLabel, aPropertiesList, aDisplayNamesMap, aTooltipTextsMap, Map.of(), aRecentPropertiesMap);
-    }
-    //
-    /**
-     * Adds a tab which contains the properties of the given properties list. The rows of properties that have a
-     * visibility condition are only shown while their condition is true.
-     *
-     * @param aLabel Label for the tab title and the tab Id
-     * @param aPropertiesList List of properties to show in created tab
-     * @param aDisplayNamesMap Map containing setting names as keys and language-specific names for the settings to display in the GUI
-     * @param aTooltipTextsMap Map containing setting names as keys and tooltip text as values
-     * @param aVisibilityConditionsMap Map containing setting names as keys and conditions as values that determine
-     *                                 whether the respective setting is shown; settings without condition are always shown
-     * @param aRecentPropertiesMap Map to hold recent properties to restore them if necessary
-     * @return Tab
-     */
-    public Tab addTab(String aLabel, List<Property<?>> aPropertiesList, Map<String, String> aDisplayNamesMap,
-                      Map<String, String> aTooltipTextsMap, Map<String, ObservableBooleanValue> aVisibilityConditionsMap,
-                      Map<String, Object> aRecentPropertiesMap) {
-        return this.addTab(aLabel, aPropertiesList, aDisplayNamesMap, aTooltipTextsMap, aVisibilityConditionsMap,
-                Map.of(), aRecentPropertiesMap);
+        return this.addTab(aLabel, aPropertiesList, aDisplayNamesMap, aTooltipTextsMap, Map.of(), Map.of(),
+                aRecentPropertiesMap);
     }
     //
     /**
