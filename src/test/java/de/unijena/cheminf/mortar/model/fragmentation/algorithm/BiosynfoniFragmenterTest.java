@@ -25,27 +25,38 @@
 
 package de.unijena.cheminf.mortar.model.fragmentation.algorithm;
 
+import de.unijena.cheminf.mortar.model.util.BasicDefinitions;
 import de.unijena.cheminf.mortar.model.util.ChemUtil;
+import de.unijena.cheminf.mortar.preference.PreferenceContainer;
+import de.unijena.cheminf.mortar.preference.PreferenceUtil;
 
 import javafx.beans.property.Property;
 import javafx.beans.value.ObservableBooleanValue;
 
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.openscience.cdk.exception.CDKException;
+import org.openscience.cdk.interfaces.IAtom;
 import org.openscience.cdk.interfaces.IAtomContainer;
+import org.openscience.cdk.interfaces.IBond;
 import org.openscience.cdk.silent.SilentChemObjectBuilder;
 import org.openscience.cdk.smarts.SmartsPattern;
 import org.openscience.cdk.smiles.SmiFlavor;
 import org.openscience.cdk.smiles.SmilesGenerator;
 import org.openscience.cdk.smiles.SmilesParser;
 
+import java.io.File;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 
 /**
@@ -61,6 +72,15 @@ class BiosynfoniFragmenterTest {
      */
     private static final String TEST_MOLECULE_SMILES =
             "O=C(OC1C(OCC2=COC(OC(=O)CC(C)C)C3C2CC(O)C3(O)COC(=O)C)OC(CO)C(O)C1O)C=CC4=CC=C(O)C=C4";
+    /**
+     * Seed of the random atom and bond permutations used to test the independence of the input atom order.
+     */
+    private static final long PERMUTATION_SEED = 42L;
+    /**
+     * Number of random atom and bond permutations per molecule and configuration used to test the independence of the
+     * input atom order.
+     */
+    private static final int NUMBER_OF_PERMUTATIONS = 5;
     //
     /**
      * Constructor that sets the default locale to British English, which is important for the correct functioning of the
@@ -731,6 +751,301 @@ class BiosynfoniFragmenterTest {
     }
     //
     /**
+     * Tests that every match of a key is returned as a fragment instance of its own in the representative structures
+     * mode, so that altering one returned fragment does not alter the others. Butane contains three ethyl units.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    void representativeFragmentInstancesTest() throws Exception {
+        SmilesParser tmpSmiPar = new SmilesParser(SilentChemObjectBuilder.getInstance());
+        BiosynfoniFragmenter tmpFragmenter = new BiosynfoniFragmenter();
+        List<IAtomContainer> tmpEthylFragments = new ArrayList<>(3);
+        for (IAtomContainer tmpFragment : tmpFragmenter.fragmentMolecule(tmpSmiPar.parseSmiles("CCCC"))) {
+            if (BiosynfoniFragmenter.BiosynfoniKey.D_ETHYL.getLabel().equals(tmpFragment.getProperty(BiosynfoniFragmenter.BIOSYNFONI_LABEL_PROPERTY_KEY))) {
+                tmpEthylFragments.add(tmpFragment);
+            }
+        }
+        Assertions.assertEquals(3, tmpEthylFragments.size());
+        for (int i = 0; i < tmpEthylFragments.size(); i++) {
+            for (int j = i + 1; j < tmpEthylFragments.size(); j++) {
+                Assertions.assertNotSame(tmpEthylFragments.get(i), tmpEthylFragments.get(j));
+                Assertions.assertNotSame(tmpEthylFragments.get(i).getAtom(0), tmpEthylFragments.get(j).getAtom(0));
+            }
+        }
+        tmpEthylFragments.get(0).setProperty("Test property", "altered");
+        Assertions.assertNull(tmpEthylFragments.get(1).getProperty("Test property"));
+    }
+    //
+    /**
+     * Tests that the original pattern set gives exactly the counts of the Python reference implementation of Biosynfoni
+     * (version "full_1103") for ten diverse natural products, without overlap filters and with the inter-substructure
+     * overlap filter only, the two configurations in which the counts are identical to the reference implementation
+     * (see the class documentation of {@link BiosynfoniFragmenter}). This fails if an original SMARTS pattern or the key
+     * order is changed by accident. The expected counts must not be adapted to the results of the fragmenter but only
+     * be replaced by new results of the reference implementation.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    void originalPatternSetReferenceCountsTest() throws Exception {
+        //labels of the reference implementation in the order of the fingerprint positions
+        String[] tmpReferenceLabels = {"co_coa", "co_nadh", "co_nadph", "allstnd_aminos", "nonstnd_aminos",
+                "s_openpyr_C6O6", "s_openfur_C5O5", "s_pyranose_C5O4", "s_furanose_C4O3", "d_indoleC2N_12", "d_phenylC2N_9",
+                "d_c5n_6", "d_c4n_5", "d_phenylC3_9_strict", "d_phenylC2_8_strict", "d_phenylC1_7_strict", "d_isoprene_5",
+                "d2_acetyl_C2O1", "d2_methylmalonyl_C3", "d_ethyl_2", "d_methyl_1", "phosphate_2", "sulfonate_2", "hal_f",
+                "hal_cl", "hal_br", "hal_i", "n_nitrate_1", "o_epoxy_1", "o_ether_1", "o_hydroxyl_1", "r_c3", "r_c4", "r_c5",
+                "r_c6", "r_c7", "r_c8", "r_c9", "r_c10"};
+        //sucrose, glutathione, chlorogenic acid, cholesterol, ATP, yohimbine, emodin, erythromycin A, griseofulvin, and
+        // quercetin 3-sulfate
+        String[] tmpSmilesArray = {
+                "OCC1OC(OC2(CO)OC(CO)C(O)C2O)C(O)C(O)C1O",
+                "NC(CCC(=O)NC(CS)C(=O)NCC(=O)O)C(=O)O",
+                "OC(=O)C1(O)CC(O)C(O)C(C1)OC(=O)C=Cc1ccc(O)c(O)c1",
+                "CC(C)CCCC(C)C1CCC2C3CC=C4CC(O)CCC4(C)C3CCC12C",
+                "Nc1ncnc2c1ncn2C1OC(COP(=O)(O)OP(=O)(O)OP(=O)(O)O)C(O)C1O",
+                "COC(=O)C1C(O)CCC2CN3CCc4c([nH]c5ccccc45)C3CC12",
+                "Cc1cc(O)c2C(=O)c3c(O)cc(O)cc3C(=O)c2c1",
+                "CCC1OC(=O)C(C)C(OC2CC(C)(OC)C(O)C(C)O2)C(C)C(OC2OC(C)CC(N(C)C)C2O)C(C)(O)CC(C)C(=O)C(C)C(O)C1(C)O",
+                "COC1=CC(=O)CC(C)C12Oc1c(Cl)c(OC)cc(OC)c1C2=O",
+                "O=c1c(OS(=O)(=O)O)c(-c2ccc(O)c(O)c2)oc2cc(O)cc(O)c12"};
+        //count vectors of the Python reference implementation (https://github.com/lucinamay/biosynfoni, commit 0ba4620,
+        // RDKit 2025.03.6), in the order of the fingerprint positions, computed as
+        // biosynfoni.concerto_fp.Biosynfoni(Chem.MolFromSmiles(smiles), version_name="full_1103", intersub_overlap=True,
+        // intrasub_overlap=True).fingerprint without overlap filters and with intersub_overlap=False for the
+        // inter-substructure overlap filter only
+        int[][] tmpNoFilterCounts = {
+                {0, 0, 0, 0, 0, 2, 4, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 23, 0, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 8, 0, 0, 0, 0, 0, 0, 0, 0},
+                {0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 0, 7, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+                {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 5, 17, 0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 2, 0, 0, 0, 0},
+                {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 62, 2, 11, 30, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 3, 0, 0, 1, 2},
+                {0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 6, 0, 12, 0, 0, 0, 0, 0, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0},
+                {0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 1, 0, 0, 0, 19, 4, 0, 21, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 0},
+                {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 18, 10, 2, 17, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 3, 0, 0, 0, 2},
+                {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 13, 33, 17, 31, 13, 0, 0, 0, 0, 0, 0, 0, 0, 3, 5, 0, 0, 0, 0, 0, 0, 0, 0},
+                {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 15, 2, 15, 4, 0, 0, 0, 1, 0, 0, 0, 0, 3, 0, 0, 0, 0, 2, 0, 0, 0, 0},
+                {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 6, 16, 0, 16, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 0}};
+        int[][] tmpInterFilterCounts = {
+                {0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+                {0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+                {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0},
+                {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 62, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0},
+                {0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 12, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+                {0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0},
+                {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 18, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0},
+                {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 13, 6, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 2, 4, 0, 0, 0, 0, 0, 0, 0, 0},
+                {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+                {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 3, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0}};
+        BiosynfoniFragmenter.BiosynfoniKey[] tmpKeys = BiosynfoniFragmenter.BiosynfoniKey.values();
+        Assertions.assertEquals(tmpReferenceLabels.length, tmpKeys.length);
+        for (int i = 0; i < tmpKeys.length; i++) {
+            Assertions.assertEquals(tmpReferenceLabels[i], tmpKeys[i].getLabel());
+        }
+        SmilesParser tmpSmiPar = new SmilesParser(SilentChemObjectBuilder.getInstance());
+        BiosynfoniFragmenter tmpFragmenter = new BiosynfoniFragmenter();
+        tmpFragmenter.setPatternSetSetting(BiosynfoniFragmenter.BiosynfoniPatternSetOption.ORIGINAL);
+        for (boolean tmpIsInterFilterApplied : new boolean[] {false, true}) {
+            tmpFragmenter.setInterSubstructureOverlapFilterSetting(tmpIsInterFilterApplied);
+            int[][] tmpExpectedCounts = tmpIsInterFilterApplied ? tmpInterFilterCounts : tmpNoFilterCounts;
+            for (int i = 0; i < tmpSmilesArray.length; i++) {
+                Map<String, Integer> tmpCounts = BiosynfoniFragmenterTest.countPerLabel(
+                        tmpFragmenter.fragmentMolecule(tmpSmiPar.parseSmiles(tmpSmilesArray[i])));
+                int[] tmpCountVector = new int[tmpKeys.length];
+                for (int j = 0; j < tmpKeys.length; j++) {
+                    tmpCountVector[j] = tmpCounts.getOrDefault(tmpKeys[j].getLabel(), 0);
+                }
+                Assertions.assertArrayEquals(tmpExpectedCounts[i], tmpCountVector,
+                        (tmpIsInterFilterApplied ? "inter-substructure overlap filter: " : "no overlap filter: ") + tmpSmilesArray[i]);
+            }
+        }
+    }
+    //
+    /**
+     * Tests that the counts with the intra-substructure overlap filter do not depend on the input atom and bond order,
+     * for both preset pattern sets, with and without the inter-substructure overlap filter: the counts of several seeded
+     * random permutations of the atoms and bonds must equal those of the parsed molecule. The molecules are symmetric
+     * (mesitylene, cubane), fused (cholesterol), disconnected with two identical components (two butyric acid
+     * molecules), and with many overlapping ethyl, acetyl, and isoprene matches (farnesol and the COCONUT natural
+     * product CNP0151033).
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    void intraSubstructureOverlapFilterAtomOrderTest() throws Exception {
+        SmilesParser tmpSmiPar = new SmilesParser(SilentChemObjectBuilder.getInstance());
+        String[] tmpSmilesArray = {"Cc1cc(C)cc(C)c1", "C12C3C4C1C5C2C3C45", "CC(C)CCCC(C)C1CCC2C3CC=C4CC(O)CCC4(C)C3CCC12C",
+                "CCCC(=O)O.CCCC(=O)O", "CC(C)=CCCC(C)=CCCC(C)=CCO", BiosynfoniFragmenterTest.TEST_MOLECULE_SMILES};
+        BiosynfoniFragmenter tmpFragmenter = new BiosynfoniFragmenter();
+        tmpFragmenter.setIntraSubstructureOverlapFilterSetting(true);
+        for (BiosynfoniFragmenter.BiosynfoniPatternSetOption tmpPatternSet : new BiosynfoniFragmenter.BiosynfoniPatternSetOption[] {
+                BiosynfoniFragmenter.BiosynfoniPatternSetOption.VARIANT, BiosynfoniFragmenter.BiosynfoniPatternSetOption.ORIGINAL}) {
+            tmpFragmenter.setPatternSetSetting(tmpPatternSet);
+            for (boolean tmpIsInterFilterApplied : new boolean[] {false, true}) {
+                tmpFragmenter.setInterSubstructureOverlapFilterSetting(tmpIsInterFilterApplied);
+                for (String tmpSmiles : tmpSmilesArray) {
+                    BiosynfoniFragmenterTest.assertCountsIndependentOfAtomOrder(tmpFragmenter, tmpSmiPar.parseSmiles(tmpSmiles),
+                            tmpPatternSet.name() + ", inter-substructure overlap filter " + tmpIsInterFilterApplied + ": " + tmpSmiles);
+                }
+            }
+        }
+    }
+    //
+    /**
+     * Tests the fallback of the canonical atom ranks for the intra-substructure overlap filter, which is used if no
+     * unique SMILES code can be created, here because of an unset order of a non-aromatic bond: the filter still
+     * reduces the number of fragments, and the counts do not depend on the input atom and bond order, for both preset
+     * pattern sets, with and without the inter-substructure overlap filter.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    void canonicalRanksFallbackTest() throws Exception {
+        SmilesParser tmpSmiPar = new SmilesParser(SilentChemObjectBuilder.getInstance());
+        //farnesol with an unset order of the bond between its first two carbon atoms
+        IAtomContainer tmpMolecule = tmpSmiPar.parseSmiles("CC(C)=CCCC(C)=CCCC(C)=CCO");
+        tmpMolecule.getBond(tmpMolecule.getAtom(0), tmpMolecule.getAtom(1)).setOrder(IBond.Order.UNSET);
+        //precondition: no unique SMILES code, so the fallback is used
+        Assertions.assertThrows(CDKException.class, () -> new SmilesGenerator(SmiFlavor.Unique).create(tmpMolecule));
+        BiosynfoniFragmenter tmpFragmenter = new BiosynfoniFragmenter();
+        int tmpUnfilteredCount = tmpFragmenter.fragmentMolecule(tmpMolecule).size();
+        tmpFragmenter.setIntraSubstructureOverlapFilterSetting(true);
+        Assertions.assertTrue(tmpFragmenter.fragmentMolecule(tmpMolecule).size() < tmpUnfilteredCount);
+        for (BiosynfoniFragmenter.BiosynfoniPatternSetOption tmpPatternSet : new BiosynfoniFragmenter.BiosynfoniPatternSetOption[] {
+                BiosynfoniFragmenter.BiosynfoniPatternSetOption.VARIANT, BiosynfoniFragmenter.BiosynfoniPatternSetOption.ORIGINAL}) {
+            tmpFragmenter.setPatternSetSetting(tmpPatternSet);
+            for (boolean tmpIsInterFilterApplied : new boolean[] {false, true}) {
+                tmpFragmenter.setInterSubstructureOverlapFilterSetting(tmpIsInterFilterApplied);
+                BiosynfoniFragmenterTest.assertCountsIndependentOfAtomOrder(tmpFragmenter, tmpMolecule,
+                        tmpPatternSet.name() + ", inter-substructure overlap filter " + tmpIsInterFilterApplied);
+            }
+        }
+    }
+    //
+    /**
+     * Tests that a molecule with unset implicit hydrogen counts, for which neither a unique SMILES code nor the default
+     * invariants of the CDK canonical labelling are available, can be fragmented with the intra-substructure overlap
+     * filter by means of the fallback of the canonical atom ranks, and that its counts do not depend on the input atom
+     * and bond order. MORTAR sets unset implicit hydrogen counts on import, so this only concerns the direct use of the
+     * fragmenter. Molecules with rings cannot be fragmented with unset implicit hydrogen counts at all, regardless of
+     * the overlap filters, because the aromaticity perception of the SMARTS matching requires them, so an acyclic
+     * molecule is used.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    void unsetImplicitHydrogenCountsTest() throws Exception {
+        SmilesParser tmpSmiPar = new SmilesParser(SilentChemObjectBuilder.getInstance());
+        //1-butanol with unset implicit hydrogen counts
+        IAtomContainer tmpMolecule = tmpSmiPar.parseSmiles("CCCCO");
+        for (IAtom tmpAtom : tmpMolecule.atoms()) {
+            tmpAtom.setImplicitHydrogenCount(null);
+        }
+        //precondition: no unique SMILES code, so the fallback is used
+        Assertions.assertThrows(NullPointerException.class, () -> new SmilesGenerator(SmiFlavor.Unique).create(tmpMolecule));
+        String tmpEthylLabel = BiosynfoniFragmenter.BiosynfoniKey.D_ETHYL.getLabel();
+        BiosynfoniFragmenter tmpFragmenter = new BiosynfoniFragmenter();
+        //the chain of four carbon atoms contains three overlapping ethyl units, of which one or two are disjoint
+        Assertions.assertEquals(3, BiosynfoniFragmenterTest.countPerLabel(tmpFragmenter.fragmentMolecule(tmpMolecule)).get(tmpEthylLabel));
+        tmpFragmenter.setIntraSubstructureOverlapFilterSetting(true);
+        int tmpFilteredEthylCount = BiosynfoniFragmenterTest.countPerLabel(tmpFragmenter.fragmentMolecule(tmpMolecule)).get(tmpEthylLabel);
+        Assertions.assertTrue(tmpFilteredEthylCount == 1 || tmpFilteredEthylCount == 2, String.valueOf(tmpFilteredEthylCount));
+        BiosynfoniFragmenterTest.assertCountsIndependentOfAtomOrder(tmpFragmenter, tmpMolecule, "CCCCO");
+    }
+    //
+    /**
+     * Tests that all 17 settings, each set to a value other than its default, are restored by a new fragmenter after
+     * they have been written to and read from a preference container file as MORTAR persists them (see
+     * FragmentationService.persistFragmenterSettings() and reloadFragmenterSettings()). The file is written to a
+     * temporary directory.
+     *
+     * @param aTempDirectory temporary directory for the preference container file, provided by JUnit
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    void settingsPersistenceTest(@TempDir Path aTempDirectory) throws Exception {
+        BiosynfoniFragmenter tmpFragmenter = new BiosynfoniFragmenter();
+        tmpFragmenter.setPatternSetSetting(BiosynfoniFragmenter.BiosynfoniPatternSetOption.CUSTOM);
+        tmpFragmenter.setIntraSubstructureOverlapFilterSetting(!BiosynfoniFragmenter.INTRA_SUBSTRUCTURE_OVERLAP_FILTER_SETTING_DEFAULT);
+        tmpFragmenter.setInterSubstructureOverlapFilterSetting(!BiosynfoniFragmenter.INTER_SUBSTRUCTURE_OVERLAP_FILTER_SETTING_DEFAULT);
+        tmpFragmenter.setReturnedFragmentsSetting(BiosynfoniFragmenter.BiosynfoniReturnedFragmentsOption.MATCHED_SUBSTRUCTURES);
+        for (BiosynfoniFragmenter.BiosynfoniVariant tmpVariant : BiosynfoniFragmenter.BiosynfoniVariant.values()) {
+            tmpFragmenter.setVariantSetting(tmpVariant, !BiosynfoniFragmenter.VARIANT_SETTING_DEFAULT);
+        }
+        List<Property<?>> tmpSettings = tmpFragmenter.settingsProperties();
+        List<Property<?>> tmpDefaultSettings = new BiosynfoniFragmenter().settingsProperties();
+        Assertions.assertEquals(17, tmpSettings.size());
+        for (int i = 0; i < tmpSettings.size(); i++) {
+            Assertions.assertNotEquals(tmpDefaultSettings.get(i).getValue(), tmpSettings.get(i).getValue(), tmpSettings.get(i).getName());
+        }
+        Assertions.assertDoesNotThrow(() -> PreferenceUtil.checkPropertiesForPreferenceRestrictions(tmpSettings));
+        String tmpFilePath = aTempDirectory.resolve(BiosynfoniFragmenter.class.getSimpleName()
+                + BasicDefinitions.PREFERENCE_CONTAINER_FILE_EXTENSION).toString();
+        PreferenceContainer tmpContainer = PreferenceUtil.translateJavaFxPropertiesToPreferences(tmpSettings, tmpFilePath);
+        Assertions.assertEquals(tmpSettings.size(), tmpContainer.getSize());
+        tmpContainer.writeRepresentation();
+        BiosynfoniFragmenter tmpReloadedFragmenter = new BiosynfoniFragmenter();
+        PreferenceUtil.updatePropertiesFromPreferences(tmpReloadedFragmenter.settingsProperties(), new PreferenceContainer(new File(tmpFilePath)));
+        List<Property<?>> tmpReloadedSettings = tmpReloadedFragmenter.settingsProperties();
+        Assertions.assertEquals(tmpSettings.size(), tmpReloadedSettings.size());
+        for (int i = 0; i < tmpSettings.size(); i++) {
+            Assertions.assertEquals(tmpSettings.get(i).getName(), tmpReloadedSettings.get(i).getName());
+            Assertions.assertEquals(tmpSettings.get(i).getValue(), tmpReloadedSettings.get(i).getValue(), tmpSettings.get(i).getName());
+        }
+    }
+    //
+    /**
+     * Tests the behaviour for unusual input molecules: an empty molecule is filtered and cannot be fragmented; single
+     * atoms that no key matches give no fragments in all modes; the counts of a disconnected molecule are the sums of
+     * the counts of its components; pseudo atoms are not matched as carbon atoms; and explicit hydrogen atoms count as
+     * neighbours, so that the oxygen atom of ethanol with an explicit hydrogen atom on it is matched as ether instead of
+     * hydroxyl oxygen (see the class documentation of {@link BiosynfoniFragmenter}).
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    void unusualInputTest() throws Exception {
+        SmilesParser tmpSmiPar = new SmilesParser(SilentChemObjectBuilder.getInstance());
+        BiosynfoniFragmenter tmpFragmenter = new BiosynfoniFragmenter();
+        IAtomContainer tmpEmptyMolecule = SilentChemObjectBuilder.getInstance().newAtomContainer();
+        Assertions.assertTrue(tmpFragmenter.shouldBeFiltered(tmpEmptyMolecule));
+        Assertions.assertFalse(tmpFragmenter.canBeFragmented(tmpEmptyMolecule));
+        Assertions.assertThrows(IllegalArgumentException.class, () -> tmpFragmenter.fragmentMolecule(tmpEmptyMolecule));
+        //methane, water, and an iron atom
+        for (boolean tmpIsIntraFilterApplied : new boolean[] {false, true}) {
+            tmpFragmenter.setIntraSubstructureOverlapFilterSetting(tmpIsIntraFilterApplied);
+            for (BiosynfoniFragmenter.BiosynfoniReturnedFragmentsOption tmpOption : BiosynfoniFragmenter.BiosynfoniReturnedFragmentsOption.values()) {
+                tmpFragmenter.setReturnedFragmentsSetting(tmpOption);
+                for (String tmpSmiles : new String[] {"C", "O", "[Fe]"}) {
+                    Assertions.assertTrue(tmpFragmenter.fragmentMolecule(tmpSmiPar.parseSmiles(tmpSmiles)).isEmpty(),
+                            tmpOption.name() + ", intra-substructure overlap filter " + tmpIsIntraFilterApplied + ": " + tmpSmiles);
+                }
+            }
+        }
+        tmpFragmenter.restoreDefaultSettings();
+        //acetic acid and ethylamine as one disconnected molecule
+        Map<String, Integer> tmpExpectedCounts = BiosynfoniFragmenterTest.countPerLabel(
+                tmpFragmenter.fragmentMolecule(tmpSmiPar.parseSmiles("CC(=O)O")));
+        BiosynfoniFragmenterTest.countPerLabel(tmpFragmenter.fragmentMolecule(tmpSmiPar.parseSmiles("CCN")))
+                .forEach((aLabel, aCount) -> tmpExpectedCounts.merge(aLabel, aCount, Integer::sum));
+        Assertions.assertEquals(tmpExpectedCounts, BiosynfoniFragmenterTest.countPerLabel(
+                tmpFragmenter.fragmentMolecule(tmpSmiPar.parseSmiles("CC(=O)O.CCN"))));
+        //only the bond between the two carbon atoms is matched, as ethyl unit
+        Assertions.assertEquals(Map.of(BiosynfoniFragmenter.BiosynfoniKey.D_ETHYL.getLabel(), 1),
+                BiosynfoniFragmenterTest.countPerLabel(tmpFragmenter.fragmentMolecule(tmpSmiPar.parseSmiles("*CC*"))));
+        String tmpEtherLabel = BiosynfoniFragmenter.BiosynfoniKey.O_ETHER.getLabel();
+        String tmpHydroxylLabel = BiosynfoniFragmenter.BiosynfoniKey.O_HYDROXYL.getLabel();
+        //ethanol with an implicit and with an explicit hydrogen atom on the oxygen atom
+        Map<String, Integer> tmpImplicitHydrogenCounts = BiosynfoniFragmenterTest.countPerLabel(
+                tmpFragmenter.fragmentMolecule(tmpSmiPar.parseSmiles("OCC")));
+        Assertions.assertEquals(0, tmpImplicitHydrogenCounts.getOrDefault(tmpEtherLabel, 0));
+        Assertions.assertEquals(1, tmpImplicitHydrogenCounts.getOrDefault(tmpHydroxylLabel, 0));
+        Map<String, Integer> tmpExplicitHydrogenCounts = BiosynfoniFragmenterTest.countPerLabel(
+                tmpFragmenter.fragmentMolecule(tmpSmiPar.parseSmiles("[H]OCC")));
+        Assertions.assertEquals(1, tmpExplicitHydrogenCounts.getOrDefault(tmpEtherLabel, 0));
+        Assertions.assertEquals(0, tmpExplicitHydrogenCounts.getOrDefault(tmpHydroxylLabel, 0));
+    }
+    //
+    /**
      * Returns sets of variants for testing: no variants, all variants, every single variant, and all variants but
      * one.
      *
@@ -774,5 +1089,51 @@ class BiosynfoniFragmenterTest {
             tmpCounts.merge(tmpFragment.getProperty(BiosynfoniFragmenter.BIOSYNFONI_LABEL_PROPERTY_KEY), 1, Integer::sum);
         }
         return tmpCounts;
+    }
+    //
+    /**
+     * Asserts that the given fragmenter returns the same number of fragments per key for the given molecule and for
+     * several seeded random permutations of its atoms and bonds.
+     *
+     * @param aFragmenter the fragmenter with the settings to test
+     * @param aMolecule the molecule, it is not altered
+     * @param aMessage message for failed assertions
+     * @throws Exception if anything goes wrong
+     */
+    private static void assertCountsIndependentOfAtomOrder(BiosynfoniFragmenter aFragmenter, IAtomContainer aMolecule,
+                                                           String aMessage) throws Exception {
+        Map<String, Integer> tmpExpectedCounts = BiosynfoniFragmenterTest.countPerLabel(aFragmenter.fragmentMolecule(aMolecule));
+        Random tmpRandom = new Random(BiosynfoniFragmenterTest.PERMUTATION_SEED);
+        for (int i = 0; i < BiosynfoniFragmenterTest.NUMBER_OF_PERMUTATIONS; i++) {
+            IAtomContainer tmpPermutedMolecule = BiosynfoniFragmenterTest.permuteAtomsAndBonds(aMolecule, tmpRandom);
+            Assertions.assertEquals(tmpExpectedCounts,
+                    BiosynfoniFragmenterTest.countPerLabel(aFragmenter.fragmentMolecule(tmpPermutedMolecule)),
+                    aMessage + ", permutation " + i);
+        }
+    }
+    //
+    /**
+     * Returns a clone of the given molecule whose atoms and bonds are randomly reordered.
+     *
+     * @param aMolecule the molecule, it is not altered
+     * @param aRandom random number generator for the permutations
+     * @return reordered clone of the molecule
+     * @throws CloneNotSupportedException if the molecule cannot be cloned
+     */
+    private static IAtomContainer permuteAtomsAndBonds(IAtomContainer aMolecule, Random aRandom) throws CloneNotSupportedException {
+        IAtomContainer tmpClone = aMolecule.clone();
+        List<IAtom> tmpAtoms = new ArrayList<>(tmpClone.getAtomCount());
+        for (IAtom tmpAtom : tmpClone.atoms()) {
+            tmpAtoms.add(tmpAtom);
+        }
+        List<IBond> tmpBonds = new ArrayList<>(tmpClone.getBondCount());
+        for (IBond tmpBond : tmpClone.bonds()) {
+            tmpBonds.add(tmpBond);
+        }
+        Collections.shuffle(tmpAtoms, aRandom);
+        Collections.shuffle(tmpBonds, aRandom);
+        tmpClone.setAtoms(tmpAtoms.toArray(new IAtom[0]));
+        tmpClone.setBonds(tmpBonds.toArray(new IBond[0]));
+        return tmpClone;
     }
 }

@@ -195,10 +195,13 @@ import java.util.logging.Logger;
  *   matches are selected in a canonical order (see above), so the counts do not depend on the input atom order but can
  *   differ from the reference implementation where both select different but equally valid sets of non-overlapping
  *   matches.</li>
- *   <li><b>Cheminformatics toolkit</b>: the substructure matching is done with the CDK instead of RDKit. RDKit removes
- *   explicit hydrogen atoms, which are counted by the SMARTS primitives D and h. MORTAR suppresses explicit hydrogen
- *   atoms when importing molecules, so this only matters if the fragmenter is used directly with molecules containing
- *   explicit hydrogen atoms.</li>
+ *   <li><b>Cheminformatics toolkit</b>: the substructure matching is done with the CDK instead of RDKit. Explicit
+ *   hydrogen atoms count as neighbours for the SMARTS primitive D and are not counted by h, so that e.g. the oxygen
+ *   atom of ethanol with an explicit hydrogen atom on it is matched as ether instead of hydroxyl oxygen. RDKit removes
+ *   most explicit hydrogen atoms when reading molecules. MORTAR converts explicit hydrogen atoms to implicit ones on
+ *   import where possible; the remaining explicit hydrogen atoms, e.g. deuterium, tritium, or bridging hydrogen atoms,
+ *   are matched as described (RDKit keeps deuterium and tritium explicit as well). If the fragmenter is used directly,
+ *   explicit hydrogen atoms in the given molecules are matched as they are.</li>
  * </ul>
  *
  * @author Manuel Schauer
@@ -1113,7 +1116,8 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
     private SmartsPattern[] cachedSmartsPatterns;
 
     /**
-     * Annotated representative structures of the keys for the cached variants, in key order; returned as clones.
+     * Annotated representative structures of the keys for the cached variants, in key order; returned as one clone per
+     * match.
      */
     private IAtomContainer[] cachedRepresentatives;
 
@@ -1529,9 +1533,12 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
                         tmpFragments.add(this.createMatchedSubstructureFragment(tmpPreparedMolecule, tmpMatch, tmpKeys[i],
                                 this.cachedSmartsCodes[i], tmpVariants));
                     }
-                } else if (!tmpMatches.isEmpty()) {
-                    //all matches of one key are represented by the same structure and thereby collapse into one fragment
-                    tmpFragments.addAll(Collections.nCopies(tmpMatches.size(), this.cachedRepresentatives[i].clone()));
+                } else {
+                    //all matches of one key are represented by the same structure and thereby collapse into one fragment;
+                    // every match gets its own clone, so that the returned fragments can be altered independently
+                    for (int j = 0; j < tmpMatches.size(); j++) {
+                        tmpFragments.add(this.cachedRepresentatives[i].clone());
+                    }
                 }
             }
         } catch (Exception anException) {
@@ -1957,8 +1964,13 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
      * selects the matches along chains and rings, similar to the reference implementation, which processes the matches
      * in the order of the (SMILES-based) input atom indices. The matches are thereby packed about as densely, but the
      * selected matches and their number can still differ from the reference implementation (see the class
-     * documentation). Should the SMILES code not be creatable, e.g. for unset bond orders, the ranks of the CDK
-     * canonical labelling are used instead, which are input order independent as well.
+     * documentation). Should the SMILES code not be creatable, e.g. for unset bond orders or unset implicit hydrogen
+     * counts, the ranks of the CDK canonical labelling are used instead, which are input order independent as well.
+     * The labelling starts from the atom invariants that the unique SMILES code is based on, which, in contrast to the
+     * default invariants of the CDK canonical labelling, regard unset implicit hydrogen counts as zero. It does not
+     * regard bond orders, so atoms that differ only in the orders of their bonds, e.g. the atoms next to an unset bond
+     * in a ring of otherwise identical atoms, can be ranked depending on their input order, and the selected matches
+     * can then depend on it as well.
      *
      * @param aMolecule the molecule
      * @return canonical rank of every atom, indexed by atom index
@@ -1968,10 +1980,14 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
         try {
             new SmilesGenerator(SmiFlavor.Unique).create(aMolecule, tmpSmilesOrder);
             return tmpSmilesOrder;
-        } catch (CDKException anException) {
+        } catch (CDKException | NullPointerException | IllegalArgumentException anException) {
+            //CDKException e.g. for unset bond orders, NullPointerException e.g. for unset implicit hydrogen counts
             BiosynfoniFragmenter.LOGGER.log(Level.FINE, "Unique SMILES order not available, canonical labels are used instead.", anException);
         }
-        long[] tmpLabels = Canon.label(aMolecule, GraphUtil.toAdjList(aMolecule));
+        //the default invariants of the canonical labelling would throw a NullPointerException for unset implicit
+        // hydrogen counts, the invariants of the unique SMILES code regard them as zero
+        long[] tmpLabels = Canon.label(aMolecule, GraphUtil.toAdjList(aMolecule),
+                SmilesGenerator.createComparator(aMolecule, SmiFlavor.Unique));
         Integer[] tmpIndices = new Integer[tmpLabels.length];
         for (int i = 0; i < tmpLabels.length; i++) {
             tmpIndices[i] = i;
