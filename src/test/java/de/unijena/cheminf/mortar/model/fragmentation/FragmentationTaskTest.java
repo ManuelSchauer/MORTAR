@@ -100,6 +100,29 @@ class FragmentationTaskTest {
     }
     //
     /**
+     * Tests that the constructor without the parameter for the display labels collects no display labels, as before
+     * the parameter was added.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    void displayLabelsNotCollectedByDefaultTest() throws Exception {
+        List<MoleculeDataModel> tmpMolecules = new ArrayList<>(2);
+        for (String tmpSmiles : new String[] {"O=C(O)C=CC1=CC=C(O)C=C1", "CCO"}) {
+            tmpMolecules.add(new MoleculeDataModel(tmpSmiles, tmpSmiles, new HashMap<>()));
+        }
+        Map<String, FragmentDataModel> tmpFragments = new ConcurrentHashMap<>();
+        FragmentationTaskResult tmpResult = new FragmentationTask(tmpMolecules, new BiosynfoniFragmenter(), tmpFragments,
+                FragmentationTaskTest.FRAGMENTATION_NAME, false).call();
+        Assertions.assertEquals(0, tmpResult.exceptionsCount());
+        Assertions.assertEquals(0, tmpResult.unexpectedExceptionsCount());
+        Assertions.assertFalse(tmpFragments.isEmpty());
+        for (FragmentDataModel tmpFragment : tmpFragments.values()) {
+            Assertions.assertNull(tmpFragment.getDisplayLabelText(), tmpFragment.getUniqueSmiles());
+        }
+    }
+    //
+    /**
      * Tests that the display labels of different fragmenter outputs resulting in the same fragment are combined in
      * alphabetical order. With the matched substructures option of the Biosynfoni fragmenter, the ether oxygen atom of
      * dimethyl ether and the hydroxyl oxygen atom of ethanol both result in the fragment "O" (known limitation of

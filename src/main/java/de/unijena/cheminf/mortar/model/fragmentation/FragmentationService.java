@@ -336,7 +336,7 @@ public class FragmentationService {
         List<MoleculeDataModel> tmpMolsToFragment = new ArrayList<>(aListOfMolecules);
         for (int i = 0; i < this.pipelineFragmenter.length; i++) {
             this.fragments.clear();
-            tmpFragmentsMap = this.startFragmentation(tmpMolsToFragment, aNumberOfTasks, this.pipelineFragmenter[i], tmpPipelineFragmentationName, isStereoChemistryRegarded, false);
+            tmpFragmentsMap = this.startFragmentation(tmpMolsToFragment, aNumberOfTasks, this.pipelineFragmenter[i], tmpPipelineFragmentationName, isStereoChemistryRegarded);
             tmpMolsToFragment.clear();
             //iterate through all initial molecules
             for (MoleculeDataModel tmpMolecule : aListOfMolecules) {
@@ -499,7 +499,7 @@ public class FragmentationService {
         this.existingFragmentations.add(tmpPipelineFragmentationName);
         this.currentFragmentationName = tmpPipelineFragmentationName;
 
-        this.fragments = this.startFragmentation(aListOfMolecules, aNumberOfTasks, this.pipelineFragmenter[0], tmpPipelineFragmentationName, isStereoChemRegarded, false);
+        this.fragments = this.startFragmentation(aListOfMolecules, aNumberOfTasks, this.pipelineFragmenter[0], tmpPipelineFragmentationName, isStereoChemRegarded);
 
         for(int i = 1; i < this.pipelineFragmenter.length; i++){
             String tmpFragmentationName = this.createAndCheckFragmentationName(tmpPipelineFragmentationName + "_" + this.pipelineFragmenter[i].getFragmentationAlgorithmDisplayName());
@@ -510,7 +510,7 @@ public class FragmentationService {
                 }
                 List<MoleculeDataModel> tmpChildMols = (List<MoleculeDataModel>)(List<?>) tmpParentMol.getFragmentsOfSpecificFragmentation(tmpPipelineFragmentationName);
                 Map<String, FragmentDataModel> tmpFragmentsMap = this.startFragmentation(
-                        tmpChildMols, aNumberOfTasks, this.pipelineFragmenter[i], tmpFragmentationName, isStereoChemRegarded, false);
+                        tmpChildMols, aNumberOfTasks, this.pipelineFragmenter[i], tmpFragmentationName, isStereoChemRegarded);
                 Set<String> tmpKeySet = tmpFragmentsMap.keySet();
                 LinkedList<FragmentDataModel> tmpFrags = new LinkedList<>();
                 for(String tmpKey : tmpKeySet){
@@ -1001,6 +1001,28 @@ public class FragmentationService {
             while(this.existingFragmentations.contains(tmpFragmentationName));
         }
         return tmpFragmentationName;
+    }
+    //
+    /**
+     * Manages the fragmentation, creates {@link FragmentationTask} equal to the amount of {@param aNumberOfTasks},
+     * assigns the molecules of {@param aListOfMolecules} to them and starts the fragmentation. No display labels of the
+     * fragments are collected, as needed for pipeline fragmentations.
+     *
+     * @param aListOfMolecules molecules to fragment and to assign the fragments to
+     * @param aNumberOfTasks number of parallel tasks to use for the process
+     * @param aFragmenter fragmenter instance to use to fragment, will be copied for the parallel tasks
+     * @param aFragmentationName name under which to store the fragmentation results on the molecules
+     * @param isStereoChemistryRegarded whether stereo chemistry should be encoded in the resulting fragment SMILES codes
+     * @throws Exception if anything goes wrong
+     */
+    private Map<String, FragmentDataModel> startFragmentation(List<MoleculeDataModel> aListOfMolecules,
+                                                                    int aNumberOfTasks,
+                                                                    IMoleculeFragmenter aFragmenter,
+                                                                    String aFragmentationName,
+                                                                    boolean isStereoChemistryRegarded)
+            throws Exception {
+        return this.startFragmentation(aListOfMolecules, aNumberOfTasks, aFragmenter, aFragmentationName,
+                isStereoChemistryRegarded, false);
     }
     //
     /**

@@ -97,6 +97,27 @@ public class FragmentationTask implements Callable<FragmentationTaskResult> {
     //</editor-fold>
     //
     /**
+     * Instantiates the thread. No display labels of the fragments are collected, i.e. the task behaves as the one
+     * created by {@link #FragmentationTask(List, IMoleculeFragmenter, Map, String, boolean, boolean)} with
+     * areDisplayLabelsCollected set to false, as needed e.g. for pipeline fragmentations.
+     *
+     * @param aListOfMolecules atom containers should meet the employed fragmentation algorithm's input specifications but
+     *                         any occurring exception will be caught
+     * @param aFragmenter Fragmenter to use
+     * @param aHashtableOfFragments Map to hold fragments, should be synchronised, e.g. by using a HashTable instance;
+     *                              keys are unique SMILES codes.
+     * @param aFragmentationName String
+     * @param isStereo Whether stereochemistry in the fragments should be regarded when creating their SMILES codes
+     */
+    public FragmentationTask(List<MoleculeDataModel> aListOfMolecules,
+                             IMoleculeFragmenter aFragmenter,
+                             Map<String, FragmentDataModel> aHashtableOfFragments,
+                             String aFragmentationName,
+                             boolean isStereo) {
+        this(aListOfMolecules, aFragmenter, aHashtableOfFragments, aFragmentationName, isStereo, false);
+    }
+    //
+    /**
      * Instantiates the thread.
      *
      * @param aListOfMolecules atom containers should meet the employed fragmentation algorithm's input specifications but
