@@ -394,7 +394,8 @@ class BiosynfoniFragmenterTest {
     //
     /**
      * Tests that completely matched aromatic rings of fused ring systems remain aromatic in the matched substructures
-     * mode: the pyrrole ring of indole, the pyridine ring of quinoline, and both rings of naphthalene.
+     * mode: the pyrrole ring of indole, the pyridine ring of quinoline, and both rings of naphthalene. The ring atoms
+     * and bonds of these fragments are marked as such.
      *
      * @throws Exception if anything goes wrong
      */
@@ -415,6 +416,12 @@ class BiosynfoniFragmenterTest {
             for (IAtomContainer tmpFragment : tmpFragmenter.fragmentMolecule(tmpSmiPar.parseSmiles(tmpCase[0]))) {
                 if (tmpCase[1].equals(tmpFragment.getProperty(BiosynfoniFragmenter.BIOSYNFONI_LABEL_PROPERTY_KEY))) {
                     Assertions.assertEquals(tmpExpectedSmiles, tmpSmiGen.create(tmpFragment), tmpCase[0]);
+                    for (IAtom tmpAtom : tmpFragment.atoms()) {
+                        Assertions.assertTrue(tmpAtom.isInRing(), tmpCase[0]);
+                    }
+                    for (IBond tmpBond : tmpFragment.bonds()) {
+                        Assertions.assertTrue(tmpBond.isInRing(), tmpCase[0]);
+                    }
                     tmpRingCount++;
                 }
             }
@@ -423,20 +430,63 @@ class BiosynfoniFragmenterTest {
     }
     //
     /**
-     * Tests that a molecule without Kekulé structure, which MORTAR reads with unset bond orders if necessary, is also
-     * fragmented in the matched substructures mode, with the same number of fragments per key as in the
-     * representative structures mode.
+     * Tests that a single bond between two aromatic rings remains a single bond in the matched substructures mode,
+     * since a matched atom whose aromatic bonds are all cut is not part of the matched aromatic system: of the ethyl
+     * units of biphenyl, only the one across the bond between the rings is saturated, and of the acetyl units of
+     * 2-phenylfuran, the one across the bond between the rings is saturated while the two within the furan ring keep
+     * the double bond of its Kekulé structure.
      *
      * @throws Exception if anything goes wrong
      */
     @Test
-    void matchedSubstructuresOfNonKekulizableMoleculeTest() throws Exception {
+    void matchedSubstructuresAcrossBondBetweenAromaticRingsTest() throws Exception {
+        SmilesParser tmpSmiPar = new SmilesParser(SilentChemObjectBuilder.getInstance());
+        BiosynfoniFragmenter tmpFragmenter = new BiosynfoniFragmenter();
+        tmpFragmenter.setReturnedFragmentsSetting(BiosynfoniFragmenter.BiosynfoniReturnedFragmentsOption.MATCHED_SUBSTRUCTURES);
+        String tmpEthyleneSmiles = ChemUtil.createUniqueSmiles(tmpSmiPar.parseSmiles("C=C"), false);
+        String tmpEthaneSmiles = ChemUtil.createUniqueSmiles(tmpSmiPar.parseSmiles("CC"), false);
+        Assertions.assertEquals(Map.of(tmpEthyleneSmiles, 12, tmpEthaneSmiles, 1),
+                BiosynfoniFragmenterTest.countSmilesOfKey(tmpFragmenter.fragmentMolecule(tmpSmiPar.parseSmiles("c1ccccc1-c1ccccc1")),
+                        BiosynfoniFragmenter.BiosynfoniKey.D_ETHYL.getLabel()));
+        String tmpVinylAlcoholSmiles = ChemUtil.createUniqueSmiles(tmpSmiPar.parseSmiles("OC=C"), false);
+        String tmpEthanolSmiles = ChemUtil.createUniqueSmiles(tmpSmiPar.parseSmiles("OCC"), false);
+        Assertions.assertEquals(Map.of(tmpVinylAlcoholSmiles, 2, tmpEthanolSmiles, 1),
+                BiosynfoniFragmenterTest.countSmilesOfKey(tmpFragmenter.fragmentMolecule(tmpSmiPar.parseSmiles("c1ccccc1-c1ccco1")),
+                        BiosynfoniFragmenter.BiosynfoniKey.D2_ACETYL.getLabel()));
+    }
+    //
+    /**
+     * Tests molecules with unset bond orders, which MORTAR reads this way if they have no Kekulé structure. Molecules
+     * that can be kekulized, phenylalanine and tryptamine, give the same number of fragments per key as their Kekulé
+     * form in both returned fragments modes, since they are kekulized before the SMARTS matching. A molecule without
+     * Kekulé structure is also fragmented in the matched substructures mode, with the same number of fragments per key
+     * as in the representative structures mode.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    void unsetBondOrdersTest() throws Exception {
+        SmilesParser tmpKekulizingSmiPar = new SmilesParser(SilentChemObjectBuilder.getInstance());
         SmilesParser tmpSmiPar = new SmilesParser(SilentChemObjectBuilder.getInstance());
         tmpSmiPar.kekulise(false);
-        IAtomContainer tmpMolecule = tmpSmiPar.parseSmiles("OCCc1cccc1");
         BiosynfoniFragmenter tmpRepresentativeFragmenter = new BiosynfoniFragmenter();
         BiosynfoniFragmenter tmpMatchedFragmenter = new BiosynfoniFragmenter();
         tmpMatchedFragmenter.setReturnedFragmentsSetting(BiosynfoniFragmenter.BiosynfoniReturnedFragmentsOption.MATCHED_SUBSTRUCTURES);
+        for (String tmpKekulizableSmiles : new String[] {"OC(=O)C(N)Cc1ccccc1", "NCCc1c[nH]c2ccccc21"}) {
+            IAtomContainer tmpKekulizableMolecule = tmpSmiPar.parseSmiles(tmpKekulizableSmiles);
+            boolean tmpHasUnsetBondOrder = false;
+            for (IBond tmpBond : tmpKekulizableMolecule.bonds()) {
+                tmpHasUnsetBondOrder |= tmpBond.getOrder() == IBond.Order.UNSET;
+            }
+            Assertions.assertTrue(tmpHasUnsetBondOrder, tmpKekulizableSmiles);
+            Map<String, Integer> tmpExpectedCounts = BiosynfoniFragmenterTest.countPerLabel(
+                    tmpRepresentativeFragmenter.fragmentMolecule(tmpKekulizingSmiPar.parseSmiles(tmpKekulizableSmiles)));
+            Assertions.assertEquals(tmpExpectedCounts, BiosynfoniFragmenterTest.countPerLabel(
+                    tmpRepresentativeFragmenter.fragmentMolecule(tmpKekulizableMolecule)), tmpKekulizableSmiles);
+            Assertions.assertEquals(tmpExpectedCounts, BiosynfoniFragmenterTest.countPerLabel(
+                    tmpMatchedFragmenter.fragmentMolecule(tmpKekulizableMolecule)), tmpKekulizableSmiles);
+        }
+        IAtomContainer tmpMolecule = tmpSmiPar.parseSmiles("OCCc1cccc1");
         List<IAtomContainer> tmpFragments = tmpMatchedFragmenter.fragmentMolecule(tmpMolecule);
         Assertions.assertFalse(tmpFragments.isEmpty());
         Assertions.assertEquals(BiosynfoniFragmenterTest.countPerLabel(tmpRepresentativeFragmenter.fragmentMolecule(tmpMolecule)),
@@ -1087,6 +1137,23 @@ class BiosynfoniFragmenterTest {
         Map<String, Integer> tmpCounts = new HashMap<>();
         for (IAtomContainer tmpFragment : aFragmentList) {
             tmpCounts.merge(tmpFragment.getProperty(BiosynfoniFragmenter.BIOSYNFONI_LABEL_PROPERTY_KEY), 1, Integer::sum);
+        }
+        return tmpCounts;
+    }
+    //
+    /**
+     * Counts the returned fragments of the given key per unique SMILES code.
+     *
+     * @param aFragmentList fragments returned by the fragmenter
+     * @param aLabel Biosynfoni label of the key
+     * @return map of unique SMILES code to count
+     */
+    private static Map<String, Integer> countSmilesOfKey(List<IAtomContainer> aFragmentList, String aLabel) {
+        Map<String, Integer> tmpCounts = new HashMap<>();
+        for (IAtomContainer tmpFragment : aFragmentList) {
+            if (aLabel.equals(tmpFragment.getProperty(BiosynfoniFragmenter.BIOSYNFONI_LABEL_PROPERTY_KEY))) {
+                tmpCounts.merge(ChemUtil.createUniqueSmiles(tmpFragment, false), 1, Integer::sum);
+            }
         }
         return tmpCounts;
     }

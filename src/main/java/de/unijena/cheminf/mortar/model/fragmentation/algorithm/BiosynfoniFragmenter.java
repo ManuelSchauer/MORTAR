@@ -114,9 +114,8 @@ import java.util.logging.Logger;
  * the ethyl pattern "[#6]~[#6]" matches every carbon-carbon bond regardless of bond order and aromaticity). Returning
  * the matched atoms as fragments would therefore scatter the matches of one Biosynfoni key over many different
  * fragments. Therefore, by default, every accepted match of a key is returned as one fixed representative structure
- * that is stored for this key (see {@link BiosynfoniKey#getRepresentativeSmiles(Set)}). All
- * matches of the same key thus
- * end up as one fragment in MORTAR, and the frequency of this fragment in a molecule equals the count of the
+ * that is stored for this key (see {@link BiosynfoniKey#getRepresentativeSmiles(Set)}). All matches of the same key
+ * thus end up as one fragment in MORTAR, and the frequency of this fragment in a molecule equals the count of the
  * respective Biosynfoni count fingerprint position. The representative structures are not parts of the input molecule
  * and partly contain pseudo atoms (e.g. "*C"); as a step of a fragmentation pipeline, the fragmenter should therefore
  * return the matched substructures.
@@ -125,12 +124,13 @@ import java.util.logging.Logger;
  * covered by a specific SMARTS pattern. Each matched substructure consists of the matched atoms and all bonds between
  * them, free valences are saturated with implicit hydrogen atoms, and aromaticity is re-detected on the fragment. A
  * cut bond of an aromatic system counts as a single bond, so that completely matched aromatic rings of fused systems
- * remain aromatic, e.g. the pyrrole ring of indole. If the matched part of an aromatic system has no Kekulé structure,
- * e.g. three atoms of a benzene ring, the fragment is built from the bond orders of the Kekulé form of the input
- * molecule instead, so that its bonds appear in this Kekulé form. If the input molecule has no Kekulé structure, its
- * unset bond orders are treated as single bonds, which leaves open valences in the fragments, e.g.
- * "[CH]1[CH][CH][CH][CH]1" for "c1cccc1". Stereochemistry is not transferred to the matched substructures, since
- * stereo elements can refer to atoms outside the match.
+ * remain aromatic, e.g. the pyrrole ring of indole, and a matched atom whose aromatic bonds are all cut is not part
+ * of the matched aromatic system, so that e.g. the bond between the two rings of biphenyl remains a single bond. If
+ * the matched part of an aromatic system has no Kekulé structure, e.g. three atoms of a benzene ring, the fragment is
+ * built from the bond orders of the Kekulé form of the input molecule instead, so that its bonds appear in this
+ * Kekulé form. If the input molecule has no Kekulé structure, its unset bond orders are treated as single bonds,
+ * which leaves open valences in the fragments, e.g. "[CH]1[CH][CH][CH][CH]1" for "c1cccc1". Stereochemistry is not
+ * transferred to the matched substructures, since stereo elements can refer to atoms outside the match.
  * <br><b>Known limitation of the matched substructures option:</b> MORTAR identifies fragments by their unique SMILES
  * code across the whole data set. Keys whose SMARTS pattern matches only a single atom (ether, hydroxyl, and epoxide
  * oxygen; terminal nitrogen and both amino acid keys; methyl) can produce identical fragments, e.g. "O" for an ether
@@ -1098,15 +1098,7 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
     public static final boolean VARIANT_SETTING_DEFAULT = true;
     //</editor-fold>
     //
-    //<editor-fold desc="Private final variables">
-    /**
-     * Compiled SMARTS patterns by their SMARTS code, created when a SMARTS pattern is used for the first time. Every
-     * fragmenter instance holds its own patterns so that instances used in parallel do not share them. The automatic
-     * preparation of the target molecule is disabled because it is prepared once per molecule before all patterns are
-     * matched.
-     */
-    private final Map<String, SmartsPattern> smartsPatternCache;
-
+    //<editor-fold desc="Private variables">
     /**
      * Applied variants for which the key data below were created; null if they have not been created yet. The key data
      * only depend on the applied variants, so they are created once and reused as long as the variants do not change.
@@ -1128,6 +1120,16 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
      * match.
      */
     private IAtomContainer[] cachedRepresentatives;
+    //</editor-fold>
+    //
+    //<editor-fold desc="Private final variables">
+    /**
+     * Compiled SMARTS patterns by their SMARTS code, created when a SMARTS pattern is used for the first time. Every
+     * fragmenter instance holds its own patterns so that instances used in parallel do not share them. The automatic
+     * preparation of the target molecule is disabled because it is prepared once per molecule before all patterns are
+     * matched.
+     */
+    private final Map<String, SmartsPattern> smartsPatternCache;
 
     /**
      * Settings of the variants, which are applied in the custom pattern set if turned on (see
@@ -1381,8 +1383,9 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
     //
     //<editor-fold desc="Public properties set">
     /**
-     * Sets the pattern set setting, defining whether the original SMARTS patterns of Biosynfoni version "full_1103"
-     * or the pattern variants are used.
+     * Sets the pattern set setting, defining whether the original SMARTS patterns of Biosynfoni version "full_1103",
+     * all pattern variants, or a custom selection of the pattern variants (see
+     * {@link #setVariantSetting(BiosynfoniVariant, boolean)}) are used.
      *
      * @param anOption a constant from the {@link BiosynfoniPatternSetOption} enum
      * @throws NullPointerException if the given option is null
@@ -1515,7 +1518,7 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
         Set<BiosynfoniVariant> tmpVariants = this.getAppliedVariants();
         try {
             this.updateKeyDataCache(tmpVariants);
-            IAtomContainer tmpPreparedMolecule = BiosynfoniFragmenter.prepareMolecule(aMolecule, tmpAreMatchedSubstructuresReturned);
+            IAtomContainer tmpPreparedMolecule = BiosynfoniFragmenter.prepareMolecule(aMolecule);
             int[] tmpCanonicalRanks = this.intraSubstructureOverlapFilterSetting.get()
                     ? BiosynfoniFragmenter.getCanonicalRanks(tmpPreparedMolecule) : null;
             //ring keys are matched by ring perception if this variant is applied, see BiosynfoniKey.getRingSize()
@@ -1596,7 +1599,7 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
     /**
      * Returns the compiled SMARTS pattern of the given SMARTS code, from the cache or newly created. The automatic
      * preparation of the target molecule is disabled because it is prepared once per molecule in
-     * {@link #prepareMolecule(IAtomContainer, boolean)}.
+     * {@link #prepareMolecule(IAtomContainer)}.
      *
      * @param aSmarts the SMARTS code
      * @return compiled SMARTS pattern
@@ -1667,23 +1670,23 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
      * Returns a clone of the given molecule that is prepared for matching all SMARTS patterns, i.e. ring atoms and
      * bonds are marked and the Daylight aromaticity model is applied once (see
      * {@link SmartsPattern#prepare(IAtomContainer)}), since the automatic preparation of the patterns is disabled. If
-     * the matched substructures are returned, the clone is kekulized beforehand if it has unset bond orders, because
-     * the matched substructures are built from explicit bond orders. If no Kekulé structure can be assigned, the clone
+     * the clone has unset bond orders, it is kekulized beforehand in both returned fragments modes, because the
+     * aromaticity perception of the SMARTS preparation and the matched substructures need explicit bond orders, and
+     * the counts must not depend on the returned fragments setting. If no Kekulé structure can be assigned, the clone
      * is used with its unset bond orders, which are then treated as single bonds in the matched substructures.
      *
      * @param aMolecule the molecule to fragment, it is not altered
-     * @param areMatchedSubstructuresReturned whether the matched substructures are returned
      * @return prepared clone of the given molecule
      * @throws CloneNotSupportedException if the molecule cannot be cloned
      */
-    private static IAtomContainer prepareMolecule(IAtomContainer aMolecule, boolean areMatchedSubstructuresReturned)
-            throws CloneNotSupportedException {
+    private static IAtomContainer prepareMolecule(IAtomContainer aMolecule) throws CloneNotSupportedException {
         //SMARTS preparation alters the aromaticity and ring flags of the atom container, so work on a clone
         IAtomContainer tmpMoleculeClone = aMolecule.clone();
-        if (areMatchedSubstructuresReturned && BiosynfoniFragmenter.hasUnsetBondOrders(tmpMoleculeClone)) {
+        if (BiosynfoniFragmenter.hasUnsetBondOrders(tmpMoleculeClone)) {
             try {
                 Kekulization.kekulize(tmpMoleculeClone);
-            } catch (CDKException anException) {
+            } catch (CDKException | IllegalArgumentException anException) {
+                //IllegalArgumentException e.g. for unset implicit hydrogen counts
                 BiosynfoniFragmenter.LOGGER.log(Level.FINE, "Molecule cannot be kekulized, unset bond orders are"
                         + " treated as single bonds in the matched substructures.", anException);
             }
@@ -1715,7 +1718,7 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
      *
      * @param aKey the Biosynfoni key
      * @param aPattern SMARTS pattern of the key for the applied variants
-     * @param aPreparedMolecule molecule prepared for SMARTS matching, see {@link #prepareMolecule(IAtomContainer, boolean)}
+     * @param aPreparedMolecule molecule prepared for SMARTS matching, see {@link #prepareMolecule(IAtomContainer)}
      * @param aCarbocyclesBySize relevant cycles consisting only of carbon atoms, by ring size; null if ring keys are
      *                           matched by their SMARTS pattern
      * @return matches, each given as atom indices
@@ -1787,8 +1790,10 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
      * valences resulting from bonds to non-matched atoms are saturated with implicit hydrogen atoms, and aromaticity
      * is re-detected on the fragment. A cut bond of an aromatic system counts as a single bond and a Kekulé structure
      * is assigned to the matched part of the aromatic system, so that completely matched aromatic rings remain
-     * aromatic, e.g. the pyrrole ring of indole. If no Kekulé structure can be assigned, e.g. to three atoms of a
-     * benzene ring, the fragment is built from the bond orders of the given molecule instead. The fragment is
+     * aromatic, e.g. the pyrrole ring of indole. A matched atom whose aromatic bonds are all cut is not part of the
+     * matched aromatic system, so that e.g. the bond between the two rings of biphenyl remains a single bond. If no
+     * Kekulé structure can be assigned, e.g. to three atoms of a benzene ring, the fragment is built from the bond
+     * orders of the given molecule instead. Ring atoms and bonds of the fragment are marked, and the fragment is
      * annotated with the key label and SMARTS pattern.
      *
      * @param aMolecule the molecule the match was found in, prepared for SMARTS matching; it should have explicit
@@ -1811,6 +1816,7 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
             //the matched part of the aromatic system has no Kekulé structure, the bond orders of the molecule are used
             tmpFragment = BiosynfoniFragmenter.copyMatchedAtomsAndBonds(aMolecule, aMatch, false);
         }
+        Cycles.markRingAtomsAndBonds(tmpFragment);
         this.fragmentAromaticityModel.apply(tmpFragment);
         BiosynfoniFragmenter.annotateFragment(tmpFragment, aKey, aSmarts, aVariantSet);
         return tmpFragment;
@@ -1818,15 +1824,19 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
 
     /**
      * Copies the matched atoms and all bonds between them into a new atom container and saturates the free valences
-     * resulting from bonds to non-matched atoms with implicit hydrogen atoms. If the aromaticity is kept, the aromatic
-     * flags of the matched atoms and bonds are copied, the bond orders of the aromatic bonds are left unset so that a
-     * Kekulé structure can be assigned to them afterwards, and every cut aromatic bond counts as a single bond.
-     * Otherwise, all bond orders of the given molecule are used and no aromatic flags are set. Unset bond orders of
-     * non-aromatic bonds are treated as single bonds.
+     * resulting from bonds to non-matched atoms with implicit hydrogen atoms. If the aromaticity is kept, the matched
+     * aromatic bonds and their atoms are flagged as aromatic, the bond orders of these bonds are left unset so that a
+     * Kekulé structure can be assigned to them afterwards, and every cut aromatic bond of these atoms counts as a
+     * single bond. A matched aromatic atom whose aromatic bonds are all cut is not part of the matched aromatic system:
+     * it is not flagged and its cut bonds count with the bond orders of the given molecule, so that it is saturated and
+     * a single bond between two such atoms, e.g. between the two rings of biphenyl, remains a single bond. Otherwise,
+     * all bond orders of the given molecule are used and no aromatic flags are set. Unset bond orders of non-aromatic
+     * bonds are treated as single bonds.
      *
      * @param aMolecule the molecule the match was found in, prepared for SMARTS matching
      * @param aMatch atom indices of the match
-     * @param isAromaticityKept whether the aromatic flags are copied and cut aromatic bonds count as single bonds
+     * @param isAromaticityKept whether the matched aromatic bonds are flagged and cut aromatic bonds of their atoms
+     *                          count as single bonds
      * @return new atom container of the matched atoms and the bonds between them
      * @throws CloneNotSupportedException if an atom cannot be cloned
      */
@@ -1834,6 +1844,24 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
             throws CloneNotSupportedException {
         IChemObjectBuilder tmpBuilder = aMolecule.getBuilder();
         IAtomContainer tmpFragment = tmpBuilder.newAtomContainer();
+        boolean[] tmpIsMatchedAtom = new boolean[aMolecule.getAtomCount()];
+        for (int tmpAtomIndex : aMatch) {
+            tmpIsMatchedAtom[tmpAtomIndex] = true;
+        }
+        //only atoms with a matched aromatic bond belong to the matched part of an aromatic system; an aromatic atom whose
+        // aromatic bonds are all cut is saturated instead, otherwise the Kekulé structure assignment could turn a
+        // single bond between two such atoms into a double bond, e.g. the bond between the two rings of biphenyl
+        boolean[] tmpHasMatchedAromaticBond = new boolean[aMolecule.getAtomCount()];
+        if (isAromaticityKept) {
+            for (IBond tmpBond : aMolecule.bonds()) {
+                int tmpBeginIndex = tmpBond.getBegin().getIndex();
+                int tmpEndIndex = tmpBond.getEnd().getIndex();
+                if (tmpBond.isAromatic() && tmpIsMatchedAtom[tmpBeginIndex] && tmpIsMatchedAtom[tmpEndIndex]) {
+                    tmpHasMatchedAromaticBond[tmpBeginIndex] = true;
+                    tmpHasMatchedAromaticBond[tmpEndIndex] = true;
+                }
+            }
+        }
         IAtom[] tmpOriginalToFragmentAtom = new IAtom[aMolecule.getAtomCount()];
         for (int tmpAtomIndex : aMatch) {
             IAtom tmpOriginalAtom = aMolecule.getAtom(tmpAtomIndex);
@@ -1841,7 +1869,7 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
             int tmpImplicitHydrogenCount = Objects.isNull(tmpOriginalAtom.getImplicitHydrogenCount())
                     ? 0 : tmpOriginalAtom.getImplicitHydrogenCount();
             tmpFragmentAtom.setImplicitHydrogenCount(tmpImplicitHydrogenCount);
-            tmpFragmentAtom.setIsAromatic(isAromaticityKept && tmpOriginalAtom.isAromatic());
+            tmpFragmentAtom.setIsAromatic(tmpHasMatchedAromaticBond[tmpAtomIndex]);
             tmpFragmentAtom.setIsInRing(false);
             tmpFragment.addAtom(tmpFragmentAtom);
             //the container may wrap the added atom, so the stored reference has to be taken from it
@@ -1861,8 +1889,10 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
             } else if (!Objects.isNull(tmpBegin) || !Objects.isNull(tmpEnd)) {
                 //bond to a non-matched atom is cut, saturate the free valence with hydrogen atoms
                 IAtom tmpMatchedAtom = Objects.isNull(tmpBegin) ? tmpEnd : tmpBegin;
+                int tmpMatchedAtomIndex = Objects.isNull(tmpBegin) ? tmpBond.getEnd().getIndex() : tmpBond.getBegin().getIndex();
+                boolean tmpCountsAsSingleBond = tmpIsAromaticBondKept && tmpHasMatchedAromaticBond[tmpMatchedAtomIndex];
                 tmpMatchedAtom.setImplicitHydrogenCount(tmpMatchedAtom.getImplicitHydrogenCount()
-                        + (tmpIsAromaticBondKept ? 1 : tmpBondOrder.numeric()));
+                        + (tmpCountsAsSingleBond ? 1 : tmpBondOrder.numeric()));
             }
         }
         return tmpFragment;
