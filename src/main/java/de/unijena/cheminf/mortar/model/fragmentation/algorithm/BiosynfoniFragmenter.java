@@ -71,6 +71,7 @@ import javafx.beans.property.Property;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.value.ObservableBooleanValue;
 
+import org.openscience.cdk.AtomRef;
 import org.openscience.cdk.aromaticity.Aromaticity;
 import org.openscience.cdk.aromaticity.Kekulization;
 import org.openscience.cdk.exception.CDKException;
@@ -82,23 +83,33 @@ import org.openscience.cdk.interfaces.IAtomContainer;
 import org.openscience.cdk.interfaces.IBond;
 import org.openscience.cdk.interfaces.IChemObjectBuilder;
 import org.openscience.cdk.interfaces.IElement;
+import org.openscience.cdk.interfaces.IPseudoAtom;
+import org.openscience.cdk.isomorphism.Pattern;
+import org.openscience.cdk.isomorphism.matchers.Expr;
+import org.openscience.cdk.isomorphism.matchers.QueryAtom;
+import org.openscience.cdk.isomorphism.matchers.QueryAtomContainer;
 import org.openscience.cdk.silent.SilentChemObjectBuilder;
+import org.openscience.cdk.smarts.Smarts;
 import org.openscience.cdk.smarts.SmartsPattern;
 import org.openscience.cdk.smiles.SmiFlavor;
 import org.openscience.cdk.smiles.SmilesGenerator;
 import org.openscience.cdk.smiles.SmilesParser;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Deque;
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -131,13 +142,25 @@ import java.util.logging.Logger;
  * Kekulé form. If the input molecule has no Kekulé structure, its unset bond orders are treated as single bonds,
  * which leaves open valences in the fragments, e.g. "[CH]1[CH][CH][CH][CH]1" for "c1cccc1". Stereochemistry is not
  * transferred to the matched substructures, since stereo elements can refer to atoms outside the match.
+ * <br>Several SMARTS patterns consist of a single atom whose environment is only checked, e.g. the amino acid patterns,
+ * which match only the amino nitrogen atom, or the hydroxyl, ether, terminal nitrogen, methyl, and halogen patterns.
+ * Their matched substructure would be this atom alone, e.g. "N" or "O", which does not show where it was matched.
+ * Therefore, the fragment of such a match additionally contains the environment of the matched atom that the pattern
+ * checks: the atoms of the matches of its recursive SMARTS expressions ("$(...)") that start at the matched atom, e.g.
+ * the backbone and the side chain of an amino acid, so that different amino acids give different fragments, or, if
+ * the pattern has no such expression, the direct neighbours of the matched atom: neighbours in a common ring as atoms,
+ * e.g. the ring of an epoxide, all other neighbours as attachment points ("*"), since the pattern only requires their
+ * presence, e.g. "*C" for a methyl group or "*O*" for an ether oxygen atom. Every match still yields exactly one
+ * fragment, and the overlap filters only regard the matched atoms.
  * <br><b>Known limitation of the matched substructures option:</b> MORTAR identifies fragments by their unique SMILES
- * code across the whole data set. Keys whose SMARTS pattern matches only a single atom (ether, hydroxyl, and epoxide
- * oxygen; terminal nitrogen and both amino acid keys; methyl) can produce identical fragments, e.g. "O" for an ether
- * and a hydroxyl oxygen atom. Such fragments are combined into one fragment whose display label in the GUI lists all
- * keys that produced it anywhere in the data set, while its properties (e.g. the Biosynfoni label in exported files)
- * are those of only one of these keys. Its frequency in a molecule is the sum over these keys. The number of matches
- * per key and the representative structures option are not affected.
+ * code across the whole data set. Different keys can produce identical fragments, e.g. "C1CO1" for an epoxide and for an
+ * acetyl unit matched in the epoxide ring, or the backbone of alanine for the standard amino acid alanine and for a
+ * non-standard amino acid in the variant pattern set, whose pattern only checks the first side chain atom.
+ * Such fragments are combined into one fragment, whose frequency in a molecule is the sum over these keys. In the
+ * items tab, it is shown once per key that produced it in the respective molecule, with the number of matches of this
+ * key; in the fragments tab, it is grouped by all keys that produced it anywhere in the data set; its properties (e.g.
+ * the Biosynfoni label in exported files) are those of only one of these keys. The number of matches per key and the
+ * representative structures option are not affected.
  * <br>The label and the SMARTS pattern of the key and the method that found its matches (SMARTS pattern or ring
  * perception) are attached to every returned fragment as properties (see
  * {@link #BIOSYNFONI_LABEL_PROPERTY_KEY}, {@link #BIOSYNFONI_SMARTS_PROPERTY_KEY},
@@ -155,7 +178,8 @@ import java.util.logging.Logger;
  *   <li><b>Intra-substructure overlap filter</b>: prevents multiple matches of the same SMARTS pattern from sharing
  *   atoms. Matches are accepted greedily, as in the reference implementation. To make the result independent of the
  *   input atom order, in contrast to the reference implementation, matches are processed in the order of the
- *   canonical atom ranks of their atoms, i.e. their positions in the unique SMILES code of the molecule.</li>
+ *   canonical atom ranks of their atoms (see {@link #getCanonicalRanks(IAtomContainer)}), which are determined as in
+ *   the Biosynfoni fingerprinter that is being developed for the CDK.</li>
  *   <li><b>Inter-substructure overlap filter</b>: prevents matches of a SMARTS pattern from sharing atoms with
  *   accepted matches of SMARTS patterns that come earlier in the predefined key order.</li>
  * </ul>
@@ -939,8 +963,9 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
                 Message.get("BiosynfoniFragmenter.BiosynfoniReturnedFragmentsOption.RepresentativeStructures.tooltip")),
         /**
          * Every match of a key is returned as the substructure formed by the matched atoms, so the different
-         * substructures matched by a key become visible. Note that fragments of keys matching only a single atom may
-         * coincide and are then combined, see the class documentation.
+         * substructures matched by a key become visible. A match of a single-atom pattern additionally contains the
+         * environment of the atom that the pattern checks, and identical fragments of different keys are combined, see
+         * the class documentation.
          */
         MATCHED_SUBSTRUCTURES(
                 Message.get("BiosynfoniFragmenter.BiosynfoniReturnedFragmentsOption.MatchedSubstructures.displayName"),
@@ -1120,6 +1145,14 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
      * match.
      */
     private IAtomContainer[] cachedRepresentatives;
+
+    /**
+     * Atom expressions of the keys whose SMARTS pattern consists of a single atom for the cached variants, in key
+     * order, used to determine the environment of their matches in the matched substructures (see
+     * {@link #getSingleAtomEnvironment(Expr, int, IAtomContainer)}); null for keys whose SMARTS pattern consists of
+     * more than one atom.
+     */
+    private Expr[] cachedSingleAtomExpressions;
     //</editor-fold>
     //
     //<editor-fold desc="Private final variables">
@@ -1130,6 +1163,13 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
      * matched.
      */
     private final Map<String, SmartsPattern> smartsPatternCache;
+
+    /**
+     * Compiled patterns of the recursive SMARTS expressions of single-atom SMARTS patterns, by their sub-query, created
+     * when an expression is used for the first time; used to determine the environment of single-atom matches in the
+     * matched substructures. Every fragmenter instance holds its own patterns, like {@link #smartsPatternCache}.
+     */
+    private final Map<IAtomContainer, Pattern> environmentPatternCache;
 
     /**
      * Settings of the variants, which are applied in the custom pattern set if turned on (see
@@ -1198,6 +1238,7 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
      */
     public BiosynfoniFragmenter() {
         this.smartsPatternCache = new HashMap<>();
+        this.environmentPatternCache = new IdentityHashMap<>();
         this.smilesParser = new SmilesParser(SilentChemObjectBuilder.getInstance());
         this.fragmentAromaticityModel = new Aromaticity(Aromaticity.Model.Daylight,
                 Cycles.or(Cycles.all(), Cycles.cdkAromaticSet()));
@@ -1533,16 +1574,15 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
                                 tmpCarbocyclesBySize),
                         tmpCanonicalRanks, tmpIsAtomBlockedByPreviousKeys);
                 if (tmpAreMatchedSubstructuresReturned) {
-                    //TODO: keys matching only a single atom (O_ETHER, O_HYDROXYL, O_EPOXY, N_NITRATE, ALL_STD_AMINOS,
-                    // NON_STD_AMINOS, D_METHYL) can produce identical fragments ("O", "N") whose labels and frequencies
-                    // are then combined across keys, see class documentation; in the items tab, such a fragment is
-                    // shown under the combined label (e.g. "Ether oxygen, Hydroxyl group") in every molecule, also
-                    // where only one of the keys matched it; to be discussed: return the representative structure for
-                    // these keys also in this mode, since a single matched atom does not show the promiscuity of the
-                    // pattern anyway
                     for (int[] tmpMatch : tmpMatches) {
-                        tmpFragments.add(this.createMatchedSubstructureFragment(tmpPreparedMolecule, tmpMatch, tmpKeys[i],
-                                this.cachedSmartsCodes[i], tmpVariants));
+                        //a single matched atom is returned together with its environment that the pattern checks, see
+                        // getSingleAtomEnvironment(); the overlap filters above only regard the matched atoms
+                        int[][] tmpFragmentAtoms = Objects.isNull(this.cachedSingleAtomExpressions[i])
+                                ? new int[][] {tmpMatch, new int[0]}
+                                : this.getSingleAtomEnvironment(this.cachedSingleAtomExpressions[i], tmpMatch[0],
+                                        tmpPreparedMolecule);
+                        tmpFragments.add(this.createMatchedSubstructureFragment(tmpPreparedMolecule, tmpFragmentAtoms[0],
+                                tmpFragmentAtoms[1], tmpKeys[i], this.cachedSmartsCodes[i], tmpVariants));
                     }
                 } else {
                     //all matches of one key are represented by the same structure and thereby collapse into one fragment;
@@ -1609,6 +1649,86 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
     }
 
     /**
+     * Returns the atoms of a matched substructure of a key whose SMARTS pattern consists of a single atom: the matched
+     * atom and its environment that the pattern checks. A single matched atom alone, e.g. "N" or "O", would not show
+     * where it was matched. The environment consists of the atoms of all matches of the recursive SMARTS expressions
+     * ("$(...)") of the pattern that start at the matched atom, including the matches of recursive expressions nested
+     * in them, e.g. the backbone and the side chain of an amino acid for the amino acid keys or the carbon or nitrogen
+     * atom of a hydroxyl group; negated recursive expressions ("!$(...)") are not regarded, since they describe what
+     * must not be present. If the pattern has no recursive expression that adds an atom, e.g. the ether, terminal
+     * nitrogen, epoxide, methyl, and halogen patterns, whose conditions refer to the neighbours or rings of the atom
+     * via primitives like D, x, or r, the direct neighbours of the matched atom are the environment: neighbours in a
+     * common ring with the matched atom as atoms, e.g. the ring of an epoxide, all other neighbours as attachment
+     * points, i.e. pseudo atoms ("*"), because the pattern only requires their presence, not their element, e.g.
+     * "*C" for a methyl group instead of "CC", which would look like an ethyl unit.
+     *
+     * @param anExpression atom expression of the single-atom SMARTS pattern
+     * @param anAtomIndex index of the matched atom
+     * @param aMolecule the molecule the match was found in, prepared for SMARTS matching
+     * @return two arrays of atom indices: the matched atom (first) and the atoms of its environment (in ascending
+     *         order), and the neighbours that become attachment points (in ascending order, possibly empty)
+     */
+    private int[][] getSingleAtomEnvironment(Expr anExpression, int anAtomIndex, IAtomContainer aMolecule) {
+        Set<Integer> tmpEnvironment = new TreeSet<>();
+        Set<Integer> tmpAttachmentPoints = new TreeSet<>();
+        this.collectRecursiveEnvironment(anExpression, anAtomIndex, aMolecule, tmpEnvironment);
+        tmpEnvironment.remove(anAtomIndex);
+        if (tmpEnvironment.isEmpty()) {
+            IAtom tmpMatchedAtom = aMolecule.getAtom(anAtomIndex);
+            for (IBond tmpBond : aMolecule.getConnectedBondsList(tmpMatchedAtom)) {
+                int tmpNeighbourIndex = tmpBond.getOther(tmpMatchedAtom).getIndex();
+                (tmpBond.isInRing() ? tmpEnvironment : tmpAttachmentPoints).add(tmpNeighbourIndex);
+            }
+        }
+        int[] tmpAtoms = new int[tmpEnvironment.size() + 1];
+        tmpAtoms[0] = anAtomIndex;
+        int tmpPosition = 1;
+        for (int tmpAtomIndex : tmpEnvironment) {
+            tmpAtoms[tmpPosition++] = tmpAtomIndex;
+        }
+        return new int[][] {tmpAtoms, tmpAttachmentPoints.stream().mapToInt(Integer::intValue).toArray()};
+    }
+
+    /**
+     * Adds the atoms of all matches of the non-negated recursive SMARTS expressions in the given atom expression that
+     * start at the given atom to the given set, including the atoms of the recursive expressions nested in these
+     * expressions, see {@link #getSingleAtomEnvironment(Expr, int, IAtomContainer)}. Alternatives of an OR expression
+     * that do not match do not add atoms.
+     *
+     * @param anExpression atom expression
+     * @param anAtomIndex index of the atom the expression refers to
+     * @param aMolecule the molecule, prepared for SMARTS matching
+     * @param anEnvironment set to add the atom indices to
+     */
+    private void collectRecursiveEnvironment(Expr anExpression, int anAtomIndex, IAtomContainer aMolecule,
+                                             Set<Integer> anEnvironment) {
+        switch (anExpression.type()) {
+            case AND, OR -> {
+                this.collectRecursiveEnvironment(anExpression.left(), anAtomIndex, aMolecule, anEnvironment);
+                this.collectRecursiveEnvironment(anExpression.right(), anAtomIndex, aMolecule, anEnvironment);
+            }
+            case RECURSIVE -> {
+                IAtomContainer tmpSubquery = anExpression.subquery();
+                Pattern tmpPattern = this.environmentPatternCache.computeIfAbsent(tmpSubquery, Pattern::findSubstructure);
+                for (int[] tmpMapping : tmpPattern.matchAll(aMolecule)) {
+                    //the first atom of a recursive expression is the atom it refers to
+                    if (tmpMapping[0] != anAtomIndex) {
+                        continue;
+                    }
+                    for (int j = 0; j < tmpMapping.length; j++) {
+                        anEnvironment.add(tmpMapping[j]);
+                        this.collectRecursiveEnvironment(((QueryAtom) AtomRef.deref(tmpSubquery.getAtom(j))).getExpression(),
+                                tmpMapping[j], aMolecule, anEnvironment);
+                    }
+                }
+            }
+            //negated expressions describe what must not be present, all other types are primitives without atoms
+            default -> {
+            }
+        }
+    }
+
+    /**
      * Creates the SMARTS codes, compiled SMARTS patterns, and annotated representative structures of all keys for the
      * given applied variants, unless they have already been created for these variants.
      *
@@ -1623,15 +1743,24 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
         String[] tmpSmartsCodes = new String[tmpKeys.length];
         SmartsPattern[] tmpSmartsPatterns = new SmartsPattern[tmpKeys.length];
         IAtomContainer[] tmpRepresentatives = new IAtomContainer[tmpKeys.length];
+        Expr[] tmpSingleAtomExpressions = new Expr[tmpKeys.length];
         for (int i = 0; i < tmpKeys.length; i++) {
             tmpSmartsCodes[i] = tmpKeys[i].getSmarts(aVariantSet);
             tmpSmartsPatterns[i] = this.getSmartsPattern(tmpSmartsCodes[i]);
             tmpRepresentatives[i] = this.smilesParser.parseSmiles(tmpKeys[i].getRepresentativeSmiles(aVariantSet));
             BiosynfoniFragmenter.annotateFragment(tmpRepresentatives[i], tmpKeys[i], tmpSmartsCodes[i], aVariantSet);
+            IAtomContainer tmpQuery = new QueryAtomContainer(SilentChemObjectBuilder.getInstance());
+            if (!Smarts.parse(tmpQuery, tmpSmartsCodes[i])) {
+                throw new CDKException("SMARTS pattern cannot be parsed: " + tmpSmartsCodes[i]);
+            }
+            if (tmpQuery.getAtomCount() == 1) {
+                tmpSingleAtomExpressions[i] = ((QueryAtom) AtomRef.deref(tmpQuery.getAtom(0))).getExpression();
+            }
         }
         this.cachedSmartsCodes = tmpSmartsCodes;
         this.cachedSmartsPatterns = tmpSmartsPatterns;
         this.cachedRepresentatives = tmpRepresentatives;
+        this.cachedSingleAtomExpressions = tmpSingleAtomExpressions;
         //set last, so that an exception above leaves no partially updated cache behind
         this.cachedVariants = EnumSet.copyOf(aVariantSet);
     }
@@ -1798,7 +1927,10 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
      *
      * @param aMolecule the molecule the match was found in, prepared for SMARTS matching; it should have explicit
      *                  (Kekulé) bond orders, unset bond orders are treated as single bonds
-     * @param aMatch atom indices of the match
+     * @param aMatch atom indices of the match, for single-atom patterns including the environment of the matched atom
+     *               (see {@link #getSingleAtomEnvironment(Expr, int, IAtomContainer)})
+     * @param anAttachmentPointArray atom indices of neighbours that are added as attachment points, i.e. pseudo atoms
+     *                               ("*") bonded to the matched atom; empty except for single-atom patterns
      * @param aKey the Biosynfoni key that produced the match
      * @param aSmarts SMARTS pattern of the key for the applied variants
      * @param aVariantSet the applied variants
@@ -1806,15 +1938,27 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
      * @throws CloneNotSupportedException if an atom cannot be cloned
      * @throws CDKException if aromaticity detection on the fragment fails
      */
-    private IAtomContainer createMatchedSubstructureFragment(IAtomContainer aMolecule, int[] aMatch, BiosynfoniKey aKey,
+    private IAtomContainer createMatchedSubstructureFragment(IAtomContainer aMolecule, int[] aMatch,
+                                                             int[] anAttachmentPointArray, BiosynfoniKey aKey,
                                                              String aSmarts, Set<BiosynfoniVariant> aVariantSet)
             throws CloneNotSupportedException, CDKException {
-        IAtomContainer tmpFragment = BiosynfoniFragmenter.copyMatchedAtomsAndBonds(aMolecule, aMatch, true);
+        int[] tmpAtoms = aMatch;
+        if (anAttachmentPointArray.length > 0) {
+            tmpAtoms = Arrays.copyOf(aMatch, aMatch.length + anAttachmentPointArray.length);
+            System.arraycopy(anAttachmentPointArray, 0, tmpAtoms, aMatch.length, anAttachmentPointArray.length);
+        }
+        IAtomContainer tmpFragment = BiosynfoniFragmenter.copyMatchedAtomsAndBonds(aMolecule, tmpAtoms, true);
         try {
             Kekulization.kekulize(tmpFragment);
         } catch (CDKException anException) {
             //the matched part of the aromatic system has no Kekulé structure, the bond orders of the molecule are used
-            tmpFragment = BiosynfoniFragmenter.copyMatchedAtomsAndBonds(aMolecule, aMatch, false);
+            tmpFragment = BiosynfoniFragmenter.copyMatchedAtomsAndBonds(aMolecule, tmpAtoms, false);
+        }
+        //the atoms are copied in the given order, so the attachment points are the last atoms of the fragment
+        for (int i = aMatch.length; i < tmpAtoms.length; i++) {
+            IPseudoAtom tmpAttachmentPoint = tmpFragment.getBuilder().newInstance(IPseudoAtom.class, "*");
+            tmpAttachmentPoint.setImplicitHydrogenCount(0);
+            tmpFragment.setAtom(i, tmpAttachmentPoint);
         }
         Cycles.markRingAtomsAndBonds(tmpFragment);
         this.fragmentAromaticityModel.apply(tmpFragment);
@@ -1997,45 +2141,73 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
     }
 
     /**
-     * Computes the canonical rank of every atom as its position in the unique (canonical) SMILES code of the molecule.
-     * This numbering does not depend on the input atom order. Because the SMILES code is written by a depth-first
-     * traversal along the bonds, neighbouring atoms get close ranks, so that the intra-substructure overlap filter
-     * selects the matches along chains and rings, similar to the reference implementation, which processes the matches
-     * in the order of the (SMILES-based) input atom indices. The matches are thereby packed about as densely, but the
-     * selected matches and their number can still differ from the reference implementation (see the class
-     * documentation). Should the SMILES code not be creatable, e.g. for unset bond orders or unset implicit hydrogen
-     * counts, the ranks of the CDK canonical labelling are used instead, which are input order independent as well.
-     * The labelling starts from the atom invariants that the unique SMILES code is based on, which, in contrast to the
-     * default invariants of the CDK canonical labelling, regard unset implicit hydrogen counts as zero. It does not
-     * regard bond orders, so atoms that differ only in the orders of their bonds, e.g. the atoms next to an unset bond
-     * in a ring of otherwise identical atoms, can be ranked depending on their input order, and the selected matches
-     * can then depend on it as well.
+     * Computes the canonical rank of every atom, i.e. a numbering of the atoms that does not depend on the input atom
+     * order. The atoms are numbered in the order of a depth-first traversal along the bonds that starts at the atom
+     * with the smallest canonical label of the CDK canonical labelling ({@link Canon#label(IAtomContainer, int[][])})
+     * and visits the neighbours of an atom in the order of their canonical labels; disconnected components are
+     * traversed one after the other, in the order of their smallest canonical label. This is the same numbering as in
+     * the Biosynfoni fingerprinter that is being developed for the CDK, so that both select the same matches with the
+     * intra-substructure overlap filter. It follows the same principle as the atom order of the unique SMILES code and
+     * is identical to it for molecules without explicit hydrogen atoms. Because neighbouring atoms get close ranks, the
+     * intra-substructure overlap filter selects the matches along chains and rings, similar to the reference
+     * implementation, which processes the matches in the order of the (SMILES-based) input atom indices. The matches
+     * are thereby packed about as densely, but the selected matches and their number can still differ from the
+     * reference implementation (see the class documentation). The canonical labelling does not regard bond orders, so
+     * atoms that differ only in the orders of their bonds, e.g. the atoms next to an unset bond in a ring of otherwise
+     * identical atoms, can be ranked depending on their input order, and the selected matches can then depend on it as
+     * well. If an implicit hydrogen count is unset, for which the default invariants of the canonical labelling throw
+     * an exception, the labelling starts from the atom invariants of the unique SMILES code instead, which regard unset
+     * implicit hydrogen counts as zero. The method is package-private for testing.
      *
      * @param aMolecule the molecule
      * @return canonical rank of every atom, indexed by atom index
      */
-    private static int[] getCanonicalRanks(IAtomContainer aMolecule) {
-        int[] tmpSmilesOrder = new int[aMolecule.getAtomCount()];
+    static int[] getCanonicalRanks(IAtomContainer aMolecule) {
+        int[][] tmpGraph = GraphUtil.toAdjList(aMolecule);
+        long[] tmpLabels;
         try {
-            new SmilesGenerator(SmiFlavor.Unique).create(aMolecule, tmpSmilesOrder);
-            return tmpSmilesOrder;
-        } catch (CDKException | NullPointerException | IllegalArgumentException anException) {
-            //CDKException e.g. for unset bond orders, NullPointerException e.g. for unset implicit hydrogen counts
-            BiosynfoniFragmenter.LOGGER.log(Level.FINE, "Unique SMILES order not available, canonical labels are used instead.", anException);
+            tmpLabels = Canon.label(aMolecule, tmpGraph);
+        } catch (NullPointerException anException) {
+            //unset implicit hydrogen counts
+            BiosynfoniFragmenter.LOGGER.log(Level.FINE, "Default invariants of the canonical labelling not available,"
+                    + " invariants of the unique SMILES code are used instead.", anException);
+            tmpLabels = Canon.label(aMolecule, tmpGraph, SmilesGenerator.createComparator(aMolecule, SmiFlavor.Unique));
         }
-        //the default invariants of the canonical labelling would throw a NullPointerException for unset implicit
-        // hydrogen counts, the invariants of the unique SMILES code regard them as zero
-        long[] tmpLabels = Canon.label(aMolecule, GraphUtil.toAdjList(aMolecule),
-                SmilesGenerator.createComparator(aMolecule, SmiFlavor.Unique));
-        Integer[] tmpIndices = new Integer[tmpLabels.length];
-        for (int i = 0; i < tmpLabels.length; i++) {
-            tmpIndices[i] = i;
+        long[] tmpFinalLabels = tmpLabels;
+        Integer[] tmpAtomsByLabel = new Integer[tmpFinalLabels.length];
+        for (int i = 0; i < tmpFinalLabels.length; i++) {
+            tmpAtomsByLabel[i] = i;
         }
-        Arrays.sort(tmpIndices, Comparator.comparingLong((Integer anIndex) -> tmpLabels[anIndex])
-                .thenComparingInt(anIndex -> anIndex));
-        int[] tmpRanks = new int[tmpIndices.length];
-        for (int tmpRank = 0; tmpRank < tmpIndices.length; tmpRank++) {
-            tmpRanks[tmpIndices[tmpRank]] = tmpRank;
+        Arrays.sort(tmpAtomsByLabel, Comparator.comparingLong((Integer anIndex) -> tmpFinalLabels[anIndex]));
+        //neighbours are pushed in descending label order, so that the one with the smallest label is visited first
+        Comparator<Integer> tmpDescendingLabel = Comparator.comparingLong((Integer anIndex) -> tmpFinalLabels[anIndex])
+                .reversed();
+        int[] tmpRanks = new int[tmpFinalLabels.length];
+        Arrays.fill(tmpRanks, -1);
+        int tmpNextRank = 0;
+        Deque<Integer> tmpStack = new ArrayDeque<>();
+        for (int tmpStart : tmpAtomsByLabel) {
+            if (tmpRanks[tmpStart] >= 0) {
+                continue;
+            }
+            tmpStack.push(tmpStart);
+            while (!tmpStack.isEmpty()) {
+                int tmpAtom = tmpStack.pop();
+                if (tmpRanks[tmpAtom] >= 0) {
+                    continue;
+                }
+                tmpRanks[tmpAtom] = tmpNextRank++;
+                Integer[] tmpNeighbours = new Integer[tmpGraph[tmpAtom].length];
+                for (int k = 0; k < tmpNeighbours.length; k++) {
+                    tmpNeighbours[k] = tmpGraph[tmpAtom][k];
+                }
+                Arrays.sort(tmpNeighbours, tmpDescendingLabel);
+                for (int tmpNeighbour : tmpNeighbours) {
+                    if (tmpRanks[tmpNeighbour] < 0) {
+                        tmpStack.push(tmpNeighbour);
+                    }
+                }
+            }
         }
         return tmpRanks;
     }

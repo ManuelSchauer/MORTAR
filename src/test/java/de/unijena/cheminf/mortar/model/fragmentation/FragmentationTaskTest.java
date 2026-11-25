@@ -28,9 +28,12 @@ package de.unijena.cheminf.mortar.model.fragmentation;
 import de.unijena.cheminf.mortar.model.data.FragmentDataModel;
 import de.unijena.cheminf.mortar.model.data.MoleculeDataModel;
 import de.unijena.cheminf.mortar.model.fragmentation.algorithm.BiosynfoniFragmenter;
+import de.unijena.cheminf.mortar.model.util.ChemUtil;
 
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.openscience.cdk.silent.SilentChemObjectBuilder;
+import org.openscience.cdk.smiles.SmilesParser;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -51,6 +54,14 @@ class FragmentationTaskTest {
      * Name of the fragmentation used in the tests.
      */
     private static final String FRAGMENTATION_NAME = "Test fragmentation";
+    /**
+     * SMILES code of L-alanine.
+     */
+    private static final String ALANINE = "C[C@H](N)C(=O)O";
+    /**
+     * SMILES code of (S)-2-aminobutyric acid.
+     */
+    private static final String AMINOBUTYRIC_ACID = "CC[C@H](N)C(=O)O";
     //
     /**
      * Constructor that sets the default locale to British English, which is important for the correct functioning of the
@@ -81,6 +92,10 @@ class FragmentationTaskTest {
             }
             Assertions.assertNotNull(tmpExpectedDisplayName, tmpFragment.getUniqueSmiles());
             Assertions.assertEquals(tmpExpectedDisplayName, tmpFragment.getDisplayLabelText(), tmpFragment.getUniqueSmiles());
+            for (MoleculeDataModel tmpParentMolecule : tmpFragment.getParentMolecules()) {
+                Assertions.assertEquals(tmpExpectedDisplayName, tmpFragment.getDisplayLabelText(tmpParentMolecule),
+                        tmpFragment.getUniqueSmiles());
+            }
         }
     }
     //
@@ -96,6 +111,9 @@ class FragmentationTaskTest {
         Assertions.assertFalse(tmpFragments.isEmpty());
         for (FragmentDataModel tmpFragment : tmpFragments.values()) {
             Assertions.assertNull(tmpFragment.getDisplayLabelText(), tmpFragment.getUniqueSmiles());
+            for (MoleculeDataModel tmpParentMolecule : tmpFragment.getParentMolecules()) {
+                Assertions.assertNull(tmpFragment.getDisplayLabelText(tmpParentMolecule), tmpFragment.getUniqueSmiles());
+            }
         }
     }
     //
@@ -119,14 +137,19 @@ class FragmentationTaskTest {
         Assertions.assertFalse(tmpFragments.isEmpty());
         for (FragmentDataModel tmpFragment : tmpFragments.values()) {
             Assertions.assertNull(tmpFragment.getDisplayLabelText(), tmpFragment.getUniqueSmiles());
+            for (MoleculeDataModel tmpParentMolecule : tmpFragment.getParentMolecules()) {
+                Assertions.assertNull(tmpFragment.getDisplayLabelText(tmpParentMolecule), tmpFragment.getUniqueSmiles());
+            }
         }
     }
     //
     /**
      * Tests that the display labels of different fragmenter outputs resulting in the same fragment are combined in
-     * alphabetical order. With the matched substructures option of the Biosynfoni fragmenter, the ether oxygen atom of
-     * dimethyl ether and the hydroxyl oxygen atom of ethanol both result in the fragment "O" (known limitation of
-     * this option).
+     * alphabetical order, in the whole data set and per molecule. With the matched substructures option of the
+     * Biosynfoni fragmenter and the variant pattern set, the standard amino acid alanine and the non-standard amino
+     * acid 2-aminobutyric acid, whose pattern only checks the first side chain atom, both result in the fragment of
+     * the alanine backbone (known limitation of this option). In each molecule, the fragment carries only the labels
+     * of the keys that matched in this molecule.
      *
      * @throws Exception if anything goes wrong
      */
@@ -134,12 +157,64 @@ class FragmentationTaskTest {
     void displayLabelsCombinedTest() throws Exception {
         BiosynfoniFragmenter tmpFragmenter = new BiosynfoniFragmenter();
         tmpFragmenter.setReturnedFragmentsSetting(BiosynfoniFragmenter.BiosynfoniReturnedFragmentsOption.MATCHED_SUBSTRUCTURES);
-        Map<String, FragmentDataModel> tmpFragments = FragmentationTaskTest.fragment(tmpFragmenter, true, "COC", "CCO");
-        Assertions.assertTrue(tmpFragments.containsKey("O"), tmpFragments.keySet().toString());
-        Assertions.assertEquals(
-                BiosynfoniFragmenter.BiosynfoniKey.O_ETHER.getDisplayName() + ", "
-                        + BiosynfoniFragmenter.BiosynfoniKey.O_HYDROXYL.getDisplayName(),
-                tmpFragments.get("O").getDisplayLabelText());
+        Map<String, FragmentDataModel> tmpFragments = FragmentationTaskTest.fragment(tmpFragmenter, true,
+                FragmentationTaskTest.ALANINE, FragmentationTaskTest.AMINOBUTYRIC_ACID,
+                FragmentationTaskTest.ALANINE + "." + FragmentationTaskTest.AMINOBUTYRIC_ACID);
+        String tmpBackbone = ChemUtil.createUniqueSmiles(new SmilesParser(SilentChemObjectBuilder.getInstance())
+                .parseSmiles("CC(N)C(=O)O"), false);
+        Assertions.assertTrue(tmpFragments.containsKey(tmpBackbone), tmpFragments.keySet().toString());
+        String tmpStandard = BiosynfoniFragmenter.BiosynfoniKey.ALL_STD_AMINOS.getDisplayName();
+        String tmpNonStandard = BiosynfoniFragmenter.BiosynfoniKey.NON_STD_AMINOS.getDisplayName();
+        FragmentDataModel tmpFragment = tmpFragments.get(tmpBackbone);
+        Assertions.assertEquals(tmpNonStandard + ", " + tmpStandard, tmpFragment.getDisplayLabelText());
+        Map<String, String> tmpExpectedLabelOfMolecule = Map.of(FragmentationTaskTest.ALANINE, tmpStandard,
+                FragmentationTaskTest.AMINOBUTYRIC_ACID, tmpNonStandard,
+                FragmentationTaskTest.ALANINE + "." + FragmentationTaskTest.AMINOBUTYRIC_ACID, tmpNonStandard + ", " + tmpStandard);
+        Assertions.assertEquals(tmpExpectedLabelOfMolecule.size(), tmpFragment.getParentMolecules().size());
+        for (MoleculeDataModel tmpParentMolecule : tmpFragment.getParentMolecules()) {
+            Assertions.assertEquals(tmpExpectedLabelOfMolecule.get(tmpParentMolecule.getName()),
+                    tmpFragment.getDisplayLabelText(tmpParentMolecule), tmpParentMolecule.getName());
+            //the frequencies per label are only stored where the fragment has more than one label in a molecule
+            if (tmpParentMolecule.getName().contains(".")) {
+                Assertions.assertNotNull(tmpFragment.getDisplayLabelFrequencies(tmpParentMolecule));
+            } else {
+                Assertions.assertNull(tmpFragment.getDisplayLabelFrequencies(tmpParentMolecule), tmpParentMolecule.getName());
+            }
+        }
+        //a fragment produced by only one key has the same label in all molecules
+        FragmentDataModel tmpTerminalNitrogen = tmpFragments.get("*N");
+        Assertions.assertNotNull(tmpTerminalNitrogen, tmpFragments.keySet().toString());
+        for (MoleculeDataModel tmpParentMolecule : tmpTerminalNitrogen.getParentMolecules()) {
+            Assertions.assertEquals(tmpTerminalNitrogen.getDisplayLabelText(), tmpTerminalNitrogen.getDisplayLabelText(tmpParentMolecule));
+            Assertions.assertNull(tmpTerminalNitrogen.getDisplayLabelFrequencies(tmpParentMolecule));
+        }
+    }
+    //
+    /**
+     * Tests that the frequencies of the display labels of a fragment in a molecule are counted per label, in the
+     * order of the fragmenter output, i.e. the key order: in a mixture of two alanine molecules and one 2-aminobutyric
+     * acid molecule, the fragment of the alanine backbone is produced twice by the standard amino acid key and once by
+     * the non-standard amino acid key, see {@link #displayLabelsCombinedTest()}.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    void displayLabelFrequenciesTest() throws Exception {
+        BiosynfoniFragmenter tmpFragmenter = new BiosynfoniFragmenter();
+        tmpFragmenter.setReturnedFragmentsSetting(BiosynfoniFragmenter.BiosynfoniReturnedFragmentsOption.MATCHED_SUBSTRUCTURES);
+        Map<String, FragmentDataModel> tmpFragments = FragmentationTaskTest.fragment(tmpFragmenter, true,
+                FragmentationTaskTest.ALANINE + "." + FragmentationTaskTest.ALANINE + "." + FragmentationTaskTest.AMINOBUTYRIC_ACID);
+        String tmpBackbone = ChemUtil.createUniqueSmiles(new SmilesParser(SilentChemObjectBuilder.getInstance())
+                .parseSmiles("CC(N)C(=O)O"), false);
+        FragmentDataModel tmpFragment = tmpFragments.get(tmpBackbone);
+        Assertions.assertNotNull(tmpFragment, tmpFragments.keySet().toString());
+        MoleculeDataModel tmpMolecule = tmpFragment.getParentMolecules().iterator().next();
+        Assertions.assertEquals(3, tmpMolecule.getFragmentFrequencyOfSpecificFragmentation(
+                FragmentationTaskTest.FRAGMENTATION_NAME).get(tmpBackbone));
+        Assertions.assertEquals(List.of(
+                        Map.entry(BiosynfoniFragmenter.BiosynfoniKey.ALL_STD_AMINOS.getDisplayName(), 2),
+                        Map.entry(BiosynfoniFragmenter.BiosynfoniKey.NON_STD_AMINOS.getDisplayName(), 1)),
+                List.copyOf(tmpFragment.getDisplayLabelFrequencies(tmpMolecule).entrySet()));
     }
     //
     /**

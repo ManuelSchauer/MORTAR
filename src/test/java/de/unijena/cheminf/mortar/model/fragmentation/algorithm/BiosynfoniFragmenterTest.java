@@ -37,6 +37,8 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.openscience.cdk.exception.CDKException;
+import org.openscience.cdk.graph.GraphUtil;
+import org.openscience.cdk.graph.invariant.Canon;
 import org.openscience.cdk.interfaces.IAtom;
 import org.openscience.cdk.interfaces.IAtomContainer;
 import org.openscience.cdk.interfaces.IBond;
@@ -49,6 +51,7 @@ import org.openscience.cdk.smiles.SmilesParser;
 import java.io.File;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -309,8 +312,9 @@ class BiosynfoniFragmenterTest {
     /**
      * Tests the matched substructures option: for all overlap filter combinations, the number of fragments per key
      * equals the one of the representative structures option, every fragment has as many atoms as the SMARTS pattern
-     * of its key matches, carries the label of its key, and can be converted to a valid SMILES code that MORTAR can
-     * parse again. Additionally, the promiscuous ethyl pattern must produce different substructures.
+     * of its key matches or, for single-atom patterns, more atoms because of the environment of the matched atom,
+     * carries the label of its key, and can be converted to a valid SMILES code that MORTAR can parse again.
+     * Additionally, the promiscuous ethyl pattern must produce different substructures.
      *
      * @throws Exception if anything goes wrong
      */
@@ -341,7 +345,12 @@ class BiosynfoniFragmenterTest {
                             tmpFragment.getProperty(IMoleculeFragmenter.FRAGMENT_DISPLAY_LABEL_PROPERTY_KEY));
                     SmartsPattern tmpPattern = SmartsPattern.create(tmpFragment.getProperty(BiosynfoniFragmenter.BIOSYNFONI_SMARTS_PROPERTY_KEY));
                     int[] tmpAnyMatch = tmpPattern.match(tmpMoleculeClone);
-                    Assertions.assertEquals(tmpAnyMatch.length, tmpFragment.getAtomCount(), tmpLabel);
+                    if (tmpAnyMatch.length == 1) {
+                        //single-atom pattern, the fragment contains the environment of the matched atom
+                        Assertions.assertTrue(tmpFragment.getAtomCount() > 1, tmpLabel);
+                    } else {
+                        Assertions.assertEquals(tmpAnyMatch.length, tmpFragment.getAtomCount(), tmpLabel);
+                    }
                     String tmpSmiles = ChemUtil.createUniqueSmiles(tmpFragment, false);
                     Assertions.assertNotNull(tmpSmiles, tmpLabel);
                     Assertions.assertDoesNotThrow(() -> ChemUtil.parseSmilesToAtomContainer(tmpSmiles), tmpSmiles);
@@ -426,6 +435,45 @@ class BiosynfoniFragmenterTest {
                 }
             }
             Assertions.assertTrue(tmpRingCount > 0, tmpCase[0]);
+        }
+    }
+    //
+    /**
+     * Tests that the matched substructures of single-atom SMARTS patterns contain the environment of the matched atom
+     * that the pattern checks: for the amino acid keys, the backbone and side chain matched by the recursive SMARTS
+     * expressions, so that lysine, alanine, phenylalanine, and proline give different fragments; for the hydroxyl key,
+     * the carbon atom of its recursive expression; for the phosphate variant, the oxygen atoms of its recursive
+     * expression; and for the patterns without recursive expressions, the direct neighbours, as atoms if they are in
+     * a common ring with the matched atom, e.g. the ring of the epoxide of scopolamine, otherwise as attachment points
+     * ("*"), e.g. for the methyl, terminal nitrogen, ether, and halogen keys. The number of fragments per key is not
+     * changed.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    void matchedSubstructuresSingleAtomEnvironmentTest() throws Exception {
+        SmilesParser tmpSmiPar = new SmilesParser(SilentChemObjectBuilder.getInstance());
+        BiosynfoniFragmenter tmpFragmenter = new BiosynfoniFragmenter();
+        tmpFragmenter.setReturnedFragmentsSetting(BiosynfoniFragmenter.BiosynfoniReturnedFragmentsOption.MATCHED_SUBSTRUCTURES);
+        //molecule, key, expected fragment (as SMILES of the whole structure without stereo), expected count
+        Object[][] tmpCases = {
+                {"NCCCC[C@H](N)C(=O)O", BiosynfoniFragmenter.BiosynfoniKey.ALL_STD_AMINOS, "NCCCCC(N)C(=O)O", 1},
+                {"NCCCC[C@H](N)C(=O)O", BiosynfoniFragmenter.BiosynfoniKey.N_NITRATE, "*N", 2},
+                {"C[C@H](N)C(=O)O", BiosynfoniFragmenter.BiosynfoniKey.ALL_STD_AMINOS, "CC(N)C(=O)O", 1},
+                {"N[C@@H](Cc1ccccc1)C(=O)O", BiosynfoniFragmenter.BiosynfoniKey.ALL_STD_AMINOS, "NC(Cc1ccccc1)C(=O)O", 1},
+                {"OC(=O)[C@@H]1CCCN1", BiosynfoniFragmenter.BiosynfoniKey.ALL_STD_AMINOS, "OC(=O)C1CCCN1", 1},
+                {"CN1C2CC(CC1C3C2O3)OC(=O)C(CO)c4ccccc4", BiosynfoniFragmenter.BiosynfoniKey.O_EPOXY, "C1CO1", 1},
+                {"CN1C2CC(CC1C3C2O3)OC(=O)C(CO)c4ccccc4", BiosynfoniFragmenter.BiosynfoniKey.O_HYDROXYL, "CO", 1},
+                {"COc1ccc(/C=C/C)cc1", BiosynfoniFragmenter.BiosynfoniKey.O_ETHER, "*O*", 1},
+                {"COc1ccc(/C=C/C)cc1", BiosynfoniFragmenter.BiosynfoniKey.D_METHYL, "*C", 2},
+                {"Clc1ccccc1", BiosynfoniFragmenter.BiosynfoniKey.HAL_CL, "*Cl", 1},
+                {"COP(=O)(O)O", BiosynfoniFragmenter.BiosynfoniKey.PHOSPHATE, "OP(=O)(O)O", 1}};
+        for (Object[] tmpCase : tmpCases) {
+            BiosynfoniFragmenter.BiosynfoniKey tmpKey = (BiosynfoniFragmenter.BiosynfoniKey) tmpCase[1];
+            String tmpExpectedSmiles = ChemUtil.createUniqueSmiles(tmpSmiPar.parseSmiles((String) tmpCase[2]), false);
+            Assertions.assertEquals(Map.of(tmpExpectedSmiles, (int) tmpCase[3]),
+                    BiosynfoniFragmenterTest.countSmilesOfKey(tmpFragmenter.fragmentMolecule(tmpSmiPar.parseSmiles((String) tmpCase[0])),
+                            tmpKey.getLabel()), tmpKey + ": " + tmpCase[0]);
         }
     }
     //
@@ -941,20 +989,84 @@ class BiosynfoniFragmenterTest {
     }
     //
     /**
-     * Tests the fallback of the canonical atom ranks for the intra-substructure overlap filter, which is used if no
-     * unique SMILES code can be created, here because of an unset order of a non-aromatic bond: the filter still
-     * reduces the number of fragments, and the counts do not depend on the input atom and bond order, for both preset
-     * pattern sets, with and without the inter-substructure overlap filter.
+     * Tests the canonical atom ranks of the intra-substructure overlap filter with phenol in two different atom orders,
+     * as the test of the canonical atom index mapping of the Biosynfoni fingerprinter that is being developed for the
+     * CDK, so that both number the atoms identically. The ranks follow a depth-first traversal along the bonds that
+     * starts at the oxygen atom (smallest canonical label): oxygen 0, ipso carbon 1, then around the ring ortho, meta,
+     * para, meta, ortho. Which of two symmetry-equivalent atoms gets which of the two positions is not checked.
+     */
+    @Test
+    void canonicalRanksTest() throws Exception {
+        SmilesParser tmpSmiPar = new SmilesParser(SilentChemObjectBuilder.getInstance());
+        //atom indices: O 0, ipso 1, ortho 2 and 6, meta 3 and 5, para 4
+        BiosynfoniFragmenterTest.assertPhenolRanks(BiosynfoniFragmenter.getCanonicalRanks(tmpSmiPar.parseSmiles("OC1=CC=CC=C1")),
+                0, 1, new int[] {2, 6}, new int[] {3, 5}, 4);
+        //atom indices: para 0, meta 1 and 5, ortho 2 and 4, ipso 3, O 6
+        BiosynfoniFragmenterTest.assertPhenolRanks(BiosynfoniFragmenter.getCanonicalRanks(tmpSmiPar.parseSmiles("C1=CC=C(C=C1)O")),
+                6, 3, new int[] {2, 4}, new int[] {1, 5}, 0);
+    }
+    //
+    /**
+     * Checks the canonical atom ranks of phenol, see {@link #canonicalRanksTest()}.
+     *
+     * @param aRanks the canonical atom ranks, indexed by atom index
+     * @param anOxygen index of the oxygen atom
+     * @param anIpso index of the ipso carbon atom
+     * @param anOrthoArray indices of the ortho carbon atoms
+     * @param aMetaArray indices of the meta carbon atoms
+     * @param aPara index of the para carbon atom
+     */
+    private static void assertPhenolRanks(int[] aRanks, int anOxygen, int anIpso, int[] anOrthoArray, int[] aMetaArray, int aPara) {
+        Assertions.assertEquals(7, aRanks.length);
+        Assertions.assertEquals(0, aRanks[anOxygen]);
+        Assertions.assertEquals(1, aRanks[anIpso]);
+        Assertions.assertEquals(4, aRanks[aPara]);
+        int[] tmpOrthoRanks = {aRanks[anOrthoArray[0]], aRanks[anOrthoArray[1]]};
+        int[] tmpMetaRanks = {aRanks[aMetaArray[0]], aRanks[aMetaArray[1]]};
+        Arrays.sort(tmpOrthoRanks);
+        Arrays.sort(tmpMetaRanks);
+        Assertions.assertArrayEquals(new int[] {2, 6}, tmpOrthoRanks);
+        Assertions.assertArrayEquals(new int[] {3, 5}, tmpMetaRanks);
+    }
+    //
+    /**
+     * Tests that the canonical atom ranks equal the atom order of the unique SMILES code for molecules without explicit
+     * hydrogen atoms, as stated in the documentation of BiosynfoniFragmenter.getCanonicalRanks(): mesitylene, cubane,
+     * cholesterol, two butyric acid molecules, farnesol, and the COCONUT natural product CNP0151033, each prepared for
+     * SMARTS matching as by the fragmenter.
      *
      * @throws Exception if anything goes wrong
      */
     @Test
-    void canonicalRanksFallbackTest() throws Exception {
+    void canonicalRanksEqualUniqueSmilesOrderTest() throws Exception {
+        SmilesParser tmpSmiPar = new SmilesParser(SilentChemObjectBuilder.getInstance());
+        for (String tmpSmiles : new String[] {"Cc1cc(C)cc(C)c1", "C12C3C4C1C5C2C3C45",
+                "CC(C)CCCC(C)C1CCC2C3CC=C4CC(O)CCC4(C)C3CCC12C", "CCCC(=O)O.CCCC(=O)O", "CC(C)=CCCC(C)=CCCC(C)=CCO",
+                BiosynfoniFragmenterTest.TEST_MOLECULE_SMILES}) {
+            IAtomContainer tmpMolecule = tmpSmiPar.parseSmiles(tmpSmiles);
+            SmartsPattern.prepare(tmpMolecule);
+            int[] tmpSmilesOrder = new int[tmpMolecule.getAtomCount()];
+            new SmilesGenerator(SmiFlavor.Unique).create(tmpMolecule, tmpSmilesOrder);
+            Assertions.assertArrayEquals(tmpSmilesOrder, BiosynfoniFragmenter.getCanonicalRanks(tmpMolecule), tmpSmiles);
+        }
+    }
+    //
+    /**
+     * Tests the intra-substructure overlap filter for a molecule with an unset order of a non-aromatic bond, for which
+     * no unique SMILES code can be created; the canonical atom ranks do not need one (see
+     * BiosynfoniFragmenter.getCanonicalRanks()): the filter still reduces the number of fragments, and the counts do
+     * not depend on the input atom and bond order, for both preset pattern sets, with and without the
+     * inter-substructure overlap filter.
+     *
+     * @throws Exception if anything goes wrong
+     */
+    @Test
+    void canonicalRanksUnsetBondOrderTest() throws Exception {
         SmilesParser tmpSmiPar = new SmilesParser(SilentChemObjectBuilder.getInstance());
         //farnesol with an unset order of the bond between its first two carbon atoms
         IAtomContainer tmpMolecule = tmpSmiPar.parseSmiles("CC(C)=CCCC(C)=CCCC(C)=CCO");
         tmpMolecule.getBond(tmpMolecule.getAtom(0), tmpMolecule.getAtom(1)).setOrder(IBond.Order.UNSET);
-        //precondition: no unique SMILES code, so the fallback is used
+        //precondition: no unique SMILES code
         Assertions.assertThrows(CDKException.class, () -> new SmilesGenerator(SmiFlavor.Unique).create(tmpMolecule));
         BiosynfoniFragmenter tmpFragmenter = new BiosynfoniFragmenter();
         int tmpUnfilteredCount = tmpFragmenter.fragmentMolecule(tmpMolecule).size();
@@ -972,10 +1084,10 @@ class BiosynfoniFragmenterTest {
     }
     //
     /**
-     * Tests that a molecule with unset implicit hydrogen counts, for which neither a unique SMILES code nor the default
-     * invariants of the CDK canonical labelling are available, can be fragmented with the intra-substructure overlap
-     * filter by means of the fallback of the canonical atom ranks, and that its counts do not depend on the input atom
-     * and bond order. MORTAR sets unset implicit hydrogen counts on import, so this only concerns the direct use of the
+     * Tests that a molecule with unset implicit hydrogen counts, for which the default invariants of the CDK canonical
+     * labelling are not available, can be fragmented with the intra-substructure overlap filter by means of the
+     * fallback of the canonical atom ranks to the invariants of the unique SMILES code, and that its counts do not
+     * depend on the input atom and bond order. MORTAR sets unset implicit hydrogen counts on import, so this only concerns the direct use of the
      * fragmenter. Molecules with rings cannot be fragmented with unset implicit hydrogen counts at all, regardless of
      * the overlap filters, because the aromaticity perception of the SMARTS matching requires them, so an acyclic
      * molecule is used.
@@ -990,8 +1102,8 @@ class BiosynfoniFragmenterTest {
         for (IAtom tmpAtom : tmpMolecule.atoms()) {
             tmpAtom.setImplicitHydrogenCount(null);
         }
-        //precondition: no unique SMILES code, so the fallback is used
-        Assertions.assertThrows(NullPointerException.class, () -> new SmilesGenerator(SmiFlavor.Unique).create(tmpMolecule));
+        //precondition: no default invariants of the canonical labelling, so the fallback is used
+        Assertions.assertThrows(NullPointerException.class, () -> Canon.label(tmpMolecule, GraphUtil.toAdjList(tmpMolecule)));
         String tmpEthylLabel = BiosynfoniFragmenter.BiosynfoniKey.D_ETHYL.getLabel();
         BiosynfoniFragmenter tmpFragmenter = new BiosynfoniFragmenter();
         //the chain of four carbon atoms contains three overlapping ethyl units, of which one or two are disjoint

@@ -33,6 +33,9 @@ import javafx.scene.image.ImageView;
 import org.openscience.cdk.exception.CDKException;
 import org.openscience.cdk.interfaces.IAtomContainer;
 
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -77,18 +80,46 @@ public class FragmentDataModel extends MoleculeDataModel {
     private final Set<MoleculeDataModel> parentMolecules;
     //
     /**
-     * Display labels of this fragment in alphabetical order, e.g. the names of the substructure patterns that produced
-     * it, see {@link de.unijena.cheminf.mortar.model.fragmentation.algorithm.IMoleculeFragmenter#FRAGMENT_DISPLAY_LABEL_PROPERTY_KEY}.
+     * Display labels of this fragment in all its parent molecules in alphabetical order, e.g. the names of the
+     * substructure patterns that produced it, see
+     * {@link de.unijena.cheminf.mortar.model.fragmentation.algorithm.IMoleculeFragmenter#FRAGMENT_DISPLAY_LABEL_PROPERTY_KEY}.
      * They are used to group fragments in the GUI. Only created when the first label is added, because most
      * fragmenters do not set display labels; guarded by synchronizing on this object.
      */
     private Set<String> displayLabels;
     //
     /**
-     * Display labels in alphabetical order, separated by commas, or null if there is none; cached because it is
-     * queried very often, e.g. when sorting fragment lists and rendering table cells.
+     * Display labels in all parent molecules in alphabetical order, separated by commas, or null if there is none;
+     * cached because it is queried very often, e.g. when sorting fragment lists.
      */
     private volatile String displayLabelText;
+    //
+    /**
+     * Whether the display labels of at least one parent molecule were added, see
+     * {@link #addDisplayLabels(MoleculeDataModel, Map)}; guarded by synchronizing on this object.
+     */
+    private boolean areParentMoleculeDisplayLabelsAdded;
+    //
+    /**
+     * Display label text of the first parent molecule whose display labels were added, or null if the fragment has no
+     * display label in it. The display label text of another parent molecule is only stored separately if it differs
+     * from this one, so that usually no entry per parent molecule is needed; guarded by synchronizing on this object.
+     */
+    private String firstParentMoleculeDisplayLabelText;
+    //
+    /**
+     * Display label texts of the parent molecules whose display labels differ from those of the first parent molecule
+     * (see {@link #firstParentMoleculeDisplayLabelText}), e.g. if different substructure patterns produced the same
+     * fragment in different molecules. Only created when needed; guarded by synchronizing on this object.
+     */
+    private Map<MoleculeDataModel, String> parentMoleculeToDisplayLabelTextMap;
+    //
+    /**
+     * Frequencies of the display labels in the parent molecules in which the fragment was produced with more than one
+     * display label, e.g. if different substructure patterns produced the same fragment in the same molecule. Only
+     * created when needed; guarded by synchronizing on this object.
+     */
+    private Map<MoleculeDataModel, Map<String, Integer>> parentMoleculeToDisplayLabelFrequenciesMap;
     //
     /**
      * First or random parent molecule which contains this fragment.
@@ -163,31 +194,102 @@ public class FragmentDataModel extends MoleculeDataModel {
     }
     //
     /**
-     * Adds a display label to this fragment, e.g. the name of the substructure pattern that produced it. Adding the
-     * same label multiple times has no effect. This operation is thread-safe.
+     * Adds the display labels with which this fragment was produced in the given parent molecule, e.g. the names of the
+     * substructure patterns that matched it there, together with how often the fragment was produced with each label
+     * in this molecule. The labels are stored for this molecule (see {@link #getDisplayLabelText(MoleculeDataModel)}
+     * and {@link #getDisplayLabelFrequencies(MoleculeDataModel)}) and added to the display labels of the fragment in
+     * all its parent molecules (see {@link #getDisplayLabelText()}). Should be called once for every parent molecule
+     * if display labels are used; a null or empty map means that the fragment has no display label in this molecule.
+     * This operation is thread-safe.
      *
-     * @param aLabel label to add
-     * @throws NullPointerException if the given label is null
+     * @param aParentMolecule parent molecule in which the fragment was produced with the given labels
+     * @param aLabelToFrequencyMap display labels of the fragment in the given molecule mapped to how often the fragment
+     *                             was produced with them in this molecule, in the order in which the fragmenter
+     *                             returned them; may be null or empty; the map is not altered
+     * @throws NullPointerException if the given molecule, one of the given labels, or one of the frequencies is null
      */
-    public synchronized void addDisplayLabel(String aLabel) throws NullPointerException {
-        //synchronized so that the cached text always corresponds to the complete set of labels
-        Objects.requireNonNull(aLabel, "Given label is null.");
-        if (this.displayLabels == null) {
-            this.displayLabels = new TreeSet<>();
+    public synchronized void addDisplayLabels(MoleculeDataModel aParentMolecule, Map<String, Integer> aLabelToFrequencyMap)
+            throws NullPointerException {
+        //synchronized so that the cached texts always correspond to the complete sets of labels
+        Objects.requireNonNull(aParentMolecule, "Given parent molecule is null.");
+        String tmpParentMoleculeLabelText = null;
+        if (aLabelToFrequencyMap != null && !aLabelToFrequencyMap.isEmpty()) {
+            //throws a NullPointerException for null labels
+            Set<String> tmpSortedLabels = new TreeSet<>(aLabelToFrequencyMap.keySet());
+            if (this.displayLabels == null) {
+                this.displayLabels = new TreeSet<>();
+            }
+            if (this.displayLabels.addAll(tmpSortedLabels)) {
+                this.displayLabelText = String.join(", ", this.displayLabels);
+            }
+            tmpParentMoleculeLabelText = String.join(", ", tmpSortedLabels);
+            if (aLabelToFrequencyMap.size() > 1) {
+                //only stored if there is more than one label, otherwise the frequency of the label is the frequency of
+                // the fragment in the molecule
+                Map<String, Integer> tmpLabelToFrequencyMap = new LinkedHashMap<>(aLabelToFrequencyMap);
+                for (Integer tmpFrequency : tmpLabelToFrequencyMap.values()) {
+                    Objects.requireNonNull(tmpFrequency, "Given frequency is null.");
+                }
+                if (this.parentMoleculeToDisplayLabelFrequenciesMap == null) {
+                    this.parentMoleculeToDisplayLabelFrequenciesMap = new HashMap<>();
+                }
+                this.parentMoleculeToDisplayLabelFrequenciesMap.put(aParentMolecule,
+                        Collections.unmodifiableMap(tmpLabelToFrequencyMap));
+            }
         }
-        if (this.displayLabels.add(aLabel)) {
-            this.displayLabelText = String.join(", ", this.displayLabels);
+        if (!this.areParentMoleculeDisplayLabelsAdded) {
+            this.firstParentMoleculeDisplayLabelText = tmpParentMoleculeLabelText;
+            this.areParentMoleculeDisplayLabelsAdded = true;
+        } else if (!Objects.equals(tmpParentMoleculeLabelText, this.firstParentMoleculeDisplayLabelText)) {
+            if (this.parentMoleculeToDisplayLabelTextMap == null) {
+                this.parentMoleculeToDisplayLabelTextMap = new HashMap<>();
+            }
+            this.parentMoleculeToDisplayLabelTextMap.put(aParentMolecule, tmpParentMoleculeLabelText);
         }
     }
     //
     /**
-     * Returns all display labels of this fragment in alphabetical order, separated by commas, or null if the fragment
-     * has no display label.
+     * Returns all display labels of this fragment in all its parent molecules in alphabetical order, separated by
+     * commas, or null if the fragment has no display label.
      *
      * @return display label text or null
      */
     public String getDisplayLabelText() {
         return this.displayLabelText;
+    }
+    //
+    /**
+     * Returns the display labels with which this fragment was produced in the given parent molecule in alphabetical
+     * order, separated by commas, or null if the fragment has no display label in this molecule (see
+     * {@link #addDisplayLabels(MoleculeDataModel, Map)}).
+     *
+     * @param aParentMolecule parent molecule of this fragment
+     * @return display label text of the fragment in the given molecule or null
+     */
+    public synchronized String getDisplayLabelText(MoleculeDataModel aParentMolecule) {
+        if (!this.areParentMoleculeDisplayLabelsAdded) {
+            return null;
+        }
+        if (this.parentMoleculeToDisplayLabelTextMap != null
+                && this.parentMoleculeToDisplayLabelTextMap.containsKey(aParentMolecule)) {
+            return this.parentMoleculeToDisplayLabelTextMap.get(aParentMolecule);
+        }
+        return this.firstParentMoleculeDisplayLabelText;
+    }
+    //
+    /**
+     * Returns how often this fragment was produced with each of its display labels in the given parent molecule, in
+     * the order in which the fragmenter returned them, if the fragment was produced with more than one display label
+     * in this molecule, e.g. if different substructure patterns produced the same fragment (see
+     * {@link #addDisplayLabels(MoleculeDataModel, Map)}). Returns null if the fragment has at most one display label
+     * in this molecule; the frequency of this label is then the frequency of the fragment in the molecule.
+     *
+     * @param aParentMolecule parent molecule of this fragment
+     * @return unmodifiable map of the display labels to their frequencies in the given molecule or null
+     */
+    public synchronized Map<String, Integer> getDisplayLabelFrequencies(MoleculeDataModel aParentMolecule) {
+        return this.parentMoleculeToDisplayLabelFrequenciesMap == null ? null
+                : this.parentMoleculeToDisplayLabelFrequenciesMap.get(aParentMolecule);
     }
     //
     /**

@@ -26,6 +26,7 @@
 package de.unijena.cheminf.mortar.model.util;
 
 import de.unijena.cheminf.mortar.model.data.FragmentDataModel;
+import de.unijena.cheminf.mortar.model.data.MoleculeDataModel;
 
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -33,6 +34,7 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Test class for CollectionUtil routines.
@@ -68,7 +70,8 @@ public class CollectionUtilTest {
         for (Object[] tmpEntry : tmpData) {
             FragmentDataModel tmpFragment = new FragmentDataModel((String) tmpEntry[1], null, new HashMap<>());
             if (tmpEntry[0] != null) {
-                tmpFragment.addDisplayLabel((String) tmpEntry[0]);
+                tmpFragment.addDisplayLabels(new MoleculeDataModel("CCCO", "Parent", new HashMap<>()),
+                        Map.of((String) tmpEntry[0], 1));
             }
             for (int i = 0; i < (int) tmpEntry[2]; i++) {
                 tmpFragment.incrementAbsoluteFrequency();

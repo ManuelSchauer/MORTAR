@@ -36,11 +36,9 @@ import org.openscience.cdk.interfaces.IAtomContainer;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.logging.Level;
@@ -213,9 +211,9 @@ public class FragmentationTask implements Callable<FragmentationTaskResult> {
                 LinkedHashMap<String, FragmentDataModel> tmpNewFragmentsOfMolMap = new LinkedHashMap<>(tmpInitialCapacity);
                 // map of the frequency with which this molecule contains a specific fragment
                 HashMap<String, Integer> tmpFragmentFrequenciesOfMoleculeMap = new HashMap<>(tmpInitialCapacity);
-                // display labels of all fragmenter outputs that resulted in a specific fragment, only filled if the
-                // display labels are collected
-                HashMap<String, Set<String>> tmpDisplayLabelsOfMoleculeMap = new HashMap<>(this.areDisplayLabelsCollected
+                // display labels of all fragmenter outputs that resulted in a specific fragment with the number of
+                // these outputs per label, in the order of the outputs; only filled if the display labels are collected
+                HashMap<String, Map<String, Integer>> tmpDisplayLabelsOfMoleculeMap = new HashMap<>(this.areDisplayLabelsCollected
                         ? tmpInitialCapacity : 0);
                 for (IAtomContainer tmpFragment : tmpFragmentsList) {
                     String tmpSmiles = ChemUtil.createUniqueSmiles(tmpFragment, this.isStereochemistryRegarded);
@@ -231,8 +229,8 @@ public class FragmentationTask implements Callable<FragmentationTaskResult> {
                     Object tmpDisplayLabel = this.areDisplayLabelsCollected
                             ? tmpFragment.getProperty(IMoleculeFragmenter.FRAGMENT_DISPLAY_LABEL_PROPERTY_KEY) : null;
                     if (tmpDisplayLabel != null) {
-                        tmpDisplayLabelsOfMoleculeMap.computeIfAbsent(tmpSmiles, aKey -> new HashSet<>(2))
-                                .add(tmpDisplayLabel.toString());
+                        tmpDisplayLabelsOfMoleculeMap.computeIfAbsent(tmpSmiles, aKey -> new LinkedHashMap<>(2))
+                                .merge(tmpDisplayLabel.toString(), 1, Integer::sum);
                     }
                 }
                 // phase 2: register the fragments in the shared map and update their counts; these operations do not
@@ -253,12 +251,9 @@ public class FragmentationTask implements Callable<FragmentationTaskResult> {
                     }
                     // increment molecule frequency of this fragment - operation is atomic!
                     tmpFragmentDataModel.incrementMoleculeFrequency();
-                    // add the collected display labels - operation is synchronised!
-                    Set<String> tmpDisplayLabels = tmpDisplayLabelsOfMoleculeMap.get(tmpSmiles);
-                    if (tmpDisplayLabels != null) {
-                        for (String tmpLabel : tmpDisplayLabels) {
-                            tmpFragmentDataModel.addDisplayLabel(tmpLabel);
-                        }
+                    // add the display labels of this fragment in this molecule - operation is synchronised!
+                    if (this.areDisplayLabelsCollected) {
+                        tmpFragmentDataModel.addDisplayLabels(tmpMolecule, tmpDisplayLabelsOfMoleculeMap.get(tmpSmiles));
                     }
                     // add the initial molecule as a parent molecule
                     tmpFragmentDataModel.getParentMolecules().add(tmpMolecule);

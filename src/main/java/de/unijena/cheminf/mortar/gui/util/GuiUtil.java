@@ -511,8 +511,8 @@ public class GuiUtil {
                             }
                         } else if(aTableView.getClass() == ItemizationDataTableView.class) {
                             if (tmpColIndex > 1) {
-                                String tmpFragmentationName = ((ItemizationDataTableView) aTableView).getFragmentationName();
-                                tmpAtomContainer = ((MoleculeDataModel) aTableView.getItems().get(tmpRowIndex)).getFragmentsOfSpecificFragmentation(tmpFragmentationName).get(tmpColIndex-2).getAtomContainer(); //magic number
+                                //the fragment columns can differ from the fragment list if a fragment is shown once per display label
+                                tmpAtomContainer = ((ItemizationDataTableView) aTableView).getFragmentOfCell((MoleculeDataModel) aTableView.getItems().get(tmpRowIndex), tmpColIndex-2).getAtomContainer(); //magic number
                             } else {
                                 tmpAtomContainer = ((MoleculeDataModel) aTableView.getItems().get(tmpRowIndex)).getAtomContainer();
                             }

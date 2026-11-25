@@ -55,7 +55,11 @@ import javafx.scene.shape.Rectangle;
 
 import java.awt.FontMetrics;
 import java.awt.Graphics2D;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Custom table view for the itemization table view.
@@ -219,8 +223,11 @@ public class ItemizationDataTableView extends TableView implements IDataTableVie
         int fromIndex = aPageIndex * tmpRowsPerPage;
         int toIndex = Math.min(fromIndex + tmpRowsPerPage, this.itemsList.size());
         List<MoleculeDataModel> tmpList = this.itemsList.subList(fromIndex, toIndex);
-        int tmpItemAmount = GuiUtil.getLargestNumberOfFragmentsForGivenMoleculeListAndFragmentationName(tmpList, aFragmentationName);
-        this.resetFragmentStructureColumns(tmpItemAmount, this.hasLabelledFragments(tmpList));
+        boolean tmpHasLabelledFragments = this.hasLabelledFragments(tmpList);
+        //a fragment produced with several display labels in a molecule takes one column per label
+        int tmpItemAmount = tmpHasLabelledFragments ? this.getLargestNumberOfFragmentCells(tmpList)
+                : GuiUtil.getLargestNumberOfFragmentsForGivenMoleculeListAndFragmentationName(tmpList, aFragmentationName);
+        this.resetFragmentStructureColumns(tmpItemAmount, tmpHasLabelledFragments);
         for (MoleculeDataModel tmpMoleculeDataModel : tmpList) {
             tmpMoleculeDataModel.setStructureImageWidth(this.moleculeStructureColumn.getWidth());
             //width of depictions of fragments does not need to be set, the fragment-sub-columns will adjust and have as much space as they need
@@ -249,8 +256,8 @@ public class ItemizationDataTableView extends TableView implements IDataTableVie
     //
     //<editor-fold desc="private methods" defaultstate="collapsed">
     /**
-     * Returns true if at least one fragment of the given molecules has a display label (see
-     * {@link FragmentDataModel#getDisplayLabelText()}).
+     * Returns true if at least one fragment of the given molecules has a display label in its molecule (see
+     * {@link FragmentDataModel#getDisplayLabelText(MoleculeDataModel)}).
      *
      * @param aMoleculeList molecules displayed on the current page
      * @return true if labelled fragments are present
@@ -261,12 +268,70 @@ public class ItemizationDataTableView extends TableView implements IDataTableVie
                 continue;
             }
             for (FragmentDataModel tmpFragment : tmpMolecule.getFragmentsOfSpecificFragmentation(this.fragmentationName)) {
-                if (tmpFragment.getDisplayLabelText() != null) {
+                if (tmpFragment.getDisplayLabelText(tmpMolecule) != null) {
                     return true;
                 }
             }
         }
         return false;
+    }
+    //
+    /**
+     * Returns the contents of the fragment cells of the given molecule in the order of the fragment columns: one cell
+     * per fragment with the frequency of the fragment in the molecule, but one cell per display label for a fragment
+     * that was produced with several display labels in this molecule (see
+     * {@link FragmentDataModel#getDisplayLabelFrequencies(MoleculeDataModel)}), e.g. the single-atom fragment "O"
+     * matched by different Biosynfoni substructures, each with the frequency of the fragment with this label. In this
+     * case, the cells are ordered by the first occurrence of their display label, so that the cells with the same
+     * label are neighbours and form one group; otherwise, the order of the fragments is kept.
+     *
+     * @param aMolecule molecule that has undergone the fragmentation of this view
+     * @return contents of the fragment cells
+     */
+    private List<FragmentCell> getFragmentCells(MoleculeDataModel aMolecule) {
+        List<FragmentDataModel> tmpFragmentList = aMolecule.getFragmentsOfSpecificFragmentation(this.fragmentationName);
+        Map<String, Integer> tmpFrequencyMap = aMolecule.getFragmentFrequencyOfSpecificFragmentation(this.fragmentationName);
+        List<FragmentCell> tmpCellList = new ArrayList<>(tmpFragmentList.size());
+        boolean tmpHasSplitFragments = false;
+        for (FragmentDataModel tmpFragment : tmpFragmentList) {
+            Map<String, Integer> tmpLabelToFrequencyMap = tmpFragment.getDisplayLabelFrequencies(aMolecule);
+            if (tmpLabelToFrequencyMap == null) {
+                tmpCellList.add(new FragmentCell(tmpFragment, tmpFragment.getDisplayLabelText(aMolecule),
+                        tmpFrequencyMap.get(tmpFragment.getUniqueSmiles())));
+            } else {
+                tmpHasSplitFragments = true;
+                for (Map.Entry<String, Integer> tmpEntry : tmpLabelToFrequencyMap.entrySet()) {
+                    tmpCellList.add(new FragmentCell(tmpFragment, tmpEntry.getKey(), tmpEntry.getValue()));
+                }
+            }
+        }
+        if (tmpHasSplitFragments) {
+            //the cells of a split fragment are placed at the position of the fragment, which can separate them from the
+            // other cells with the same label; the sort is stable, so the order within a group is kept
+            Map<String, Integer> tmpLabelToGroupIndexMap = new HashMap<>();
+            for (FragmentCell tmpCell : tmpCellList) {
+                tmpLabelToGroupIndexMap.putIfAbsent(tmpCell.displayLabel(), tmpLabelToGroupIndexMap.size());
+            }
+            tmpCellList.sort(Comparator.comparingInt(aCell -> tmpLabelToGroupIndexMap.get(aCell.displayLabel())));
+        }
+        return tmpCellList;
+    }
+    //
+    /**
+     * Returns the largest number of fragment cells of one molecule of the given list, see
+     * {@link #getFragmentCells(MoleculeDataModel)}.
+     *
+     * @param aMoleculeList molecules displayed on the current page
+     * @return largest number of fragment cells
+     */
+    private int getLargestNumberOfFragmentCells(List<MoleculeDataModel> aMoleculeList) {
+        int tmpLargestNumber = 0;
+        for (MoleculeDataModel tmpMolecule : aMoleculeList) {
+            if (tmpMolecule.hasMoleculeUndergoneSpecificFragmentation(this.fragmentationName)) {
+                tmpLargestNumber = Math.max(tmpLargestNumber, this.getFragmentCells(tmpMolecule).size());
+            }
+        }
+        return tmpLargestNumber;
     }
     //
     /**
@@ -290,11 +355,13 @@ public class ItemizationDataTableView extends TableView implements IDataTableVie
                 if (!cellData.getValue().hasMoleculeUndergoneSpecificFragmentation(this.fragmentationName)) {
                     return null;
                 }
-                if (tmpIndex >= cellData.getValue().getFragmentsOfSpecificFragmentation(this.fragmentationName).size()) {
+                List<FragmentCell> tmpCellList = this.getFragmentCells(cellData.getValue());
+                if (tmpIndex >= tmpCellList.size()) {
                     return null;
                 }
-                FragmentDataModel tmpFragment = cellData.getValue().getFragmentsOfSpecificFragmentation(this.fragmentationName).get(tmpIndex);
-                int tmpFrequency = cellData.getValue().getFragmentFrequencyOfSpecificFragmentation(this.fragmentationName).get(tmpFragment.getUniqueSmiles());
+                FragmentCell tmpCell = tmpCellList.get(tmpIndex);
+                FragmentDataModel tmpFragment = tmpCell.fragment();
+                int tmpFrequency = tmpCell.frequency();
                 String tmpFrequencyString = String.valueOf(tmpFrequency);
                 // just a precaution; it is highly unlikely that we get that many fragments of the same type for one(!) molecule
                 // cachedFontMetrics is reused here to avoid allocating a BufferedImage/Graphics2D per cell render
@@ -302,10 +369,10 @@ public class ItemizationDataTableView extends TableView implements IDataTableVie
                     tmpFrequencyString = DepictionUtil.fitIntegerDisplayToImageWidth(tmpFragment.getStructureImageWidth(), tmpFrequency, this.cachedFontMetrics);
                 }
                 // fragments with display labels, e.g. the name of the substructure pattern that produced them, are
-                // grouped by a header bar with the label above them; the frequency is displayed below the structure
-                if (tmpFragment.getDisplayLabelText() != null) {
-                    return this.createLabelledFragmentCell(cellData.getValue().getFragmentsOfSpecificFragmentation(this.fragmentationName),
-                            tmpIndex, tmpFrequencyString, tmpColumn);
+                // grouped by a header bar with the label above them; the frequency is displayed below the structure;
+                // the labels are those with which the fragment was produced in this molecule
+                if (tmpCell.displayLabel() != null) {
+                    return this.createLabelledFragmentCell(tmpCellList, tmpIndex, tmpFrequencyString, tmpColumn);
                 }
                 return tmpFragment.getStructureWithText(tmpFrequencyString);
             }));
@@ -316,25 +383,25 @@ public class ItemizationDataTableView extends TableView implements IDataTableVie
     //
     /**
      * Creates the content of a fragment cell for a fragment with a display label: a header bar with the label above
-     * the structure depiction with the frequency of the fragment below it. The fragments of a molecule that share a
-     * display label are in neighbouring cells, since fragmenters return them one after the other, e.g. in the
-     * Biosynfoni key order. Therefore, the label is only written in the first cell of a group, and the bar has side
-     * borders only at the start and end of the group.
+     * the structure depiction with the frequency below it. The cells of a molecule that share a display label are
+     * neighbours (see {@link #getFragmentCells(MoleculeDataModel)}). Therefore, the label is only written in the first
+     * cell of a group, and the bar has side borders only at the start and end of the group.
      *
-     * @param aFragmentList fragments of the molecule in the order of the fragment columns
-     * @param anIndex index of the fragment of this cell in the given list; its display label must not be null
-     * @param aFrequencyText text displayed below the structure, i.e. the frequency of the fragment in the molecule
+     * @param aCellList contents of the fragment cells of the molecule of the row, in the order of the fragment columns
+     * @param anIndex index of the cell in the given list; its display label must not be null
+     * @param aFrequencyText text displayed below the structure, i.e. the frequency of the fragment with this label in
+     *                       the molecule
      * @param aColumn fragment column the cell belongs to, whose width the content takes
      * @return box with the header bar and the structure depiction
      */
-    private VBox createLabelledFragmentCell(List<FragmentDataModel> aFragmentList, int anIndex, String aFrequencyText,
+    private VBox createLabelledFragmentCell(List<FragmentCell> aCellList, int anIndex, String aFrequencyText,
                                             TableColumn<MoleculeDataModel, Node> aColumn) {
-        FragmentDataModel tmpFragment = aFragmentList.get(anIndex);
-        String tmpLabelText = tmpFragment.getDisplayLabelText();
+        FragmentDataModel tmpFragment = aCellList.get(anIndex).fragment();
+        String tmpLabelText = aCellList.get(anIndex).displayLabel();
         boolean tmpIsFirstOfGroup = anIndex == 0
-                || !tmpLabelText.equals(aFragmentList.get(anIndex - 1).getDisplayLabelText());
-        boolean tmpIsLastOfGroup = anIndex == aFragmentList.size() - 1
-                || !tmpLabelText.equals(aFragmentList.get(anIndex + 1).getDisplayLabelText());
+                || !tmpLabelText.equals(aCellList.get(anIndex - 1).displayLabel());
+        boolean tmpIsLastOfGroup = anIndex == aCellList.size() - 1
+                || !tmpLabelText.equals(aCellList.get(anIndex + 1).displayLabel());
         Label tmpHeader = new Label(tmpIsFirstOfGroup ? tmpLabelText : "");
         tmpHeader.setAlignment(Pos.CENTER_LEFT);
         tmpHeader.setMaxWidth(Double.MAX_VALUE);
@@ -372,6 +439,20 @@ public class ItemizationDataTableView extends TableView implements IDataTableVie
      */
     public TableColumn<MoleculeDataModel, Image> getMoleculeStructureColumn() {
         return this.moleculeStructureColumn;
+    }
+    //
+    /**
+     * Returns the fragment displayed in the given fragment column of the row of the given molecule. The fragment
+     * columns can differ from the fragment list of the molecule, since a fragment produced with several display labels
+     * is shown once per label, see {@link #getFragmentCells(MoleculeDataModel)}.
+     *
+     * @param aMolecule molecule of the row
+     * @param aFragmentColumnIndex index of the fragment column, starting at 0
+     * @return fragment displayed in this cell
+     * @throws IndexOutOfBoundsException if the molecule has no fragment in this column
+     */
+    public FragmentDataModel getFragmentOfCell(MoleculeDataModel aMolecule, int aFragmentColumnIndex) throws IndexOutOfBoundsException {
+        return this.getFragmentCells(aMolecule).get(aFragmentColumnIndex).fragment();
     }
     //
     /**
@@ -417,6 +498,19 @@ public class ItemizationDataTableView extends TableView implements IDataTableVie
      */
     public void setItemsList(List<MoleculeDataModel> aListOfFragments) {
         this.itemsList = aListOfFragments;
+    }
+    //</editor-fold>
+    //
+    //<editor-fold desc="private record" defaultstate="collapsed">
+    /**
+     * Content of a fragment cell: a fragment of the molecule of the row, the display label with which it was produced
+     * in this molecule (null if it has none), and how often it was produced with this label in this molecule.
+     *
+     * @param fragment fragment displayed in the cell
+     * @param displayLabel display label of the cell or null
+     * @param frequency frequency displayed below the structure
+     */
+    private record FragmentCell(FragmentDataModel fragment, String displayLabel, int frequency) {
     }
     //</editor-fold>
 }
