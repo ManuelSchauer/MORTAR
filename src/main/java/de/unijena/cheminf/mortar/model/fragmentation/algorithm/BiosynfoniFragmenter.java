@@ -147,15 +147,16 @@ import java.util.logging.Logger;
  * Their matched substructure would be this atom alone, e.g. "N" or "O", which does not show where it was matched.
  * Therefore, the fragment of such a match additionally contains the environment of the matched atom that the pattern
  * checks: the atoms of the matches of its recursive SMARTS expressions ("$(...)") that start at the matched atom, e.g.
- * the backbone and the side chain of an amino acid, so that different amino acids give different fragments, or, if
+ * the backbone and the side chain of an amino acid, so that different amino acids give different fragments, with atoms
+ * that these expressions only require as any atom ("*") as attachment points ("*"), or, if
  * the pattern has no such expression, the direct neighbours of the matched atom: neighbours in a common ring as atoms,
  * e.g. the ring of an epoxide, all other neighbours as attachment points ("*"), since the pattern only requires their
  * presence, e.g. "*C" for a methyl group or "*O*" for an ether oxygen atom. Every match still yields exactly one
  * fragment, and the overlap filters only regard the matched atoms.
  * <br><b>Known limitation of the matched substructures option:</b> MORTAR identifies fragments by their unique SMILES
  * code across the whole data set. Different keys can produce identical fragments, e.g. "C1CO1" for an epoxide and for an
- * acetyl unit matched in the epoxide ring, or the backbone of alanine for the standard amino acid alanine and for a
- * non-standard amino acid in the variant pattern set, whose pattern only checks the first side chain atom.
+ * acetyl unit matched in the epoxide ring, or, in the original pattern set, alanine for the standard amino acid
+ * alanine and for the non-standard amino acid alanine methyl ester, whose ester oxygen atom belongs to the pattern.
  * Such fragments are combined into one fragment, whose frequency in a molecule is the sum over these keys. In the
  * items tab, it is shown once per key that produced it in the respective molecule, with the number of matches of this
  * key; in the fragments tab, it is grouped by all keys that produced it anywhere in the data set; its properties (e.g.
@@ -1655,7 +1656,10 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
      * ("$(...)") of the pattern that start at the matched atom, including the matches of recursive expressions nested
      * in them, e.g. the backbone and the side chain of an amino acid for the amino acid keys or the carbon or nitrogen
      * atom of a hydroxyl group; negated recursive expressions ("!$(...)") are not regarded, since they describe what
-     * must not be present. If the pattern has no recursive expression that adds an atom, e.g. the ether, terminal
+     * must not be present. Atoms that a recursive expression only requires as any atom ("*"), e.g. the side chain of
+     * the non-standard amino acid variant, become attachment points, i.e. pseudo atoms ("*"), because the pattern does
+     * not specify them; e.g. the side chain of phenylglycine would otherwise appear as a methyl group, as in alanine.
+     * If the pattern has no recursive expression that adds an atom, e.g. the ether, terminal
      * nitrogen, epoxide, methyl, and halogen patterns, whose conditions refer to the neighbours or rings of the atom
      * via primitives like D, x, or r, the direct neighbours of the matched atom are the environment: neighbours in a
      * common ring with the matched atom as atoms, e.g. the ring of an epoxide, all other neighbours as attachment
@@ -1671,9 +1675,12 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
     private int[][] getSingleAtomEnvironment(Expr anExpression, int anAtomIndex, IAtomContainer aMolecule) {
         Set<Integer> tmpEnvironment = new TreeSet<>();
         Set<Integer> tmpAttachmentPoints = new TreeSet<>();
-        this.collectRecursiveEnvironment(anExpression, anAtomIndex, aMolecule, tmpEnvironment);
+        this.collectRecursiveEnvironment(anExpression, anAtomIndex, aMolecule, tmpEnvironment, tmpAttachmentPoints);
         tmpEnvironment.remove(anAtomIndex);
-        if (tmpEnvironment.isEmpty()) {
+        //an atom that is specified by another expression is shown as atom
+        tmpAttachmentPoints.removeAll(tmpEnvironment);
+        tmpAttachmentPoints.remove(anAtomIndex);
+        if (tmpEnvironment.isEmpty() && tmpAttachmentPoints.isEmpty()) {
             IAtom tmpMatchedAtom = aMolecule.getAtom(anAtomIndex);
             for (IBond tmpBond : aMolecule.getConnectedBondsList(tmpMatchedAtom)) {
                 int tmpNeighbourIndex = tmpBond.getOther(tmpMatchedAtom).getIndex();
@@ -1691,21 +1698,25 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
 
     /**
      * Adds the atoms of all matches of the non-negated recursive SMARTS expressions in the given atom expression that
-     * start at the given atom to the given set, including the atoms of the recursive expressions nested in these
-     * expressions, see {@link #getSingleAtomEnvironment(Expr, int, IAtomContainer)}. Alternatives of an OR expression
-     * that do not match do not add atoms.
+     * start at the given atom to the given sets, including the atoms of the recursive expressions nested in these
+     * expressions, see {@link #getSingleAtomEnvironment(Expr, int, IAtomContainer)}: atoms that an expression only
+     * requires as any atom ("*") to the attachment points, all other atoms to the environment. Alternatives of an OR
+     * expression that do not match do not add atoms.
      *
      * @param anExpression atom expression
      * @param anAtomIndex index of the atom the expression refers to
      * @param aMolecule the molecule, prepared for SMARTS matching
-     * @param anEnvironment set to add the atom indices to
+     * @param anEnvironment set to add the indices of the specified atoms to
+     * @param anAttachmentPointSet set to add the indices of the atoms required as any atom to
      */
     private void collectRecursiveEnvironment(Expr anExpression, int anAtomIndex, IAtomContainer aMolecule,
-                                             Set<Integer> anEnvironment) {
+                                             Set<Integer> anEnvironment, Set<Integer> anAttachmentPointSet) {
         switch (anExpression.type()) {
             case AND, OR -> {
-                this.collectRecursiveEnvironment(anExpression.left(), anAtomIndex, aMolecule, anEnvironment);
-                this.collectRecursiveEnvironment(anExpression.right(), anAtomIndex, aMolecule, anEnvironment);
+                this.collectRecursiveEnvironment(anExpression.left(), anAtomIndex, aMolecule, anEnvironment,
+                        anAttachmentPointSet);
+                this.collectRecursiveEnvironment(anExpression.right(), anAtomIndex, aMolecule, anEnvironment,
+                        anAttachmentPointSet);
             }
             case RECURSIVE -> {
                 IAtomContainer tmpSubquery = anExpression.subquery();
@@ -1716,9 +1727,16 @@ public class BiosynfoniFragmenter implements IMoleculeFragmenter {
                         continue;
                     }
                     for (int j = 0; j < tmpMapping.length; j++) {
+                        Expr tmpAtomExpression = ((QueryAtom) AtomRef.deref(tmpSubquery.getAtom(j))).getExpression();
+                        //the first atom is the one the expression refers to, any further atom given as "*" is not
+                        // specified by the pattern
+                        if (j > 0 && tmpAtomExpression.type() == Expr.Type.TRUE) {
+                            anAttachmentPointSet.add(tmpMapping[j]);
+                            continue;
+                        }
                         anEnvironment.add(tmpMapping[j]);
-                        this.collectRecursiveEnvironment(((QueryAtom) AtomRef.deref(tmpSubquery.getAtom(j))).getExpression(),
-                                tmpMapping[j], aMolecule, anEnvironment);
+                        this.collectRecursiveEnvironment(tmpAtomExpression, tmpMapping[j], aMolecule, anEnvironment,
+                                anAttachmentPointSet);
                     }
                 }
             }

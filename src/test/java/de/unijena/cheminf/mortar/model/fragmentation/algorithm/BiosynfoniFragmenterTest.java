@@ -443,7 +443,8 @@ class BiosynfoniFragmenterTest {
      * that the pattern checks: for the amino acid keys, the backbone and side chain matched by the recursive SMARTS
      * expressions, so that lysine, alanine, phenylalanine, and proline give different fragments; for the hydroxyl key,
      * the carbon atom of its recursive expression; for the phosphate variant, the oxygen atoms of its recursive
-     * expression; and for the patterns without recursive expressions, the direct neighbours, as atoms if they are in
+     * expression; for the non-standard amino acid variant, the backbone with the side chain atom, which the pattern
+     * only requires as any atom, as attachment point; and for the patterns without recursive expressions, the direct neighbours, as atoms if they are in
      * a common ring with the matched atom, e.g. the ring of the epoxide of scopolamine, otherwise as attachment points
      * ("*"), e.g. for the methyl, terminal nitrogen, ether, and halogen keys. The number of fragments per key is not
      * changed.
@@ -462,6 +463,10 @@ class BiosynfoniFragmenterTest {
                 {"C[C@H](N)C(=O)O", BiosynfoniFragmenter.BiosynfoniKey.ALL_STD_AMINOS, "CC(N)C(=O)O", 1},
                 {"N[C@@H](Cc1ccccc1)C(=O)O", BiosynfoniFragmenter.BiosynfoniKey.ALL_STD_AMINOS, "NC(Cc1ccccc1)C(=O)O", 1},
                 {"OC(=O)[C@@H]1CCCN1", BiosynfoniFragmenter.BiosynfoniKey.ALL_STD_AMINOS, "OC(=O)C1CCCN1", 1},
+                //the variant non-standard amino acid pattern only requires any side chain atom ("[*]"), e.g. the phenyl
+                // ring of phenylglycine, which is therefore an attachment point and not shown as methyl group
+                {"N[C@@H](c1ccccc1)C(=O)O", BiosynfoniFragmenter.BiosynfoniKey.NON_STD_AMINOS, "*C(N)C(=O)O", 1},
+                {"CC[C@H](N)C(=O)O", BiosynfoniFragmenter.BiosynfoniKey.NON_STD_AMINOS, "*C(N)C(=O)O", 1},
                 {"CN1C2CC(CC1C3C2O3)OC(=O)C(CO)c4ccccc4", BiosynfoniFragmenter.BiosynfoniKey.O_EPOXY, "C1CO1", 1},
                 {"CN1C2CC(CC1C3C2O3)OC(=O)C(CO)c4ccccc4", BiosynfoniFragmenter.BiosynfoniKey.O_HYDROXYL, "CO", 1},
                 {"COc1ccc(/C=C/C)cc1", BiosynfoniFragmenter.BiosynfoniKey.O_ETHER, "*O*", 1},
