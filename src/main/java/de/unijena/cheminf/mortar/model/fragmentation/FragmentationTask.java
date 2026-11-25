@@ -85,10 +85,19 @@ public class FragmentationTask implements Callable<FragmentationTaskResult> {
      * Whether stereochemistry in the fragments should be regarded when creating their SMILES codes.
      */
     private final boolean isStereochemistryRegarded;
+    /**
+     * Whether the display labels of the fragments (see
+     * {@link IMoleculeFragmenter#FRAGMENT_DISPLAY_LABEL_PROPERTY_KEY}) should be collected. They are only used for
+     * single fragmentations, not in pipelines, and only if the fragmenter assigns them, see
+     * {@link IMoleculeFragmenter#providesDisplayLabels()}.
+     */
+    private final boolean areDisplayLabelsCollected;
     //</editor-fold>
     //
     /**
-     * Instantiates the thread.
+     * Instantiates the thread. No display labels of the fragments are collected, i.e. the task behaves as the one
+     * created by {@link #FragmentationTask(List, IMoleculeFragmenter, Map, String, boolean, boolean)} with
+     * areDisplayLabelsCollected set to false, as needed e.g. for pipeline fragmentations.
      *
      * @param aListOfMolecules atom containers should meet the employed fragmentation algorithm's input specifications but
      *                         any occurring exception will be caught
@@ -103,11 +112,35 @@ public class FragmentationTask implements Callable<FragmentationTaskResult> {
                              Map<String, FragmentDataModel> aHashtableOfFragments,
                              String aFragmentationName,
                              boolean isStereo) {
+        this(aListOfMolecules, aFragmenter, aHashtableOfFragments, aFragmentationName, isStereo, false);
+    }
+    //
+    /**
+     * Instantiates the thread.
+     *
+     * @param aListOfMolecules atom containers should meet the employed fragmentation algorithm's input specifications but
+     *                         any occurring exception will be caught
+     * @param aFragmenter Fragmenter to use
+     * @param aHashtableOfFragments Map to hold fragments, should be synchronised, e.g. by using a HashTable instance;
+     *                              keys are unique SMILES codes.
+     * @param aFragmentationName String
+     * @param isStereo Whether stereochemistry in the fragments should be regarded when creating their SMILES codes
+     * @param areDisplayLabelsCollected whether the display labels of the fragments should be collected; should only be
+     *                                  true for single fragmentations, not in pipelines, and only if the fragmenter
+     *                                  assigns them (see {@link IMoleculeFragmenter#providesDisplayLabels()})
+     */
+    public FragmentationTask(List<MoleculeDataModel> aListOfMolecules,
+                             IMoleculeFragmenter aFragmenter,
+                             Map<String, FragmentDataModel> aHashtableOfFragments,
+                             String aFragmentationName,
+                             boolean isStereo,
+                             boolean areDisplayLabelsCollected) {
         this.moleculesList = aListOfMolecules;
         this.fragmenter = aFragmenter;
         this.fragmentsHashTable = aHashtableOfFragments;
         this.fragmentationName = aFragmentationName;
         this.isStereochemistryRegarded = isStereo;
+        this.areDisplayLabelsCollected = areDisplayLabelsCollected;
     }
     //
     /**
@@ -178,6 +211,10 @@ public class FragmentationTask implements Callable<FragmentationTaskResult> {
                 LinkedHashMap<String, FragmentDataModel> tmpNewFragmentsOfMolMap = new LinkedHashMap<>(tmpInitialCapacity);
                 // map of the frequency with which this molecule contains a specific fragment
                 HashMap<String, Integer> tmpFragmentFrequenciesOfMoleculeMap = new HashMap<>(tmpInitialCapacity);
+                // display labels of all fragmenter outputs that resulted in a specific fragment with the number of
+                // these outputs per label, in the order of the outputs; only filled if the display labels are collected
+                HashMap<String, Map<String, Integer>> tmpDisplayLabelsOfMoleculeMap = new HashMap<>(this.areDisplayLabelsCollected
+                        ? tmpInitialCapacity : 0);
                 for (IAtomContainer tmpFragment : tmpFragmentsList) {
                     String tmpSmiles = ChemUtil.createUniqueSmiles(tmpFragment, this.isStereochemistryRegarded);
                     if (tmpSmiles == null) {
@@ -188,6 +225,13 @@ public class FragmentationTask implements Callable<FragmentationTaskResult> {
                         tmpNewFragmentsOfMolMap.put(tmpSmiles, new FragmentDataModel(tmpSmiles, tmpFragment.getTitle(), tmpFragment.getProperties()));
                     }
                     tmpFragmentFrequenciesOfMoleculeMap.merge(tmpSmiles, 1, Integer::sum);
+                    // collect the display labels of all fragmenter outputs that resulted in this fragment
+                    Object tmpDisplayLabel = this.areDisplayLabelsCollected
+                            ? tmpFragment.getProperty(IMoleculeFragmenter.FRAGMENT_DISPLAY_LABEL_PROPERTY_KEY) : null;
+                    if (tmpDisplayLabel != null) {
+                        tmpDisplayLabelsOfMoleculeMap.computeIfAbsent(tmpSmiles, aKey -> new LinkedHashMap<>(2))
+                                .merge(tmpDisplayLabel.toString(), 1, Integer::sum);
+                    }
                 }
                 // phase 2: register the fragments in the shared map and update their counts; these operations do not
                 // fail in practice, so the shared state stays consistent with this molecule's results
@@ -207,6 +251,10 @@ public class FragmentationTask implements Callable<FragmentationTaskResult> {
                     }
                     // increment molecule frequency of this fragment - operation is atomic!
                     tmpFragmentDataModel.incrementMoleculeFrequency();
+                    // add the display labels of this fragment in this molecule - operation is synchronised!
+                    if (this.areDisplayLabelsCollected) {
+                        tmpFragmentDataModel.addDisplayLabels(tmpMolecule, tmpDisplayLabelsOfMoleculeMap.get(tmpSmiles));
+                    }
                     // add the initial molecule as a parent molecule
                     tmpFragmentDataModel.getParentMolecules().add(tmpMolecule);
                     tmpFragmentsOfMolList.add(tmpFragmentDataModel);

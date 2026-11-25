@@ -33,11 +33,14 @@ import de.unijena.cheminf.mortar.model.util.IDisplayEnum;
 import de.unijena.cheminf.mortar.model.util.SimpleEnumConstantNameProperty;
 import de.unijena.cheminf.mortar.model.util.SimpleIDisplayEnumConstantProperty;
 
+import javafx.beans.Observable;
+import javafx.beans.binding.Bindings;
 import javafx.beans.property.Property;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.SimpleDoubleProperty;
 import javafx.beans.property.SimpleIntegerProperty;
 import javafx.beans.property.SimpleStringProperty;
+import javafx.beans.value.ObservableBooleanValue;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.HPos;
@@ -45,6 +48,7 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.geometry.Side;
 import javafx.scene.Group;
+import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
@@ -66,6 +70,7 @@ import javafx.scene.layout.Region;
 import javafx.scene.layout.RowConstraints;
 import javafx.scene.layout.StackPane;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -87,6 +92,15 @@ public class SettingsView extends AnchorPane {
      * The color of the odd rows for the settings view (light grey).
      */
     public static final String ODD_ROW_COLOR = "-fx-background-color: #f5f5f5;";
+    /**
+     * The style of the header bar above a section of settings, similar to a table column header.
+     */
+    public static final String SECTION_HEADER_STYLE = "-fx-background-color: linear-gradient(#f4f4f4, #e2e2e2);"
+            + " -fx-border-color: #c8c8c8; -fx-border-width: 1 0 1 0; -fx-font-weight: bold; -fx-padding: 0 0 0 10;";
+    /**
+     * The height of the header bar above a section of settings.
+     */
+    public static final double SECTION_HEADER_HEIGHT = 36.0;
     //</editor-fold>
     //
     //<editor-fold desc="private class variables" defaultstate="collapsed">
@@ -160,6 +174,29 @@ public class SettingsView extends AnchorPane {
      */
     public Tab addTab(String aLabel, List<Property<?>> aPropertiesList, Map<String, String> aDisplayNamesMap,
                       Map<String, String> aTooltipTextsMap, Map<String, Object> aRecentPropertiesMap) {
+        return this.addTab(aLabel, aPropertiesList, aDisplayNamesMap, aTooltipTextsMap, Map.of(), Map.of(),
+                aRecentPropertiesMap);
+    }
+    //
+    /**
+     * Adds a tab which contains the properties of the given properties list. The rows of properties that have a
+     * visibility condition are only shown while their condition is true. Above the properties that start a section, a
+     * header bar with the section title is shown, which is hidden together with the row of the property.
+     *
+     * @param aLabel Label for the tab title and the tab Id
+     * @param aPropertiesList List of properties to show in created tab
+     * @param aDisplayNamesMap Map containing setting names as keys and language-specific names for the settings to display in the GUI
+     * @param aTooltipTextsMap Map containing setting names as keys and tooltip text as values
+     * @param aVisibilityConditionsMap Map containing setting names as keys and conditions as values that determine
+     *                                 whether the respective setting is shown; settings without condition are always shown
+     * @param aSectionTitlesMap Map containing names of the settings that start a section as keys and the section
+     *                          titles as values
+     * @param aRecentPropertiesMap Map to hold recent properties to restore them if necessary
+     * @return Tab
+     */
+    public Tab addTab(String aLabel, List<Property<?>> aPropertiesList, Map<String, String> aDisplayNamesMap,
+                      Map<String, String> aTooltipTextsMap, Map<String, ObservableBooleanValue> aVisibilityConditionsMap,
+                      Map<String, String> aSectionTitlesMap, Map<String, Object> aRecentPropertiesMap) {
         Tab tmpTab = new Tab();
         tmpTab.setClosable(false);
         tmpTab.setId(aLabel);
@@ -186,7 +223,8 @@ public class SettingsView extends AnchorPane {
                 tmpScrollPane.widthProperty().multiply(0.5)
         );
         tmpGridPane.getColumnConstraints().add(tmpColCon2);
-        this.addPropertyItems(tmpGridPane, aPropertiesList, aDisplayNamesMap, aTooltipTextsMap, aRecentPropertiesMap);
+        this.addPropertyItems(tmpGridPane, aPropertiesList, aDisplayNamesMap, aTooltipTextsMap, aVisibilityConditionsMap,
+                aSectionTitlesMap, aRecentPropertiesMap);
         tmpScrollPane.setContent(tmpGridPane);
         tmpTab.setContent(tmpScrollPane);
         this.tabPane.getTabs().add(tmpTab);
@@ -195,18 +233,33 @@ public class SettingsView extends AnchorPane {
     //
     /**
      * Adds a row for each {@link Property} of given List which contains the property name and a control to change the property value.
+     * The background colors of the setting rows alternate over the setting rows only; the rows of section headers are
+     * not counted.
      *
      * @param aGridPane GridPane to add row
      * @param aPropertiesList List of properties to show in created tab
      * @param aDisplayNamesMap Map containing setting names as keys and language-specific names for the settings to display in the GUI
      * @param aTooltipTextsMap Map containing setting names as keys and tooltip text as values
+     * @param aVisibilityConditionsMap Map containing setting names as keys and conditions as values that determine
+     *                                 whether the respective setting is shown; settings without condition are always shown
+     * @param aSectionTitlesMap Map containing names of the settings that start a section as keys and the section
+     *                          titles as values
      * @param aRecentPropertiesMap Map to hold recent properties to restore them if necessary
      */
     private void addPropertyItems(GridPane aGridPane, List<Property<?>> aPropertiesList,
                                   Map<String, String> aDisplayNamesMap, Map<String, String> aTooltipTextsMap,
-                                  Map<String, Object> aRecentPropertiesMap) {
+                                  Map<String, ObservableBooleanValue> aVisibilityConditionsMap,
+                                  Map<String, String> aSectionTitlesMap, Map<String, Object> aRecentPropertiesMap) {
         int tmpRowIndex = 0;
+        //index of the setting row, unlike the grid row index not shifted by section header rows
+        int tmpSettingRowIndex = 0;
+        List<Region> tmpBackgroundRegions = new ArrayList<>(aPropertiesList.size());
+        List<ObservableBooleanValue> tmpVisibilityConditions = new ArrayList<>(aPropertiesList.size());
         for (Property tmpProperty : aPropertiesList) {
+            String tmpSectionTitle = aSectionTitlesMap.get(tmpProperty.getName());
+            if (tmpSectionTitle != null) {
+                this.addSectionHeader(aGridPane, tmpRowIndex++, tmpSectionTitle, aVisibilityConditionsMap.get(tmpProperty.getName()));
+            }
             RowConstraints tmpRow = new RowConstraints();
             tmpRow.setVgrow(Priority.ALWAYS);
             tmpRow.setPrefHeight(50); //magic number
@@ -215,8 +268,8 @@ public class SettingsView extends AnchorPane {
             Region tmpBackgroundRegion = new Region();
             tmpBackgroundRegion.setPrefHeight(50);
 
-            // Set alternating colors
-            if (tmpRowIndex % 2 == 1) {
+            // Set alternating colors by the setting row index so that section header rows do not shift them
+            if (tmpSettingRowIndex % 2 == 1) {
                 tmpBackgroundRegion.setStyle(SettingsView.ODD_ROW_COLOR);
             } else {
                 tmpBackgroundRegion.setStyle(SettingsView.EVEN_ROW_COLOR);
@@ -233,6 +286,7 @@ public class SettingsView extends AnchorPane {
 
             Object tmpRecentValue = tmpProperty.getValue();
             aRecentPropertiesMap.put(tmpPropName, tmpRecentValue);
+            int tmpCurrentRowIndex = tmpRowIndex;
             switch (tmpProperty) {
                 case SimpleBooleanProperty tmpSimpleBooleanProperty -> {
                     ToggleSwitch tmpToggle = new ToggleSwitch();
@@ -337,7 +391,102 @@ public class SettingsView extends AnchorPane {
                 default ->
                         throw new UnsupportedOperationException("Unknown property type " + tmpProperty.getName());
             }
+            ObservableBooleanValue tmpVisibilityCondition = aVisibilityConditionsMap.get(tmpPropName);
+            if (tmpVisibilityCondition != null) {
+                this.bindRowVisibility(aGridPane, tmpCurrentRowIndex, tmpRow, tmpVisibilityCondition);
+            }
+            tmpBackgroundRegions.add(tmpBackgroundRegion);
+            tmpVisibilityConditions.add(tmpVisibilityCondition);
+            tmpSettingRowIndex++;
         }
+        this.bindAlternatingRowColors(tmpBackgroundRegions, tmpVisibilityConditions);
+    }
+    //
+    /**
+     * Binds the background colors of the setting rows so that they alternate over the visible setting rows only.
+     * Without hidden rows, the colors set when the rows were created from the setting row index are kept; only rows
+     * after a row with a visibility condition get a binding that counts the visible setting rows before them. Section
+     * header rows are not part of the given lists and therefore never counted.
+     *
+     * @param aBackgroundRegionsList background regions of the setting rows, in row order
+     * @param aVisibilityConditionsList visibility conditions of the setting rows, in row order; null for rows that are
+     *                                  always shown
+     */
+    private void bindAlternatingRowColors(List<Region> aBackgroundRegionsList,
+                                          List<ObservableBooleanValue> aVisibilityConditionsList) {
+        List<Observable> tmpPreviousConditions = new ArrayList<>(aVisibilityConditionsList.size());
+        for (int i = 0; i < aBackgroundRegionsList.size(); i++) {
+            if (!tmpPreviousConditions.isEmpty()) {
+                int tmpRowIndex = i;
+                aBackgroundRegionsList.get(i).styleProperty().bind(Bindings.createStringBinding(() -> {
+                    int tmpVisibleRowsBefore = 0;
+                    for (int j = 0; j < tmpRowIndex; j++) {
+                        ObservableBooleanValue tmpCondition = aVisibilityConditionsList.get(j);
+                        if (tmpCondition == null || tmpCondition.get()) {
+                            tmpVisibleRowsBefore++;
+                        }
+                    }
+                    return tmpVisibleRowsBefore % 2 == 1 ? SettingsView.ODD_ROW_COLOR : SettingsView.EVEN_ROW_COLOR;
+                }, tmpPreviousConditions.toArray(new Observable[0])));
+            }
+            ObservableBooleanValue tmpCondition = aVisibilityConditionsList.get(i);
+            if (tmpCondition != null && !tmpPreviousConditions.contains(tmpCondition)) {
+                tmpPreviousConditions.add(tmpCondition);
+            }
+        }
+    }
+    //
+    /**
+     * Adds a row with a header bar that shows the given section title across both columns. The row is not counted for
+     * the alternating row colors.
+     *
+     * @param aGridPane GridPane to add the row to
+     * @param aRowIndex index of the new row
+     * @param aTitle section title
+     * @param aVisibilityCondition condition that determines whether the header is shown, i.e. the visibility condition
+     *                             of the first setting of the section; null if the header is always shown
+     */
+    private void addSectionHeader(GridPane aGridPane, int aRowIndex, String aTitle,
+                                  ObservableBooleanValue aVisibilityCondition) {
+        RowConstraints tmpRow = new RowConstraints();
+        tmpRow.setPrefHeight(SettingsView.SECTION_HEADER_HEIGHT);
+        tmpRow.setMaxHeight(SettingsView.SECTION_HEADER_HEIGHT);
+        tmpRow.setMinHeight(SettingsView.SECTION_HEADER_HEIGHT);
+        aGridPane.getRowConstraints().add(tmpRow);
+        Label tmpHeader = new Label(aTitle);
+        tmpHeader.setStyle(SettingsView.SECTION_HEADER_STYLE);
+        tmpHeader.setMaxWidth(Double.MAX_VALUE);
+        tmpHeader.setMaxHeight(Double.MAX_VALUE);
+        tmpHeader.setAlignment(Pos.CENTER_LEFT);
+        aGridPane.add(tmpHeader, 0, aRowIndex, 2, 1);
+        if (aVisibilityCondition != null) {
+            this.bindRowVisibility(aGridPane, aRowIndex, tmpRow, aVisibilityCondition);
+        }
+    }
+    //
+    /**
+     * Binds the visibility of all nodes in the given row of the grid pane to the given condition. Hidden nodes are not
+     * managed by the layout and the height of the row is set to zero so that the row takes no space while the
+     * condition is false.
+     *
+     * @param aGridPane GridPane holding the row
+     * @param aRowIndex index of the row
+     * @param aRowConstraints constraints of the row
+     * @param aVisibilityCondition condition that determines whether the row is shown
+     */
+    private void bindRowVisibility(GridPane aGridPane, int aRowIndex, RowConstraints aRowConstraints,
+                                   ObservableBooleanValue aVisibilityCondition) {
+        for (Node tmpNode : aGridPane.getChildren()) {
+            Integer tmpNodeRowIndex = GridPane.getRowIndex(tmpNode);
+            if (tmpNodeRowIndex != null && tmpNodeRowIndex == aRowIndex) {
+                tmpNode.visibleProperty().bind(aVisibilityCondition);
+                tmpNode.managedProperty().bind(aVisibilityCondition);
+            }
+        }
+        double tmpRowHeight = aRowConstraints.getPrefHeight();
+        aRowConstraints.minHeightProperty().bind(Bindings.when(aVisibilityCondition).then(tmpRowHeight).otherwise(0.0));
+        aRowConstraints.prefHeightProperty().bind(Bindings.when(aVisibilityCondition).then(tmpRowHeight).otherwise(0.0));
+        aRowConstraints.maxHeightProperty().bind(Bindings.when(aVisibilityCondition).then(tmpRowHeight).otherwise(0.0));
     }
     //</editor-fold>
     //
